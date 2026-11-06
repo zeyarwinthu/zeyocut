@@ -61,8 +61,8 @@ Its third-party notices are `licenses/dotnet-THIRD-PARTY-NOTICES.txt` in the rel
 | Microsoft.Extensions.Primitives | 10.0.14 | MIT | © Microsoft Corporation. All rights reserved. | [dot.net](https://dot.net/) |
 | Microsoft.ML.OnnxRuntime.DirectML | 1.24.4 | MIT | © Microsoft Corporation. All rights reserved. | [github.com/Microsoft/onnxruntime](https://github.com/Microsoft/onnxruntime) |
 | Microsoft.ML.OnnxRuntime.Managed | 1.24.4 | MIT | © Microsoft Corporation. All rights reserved. | [github.com/Microsoft/onnxruntime](https://github.com/Microsoft/onnxruntime) |
-| ModelContextProtocol | 2.3.0 | Apache-2.0 | © Model Context Protocol a Series of LF Projects, LLC. | [csharp.sdk.modelcontextprotocol.io](https://csharp.sdk.modelcontextprotocol.io/) |
-| ModelContextProtocol.Core | 2.3.0 | Apache-2.0 | © Model Context Protocol a Series of LF Projects, LLC. | [csharp.sdk.modelcontextprotocol.io](https://csharp.sdk.modelcontextprotocol.io/) |
+| ModelContextProtocol | 2.3.1 | Apache-2.0 | © Model Context Protocol a Series of LF Projects, LLC. | [csharp.sdk.modelcontextprotocol.io](https://csharp.sdk.modelcontextprotocol.io/) |
+| ModelContextProtocol.Core | 2.3.1 | Apache-2.0 | © Model Context Protocol a Series of LF Projects, LLC. | [csharp.sdk.modelcontextprotocol.io](https://csharp.sdk.modelcontextprotocol.io/) |
 | OpenCvSharp4 | 4.13.0.20260627 | Apache-2.0 | Copyright 2008-2026 | [github.com/shimat/opencvsharp](https://github.com/shimat/opencvsharp) |
 | OpenCvSharp4.runtime.win | 4.13.0.20260627 | Apache-2.0 | Copyright 2008-2026 | [github.com/shimat/opencvsharp](https://github.com/shimat/opencvsharp) |
 | SkiaSharp | 4.154.0 | MIT | © Microsoft Corporation. All rights reserved. | [go.microsoft.com/fwlink/?linkid=868515](https://go.microsoft.com/fwlink/?linkid=868515) |
