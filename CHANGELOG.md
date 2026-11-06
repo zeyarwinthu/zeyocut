@@ -8,7 +8,7 @@ when they open.
 
 ## [Unreleased]
 
-## [0.1.0] - 2026-11-05
+## [0.1.0] - 2026-11-06
 
 The first public release: a headless 2D animation and video editor for Windows whose only interface
 is an MCP server, for Claude and other MCP clients.
