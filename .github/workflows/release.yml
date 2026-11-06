@@ -120,7 +120,8 @@ jobs:
           $version = "${{ steps.version.outputs.version }}"
           $files = "${{ steps.zip.outputs.file }}", "${{ steps.mcpb.outputs.file }}"
           $sums = foreach ($file in $files) { "$((Get-FileHash -Algorithm SHA256 $file).Hash.ToLowerInvariant())  $(Split-Path -Leaf $file)" }
-          Set-Content -Path out/SHA256SUMS.txt -Value $sums -Encoding utf8NoBOM
+          # LF line endings, so that sha256sum -c can check the file too, not only PowerShell.
+          Set-Content -Path out/SHA256SUMS.txt -Value (($sums -join "`n") + "`n") -Encoding utf8NoBOM -NoNewline
 
           $changelog = Get-Content CHANGELOG.md -Raw
           $section = [regex]::Match($changelog, "(?ms)^## \[$([regex]::Escape($version))\][^\n]*\n(.*?)(?=^## \[|^\[Unreleased\]:|\z)")

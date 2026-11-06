@@ -8,6 +8,11 @@ when they open.
 
 ## [Unreleased]
 
+### Fixed
+
+- A release's `SHA256SUMS.txt` has Unix line endings, so `sha256sum -c` can check the downloads too,
+  not only PowerShell.
+
 ## [0.1.0] - 2026-11-06
 
 The first public release: a headless 2D animation and video editor for Windows whose only interface
