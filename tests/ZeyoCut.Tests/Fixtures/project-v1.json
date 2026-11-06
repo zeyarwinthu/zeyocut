@@ -1,0 +1,893 @@
+{
+  "formatVersion": 1,
+  "name": "Tora Jumps",
+  "width": 1280,
+  "height": 720,
+  "fps": 30,
+  "duration": 3,
+  "backgroundColor": "#BFE6FF",
+  "assets": [
+    {
+      "id": "tora_body",
+      "type": "image",
+      "file": "assets/tora_body.png",
+      "width": 220,
+      "height": 240
+    },
+    {
+      "id": "tora_head",
+      "type": "image",
+      "file": "assets/tora_head.png",
+      "width": 240,
+      "height": 208
+    },
+    {
+      "id": "tora_head_happy",
+      "type": "image",
+      "file": "assets/tora_head_happy.png",
+      "width": 240,
+      "height": 208
+    },
+    {
+      "id": "tora_tail",
+      "type": "image",
+      "file": "assets/tora_tail.png",
+      "width": 180,
+      "height": 92
+    },
+    {
+      "id": "shadow",
+      "type": "image",
+      "file": "assets/shadow.png",
+      "width": 240,
+      "height": 50
+    },
+    {
+      "id": "ground",
+      "type": "image",
+      "file": "assets/ground.png",
+      "width": 1280,
+      "height": 140
+    },
+    {
+      "id": "clouds",
+      "type": "image",
+      "file": "assets/clouds.png",
+      "width": 1400,
+      "height": 240
+    },
+    {
+      "id": "boing",
+      "type": "audio",
+      "file": "assets/boing.wav",
+      "duration": 0.6
+    },
+    {
+      "id": "thud",
+      "type": "audio",
+      "file": "assets/thud.wav",
+      "duration": 0.3
+    }
+  ],
+  "layers": [
+    {
+      "type": "image",
+      "id": "clouds",
+      "name": "clouds",
+      "start": 0,
+      "end": null,
+      "zIndex": 1,
+      "parentId": null,
+      "visible": true,
+      "anchorX": 0,
+      "anchorY": 0,
+      "flipX": false,
+      "drawings": {
+        "normal": "clouds"
+      },
+      "drawing": {
+        "value": "normal"
+      },
+      "x": {
+        "value": 0,
+        "keyframes": [
+          {
+            "time": 0,
+            "value": 0,
+            "easing": "linear"
+          },
+          {
+            "time": 3,
+            "value": -80,
+            "easing": "linear"
+          }
+        ]
+      },
+      "y": {
+        "value": 0
+      },
+      "rotation": {
+        "value": 0
+      },
+      "scaleX": {
+        "value": 1
+      },
+      "scaleY": {
+        "value": 1
+      },
+      "opacity": {
+        "value": 1
+      }
+    },
+    {
+      "type": "image",
+      "id": "ground",
+      "name": "ground",
+      "start": 0,
+      "end": null,
+      "zIndex": 2,
+      "parentId": null,
+      "visible": true,
+      "anchorX": 0,
+      "anchorY": 0,
+      "flipX": false,
+      "drawings": {
+        "normal": "ground"
+      },
+      "drawing": {
+        "value": "normal"
+      },
+      "x": {
+        "value": 0
+      },
+      "y": {
+        "value": 590
+      },
+      "rotation": {
+        "value": 0
+      },
+      "scaleX": {
+        "value": 1
+      },
+      "scaleY": {
+        "value": 1
+      },
+      "opacity": {
+        "value": 1
+      }
+    },
+    {
+      "type": "image",
+      "id": "shadow",
+      "name": "shadow",
+      "start": 0,
+      "end": null,
+      "zIndex": 3,
+      "parentId": null,
+      "visible": true,
+      "anchorX": 120,
+      "anchorY": 25,
+      "flipX": false,
+      "drawings": {
+        "normal": "shadow"
+      },
+      "drawing": {
+        "value": "normal"
+      },
+      "x": {
+        "value": 780,
+        "keyframes": [
+          {
+            "time": 0.9,
+            "value": 780,
+            "easing": "linear"
+          },
+          {
+            "time": 1.8,
+            "value": 980,
+            "easing": "linear"
+          }
+        ]
+      },
+      "y": {
+        "value": 606
+      },
+      "rotation": {
+        "value": 0
+      },
+      "scaleX": {
+        "value": 1,
+        "keyframes": [
+          {
+            "time": 0.5,
+            "value": 1,
+            "easing": "easeInOut"
+          },
+          {
+            "time": 0.9,
+            "value": 1.15,
+            "easing": "easeOut"
+          },
+          {
+            "time": 1.35,
+            "value": 0.55,
+            "easing": "easeIn"
+          },
+          {
+            "time": 1.8,
+            "value": 1,
+            "easing": "linear"
+          },
+          {
+            "time": 1.83,
+            "value": 1.18,
+            "easing": "easeOutBack"
+          },
+          {
+            "time": 2.3,
+            "value": 1,
+            "easing": "linear"
+          }
+        ]
+      },
+      "scaleY": {
+        "value": 1,
+        "keyframes": [
+          {
+            "time": 0.5,
+            "value": 1,
+            "easing": "easeInOut"
+          },
+          {
+            "time": 0.9,
+            "value": 1.15,
+            "easing": "easeOut"
+          },
+          {
+            "time": 1.35,
+            "value": 0.55,
+            "easing": "easeIn"
+          },
+          {
+            "time": 1.8,
+            "value": 1,
+            "easing": "linear"
+          },
+          {
+            "time": 1.83,
+            "value": 1.18,
+            "easing": "easeOutBack"
+          },
+          {
+            "time": 2.3,
+            "value": 1,
+            "easing": "linear"
+          }
+        ]
+      },
+      "opacity": {
+        "value": 0.35,
+        "keyframes": [
+          {
+            "time": 0.9,
+            "value": 0.35,
+            "easing": "easeOut"
+          },
+          {
+            "time": 1.35,
+            "value": 0.12,
+            "easing": "easeIn"
+          },
+          {
+            "time": 1.8,
+            "value": 0.35,
+            "easing": "linear"
+          }
+        ]
+      }
+    },
+    {
+      "type": "image",
+      "id": "tora",
+      "name": "Tora rig root",
+      "start": 0,
+      "end": null,
+      "zIndex": 8,
+      "parentId": null,
+      "visible": true,
+      "anchorX": 0,
+      "anchorY": 0,
+      "flipX": false,
+      "drawings": {},
+      "drawing": {
+        "value": ""
+      },
+      "x": {
+        "value": 780,
+        "keyframes": [
+          {
+            "time": 0.9,
+            "value": 780,
+            "easing": "linear"
+          },
+          {
+            "time": 1.8,
+            "value": 980,
+            "easing": "linear"
+          }
+        ]
+      },
+      "y": {
+        "value": 605,
+        "keyframes": [
+          {
+            "time": 0.9,
+            "value": 605,
+            "easing": "easeOut"
+          },
+          {
+            "time": 1.35,
+            "value": 360,
+            "easing": "easeIn"
+          },
+          {
+            "time": 1.8,
+            "value": 605,
+            "easing": "linear"
+          }
+        ]
+      },
+      "rotation": {
+        "value": 0,
+        "keyframes": [
+          {
+            "time": 0.9,
+            "value": 0,
+            "easing": "easeInOut"
+          },
+          {
+            "time": 1.15,
+            "value": 5,
+            "easing": "easeInOut"
+          },
+          {
+            "time": 1.7,
+            "value": -3,
+            "easing": "easeInOut"
+          },
+          {
+            "time": 1.85,
+            "value": 0,
+            "easing": "linear"
+          }
+        ]
+      },
+      "scaleX": {
+        "value": 0.85
+      },
+      "scaleY": {
+        "value": 0.85
+      },
+      "opacity": {
+        "value": 1
+      }
+    },
+    {
+      "type": "image",
+      "id": "tora_body",
+      "name": "Tora body",
+      "start": 0,
+      "end": null,
+      "zIndex": 10,
+      "parentId": "tora",
+      "visible": true,
+      "anchorX": 110,
+      "anchorY": 234,
+      "flipX": false,
+      "drawings": {
+        "normal": "tora_body"
+      },
+      "drawing": {
+        "value": "normal"
+      },
+      "x": {
+        "value": 0
+      },
+      "y": {
+        "value": 0
+      },
+      "rotation": {
+        "value": 0
+      },
+      "scaleX": {
+        "value": 1,
+        "keyframes": [
+          {
+            "time": 0.5,
+            "value": 1,
+            "easing": "easeInOut"
+          },
+          {
+            "time": 0.9,
+            "value": 1.25,
+            "easing": "easeOut"
+          },
+          {
+            "time": 1,
+            "value": 0.84,
+            "easing": "easeInOut"
+          },
+          {
+            "time": 1.35,
+            "value": 1.03,
+            "easing": "easeIn"
+          },
+          {
+            "time": 1.75,
+            "value": 0.9,
+            "easing": "linear"
+          },
+          {
+            "time": 1.83,
+            "value": 1.25,
+            "easing": "easeOutBack"
+          },
+          {
+            "time": 2.3,
+            "value": 1,
+            "easing": "linear"
+          }
+        ]
+      },
+      "scaleY": {
+        "value": 1,
+        "keyframes": [
+          {
+            "time": 0.5,
+            "value": 1,
+            "easing": "easeInOut"
+          },
+          {
+            "time": 0.9,
+            "value": 0.7,
+            "easing": "easeOut"
+          },
+          {
+            "time": 1,
+            "value": 1.22,
+            "easing": "easeInOut"
+          },
+          {
+            "time": 1.35,
+            "value": 0.97,
+            "easing": "easeIn"
+          },
+          {
+            "time": 1.75,
+            "value": 1.15,
+            "easing": "linear"
+          },
+          {
+            "time": 1.83,
+            "value": 0.72,
+            "easing": "easeOutBack"
+          },
+          {
+            "time": 2.3,
+            "value": 1,
+            "easing": "linear"
+          }
+        ]
+      },
+      "opacity": {
+        "value": 1
+      }
+    },
+    {
+      "type": "image",
+      "id": "tora_head",
+      "name": "Tora head",
+      "start": 0,
+      "end": null,
+      "zIndex": 11,
+      "parentId": "tora_body",
+      "visible": true,
+      "anchorX": 120,
+      "anchorY": 196,
+      "flipX": false,
+      "drawings": {
+        "normal": "tora_head",
+        "happy": "tora_head_happy"
+      },
+      "drawing": {
+        "value": "normal",
+        "keyframes": [
+          {
+            "time": 0,
+            "value": "normal"
+          },
+          {
+            "time": 0.95,
+            "value": "happy"
+          },
+          {
+            "time": 2.15,
+            "value": "normal"
+          }
+        ]
+      },
+      "x": {
+        "value": 110
+      },
+      "y": {
+        "value": 26,
+        "keyframes": [
+          {
+            "time": 0.55,
+            "value": 26,
+            "easing": "easeOut"
+          },
+          {
+            "time": 0.9,
+            "value": 34,
+            "easing": "easeIn"
+          },
+          {
+            "time": 1,
+            "value": 40,
+            "easing": "easeOut"
+          },
+          {
+            "time": 1.3,
+            "value": 18,
+            "easing": "easeInOut"
+          },
+          {
+            "time": 1.75,
+            "value": 22,
+            "easing": "easeIn"
+          },
+          {
+            "time": 1.83,
+            "value": 44,
+            "easing": "easeOutBack"
+          },
+          {
+            "time": 2.35,
+            "value": 26,
+            "easing": "linear"
+          }
+        ]
+      },
+      "rotation": {
+        "value": 0,
+        "keyframes": [
+          {
+            "time": 0.55,
+            "value": 0,
+            "easing": "easeInOut"
+          },
+          {
+            "time": 0.9,
+            "value": 4,
+            "easing": "easeOut"
+          },
+          {
+            "time": 1.05,
+            "value": -10,
+            "easing": "easeInOut"
+          },
+          {
+            "time": 1.4,
+            "value": 5,
+            "easing": "easeInOut"
+          },
+          {
+            "time": 1.8,
+            "value": -2,
+            "easing": "easeOut"
+          },
+          {
+            "time": 1.9,
+            "value": 8,
+            "easing": "easeOutBack"
+          },
+          {
+            "time": 2.4,
+            "value": 0,
+            "easing": "linear"
+          }
+        ]
+      },
+      "scaleX": {
+        "value": 1
+      },
+      "scaleY": {
+        "value": 1
+      },
+      "opacity": {
+        "value": 1
+      }
+    },
+    {
+      "type": "image",
+      "id": "tora_tail",
+      "name": "Tora tail",
+      "start": 0,
+      "end": null,
+      "zIndex": 9,
+      "parentId": "tora_body",
+      "visible": true,
+      "anchorX": 164,
+      "anchorY": 72,
+      "flipX": false,
+      "drawings": {
+        "normal": "tora_tail"
+      },
+      "drawing": {
+        "value": "normal"
+      },
+      "x": {
+        "value": 58
+      },
+      "y": {
+        "value": 176
+      },
+      "rotation": {
+        "value": 0,
+        "keyframes": [
+          {
+            "time": 0,
+            "value": 0,
+            "easing": "easeInOut"
+          },
+          {
+            "time": 0.3,
+            "value": 12,
+            "easing": "easeInOut"
+          },
+          {
+            "time": 0.6,
+            "value": -6,
+            "easing": "easeInOut"
+          },
+          {
+            "time": 0.9,
+            "value": 10,
+            "easing": "easeInOut"
+          },
+          {
+            "time": 1.05,
+            "value": -24,
+            "easing": "easeInOut"
+          },
+          {
+            "time": 1.3,
+            "value": 0,
+            "easing": "easeInOut"
+          },
+          {
+            "time": 1.6,
+            "value": 18,
+            "easing": "easeInOut"
+          },
+          {
+            "time": 1.8,
+            "value": 26,
+            "easing": "easeOut"
+          },
+          {
+            "time": 1.9,
+            "value": -22,
+            "easing": "easeInOut"
+          },
+          {
+            "time": 2.15,
+            "value": 14,
+            "easing": "easeInOut"
+          },
+          {
+            "time": 2.4,
+            "value": -8,
+            "easing": "easeInOut"
+          },
+          {
+            "time": 2.65,
+            "value": 6,
+            "easing": "easeInOut"
+          },
+          {
+            "time": 2.9,
+            "value": 0,
+            "easing": "linear"
+          }
+        ]
+      },
+      "scaleX": {
+        "value": 1
+      },
+      "scaleY": {
+        "value": 1
+      },
+      "opacity": {
+        "value": 1
+      }
+    },
+    {
+      "type": "text",
+      "id": "title",
+      "name": "title",
+      "start": 0,
+      "end": null,
+      "zIndex": 20,
+      "parentId": null,
+      "visible": true,
+      "anchorX": 249.734375,
+      "anchorY": 58.5234375,
+      "text": "Tora Jumps!",
+      "fontFamily": "Segoe UI",
+      "fontAsset": null,
+      "bold": true,
+      "fontSize": 88,
+      "color": "#FFFFFF",
+      "strokeColor": "#3B2A1A",
+      "strokeWidth": 8,
+      "align": "left",
+      "maxWidth": null,
+      "lineHeight": 1,
+      "box": null,
+      "x": {
+        "value": 340
+      },
+      "y": {
+        "value": 150
+      },
+      "rotation": {
+        "value": 0
+      },
+      "scaleX": {
+        "value": 1,
+        "keyframes": [
+          {
+            "time": 0,
+            "value": 0.3,
+            "easing": "easeOutBack"
+          },
+          {
+            "time": 0.5,
+            "value": 1,
+            "easing": "linear"
+          }
+        ]
+      },
+      "scaleY": {
+        "value": 1,
+        "keyframes": [
+          {
+            "time": 0,
+            "value": 0.3,
+            "easing": "easeOutBack"
+          },
+          {
+            "time": 0.5,
+            "value": 1,
+            "easing": "linear"
+          }
+        ]
+      },
+      "opacity": {
+        "value": 1,
+        "keyframes": [
+          {
+            "time": 0,
+            "value": 0,
+            "easing": "easeOut"
+          },
+          {
+            "time": 0.15,
+            "value": 1,
+            "easing": "linear"
+          }
+        ]
+      }
+    },
+    {
+      "type": "text",
+      "id": "subtitle",
+      "name": "subtitle",
+      "start": 0,
+      "end": null,
+      "zIndex": 21,
+      "parentId": null,
+      "visible": true,
+      "anchorX": 140,
+      "anchorY": 32.041015625,
+      "text": "トラのジャンプ",
+      "fontFamily": "Yu Gothic",
+      "fontAsset": null,
+      "bold": true,
+      "fontSize": 40,
+      "color": "#3B2A1A",
+      "strokeColor": null,
+      "strokeWidth": 0,
+      "align": "left",
+      "maxWidth": null,
+      "lineHeight": 1,
+      "box": null,
+      "x": {
+        "value": 340
+      },
+      "y": {
+        "value": 238,
+        "keyframes": [
+          {
+            "time": 0.25,
+            "value": 258,
+            "easing": "easeOut"
+          },
+          {
+            "time": 0.7,
+            "value": 238,
+            "easing": "linear"
+          }
+        ]
+      },
+      "rotation": {
+        "value": 0
+      },
+      "scaleX": {
+        "value": 1
+      },
+      "scaleY": {
+        "value": 1
+      },
+      "opacity": {
+        "value": 1,
+        "keyframes": [
+          {
+            "time": 0.25,
+            "value": 0,
+            "easing": "easeOut"
+          },
+          {
+            "time": 0.7,
+            "value": 1,
+            "easing": "linear"
+          }
+        ]
+      }
+    },
+    {
+      "type": "audio",
+      "id": "sfx_boing",
+      "name": "sfx_boing",
+      "start": 0.9,
+      "end": null,
+      "zIndex": 0,
+      "parentId": null,
+      "visible": true,
+      "asset": "boing",
+      "trimIn": 0,
+      "trimOut": null,
+      "volume": 0.8,
+      "fadeIn": 0,
+      "fadeOut": 0
+    },
+    {
+      "type": "audio",
+      "id": "sfx_thud",
+      "name": "sfx_thud",
+      "start": 1.8,
+      "end": null,
+      "zIndex": 0,
+      "parentId": null,
+      "visible": true,
+      "asset": "thud",
+      "trimIn": 0,
+      "trimOut": null,
+      "volume": 1,
+      "fadeIn": 0,
+      "fadeOut": 0.1
+    }
+  ]
+}

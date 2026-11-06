@@ -1,0 +1,73 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  DOTNET_NOLOGO: "1"
+  DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+  TESTINGPLATFORM_TELEMETRY_OPTOUT: "1"
+
+jobs:
+  build-and-test:
+    name: Build and test
+    runs-on: windows-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
+        with:
+          dotnet-version: "10.0.x"
+
+      # Most render and export tests need FFmpeg; without it they are skipped. The AI model and
+      # whisper tests are skipped here too: CI never downloads models.
+      - name: Install FFmpeg
+        run: choco install ffmpeg --yes --no-progress
+
+      - name: Build
+        run: dotnet build ZeyoCut.slnx -c Release
+
+      - name: Test
+        run: '& ./tests/ZeyoCut.Tests/bin/Release/net10.0/ZeyoCut.Tests.exe'
+
+      - name: Check whitespace
+        run: dotnet format whitespace ZeyoCut.slnx --verify-no-changes
+
+      - name: Check code style
+        run: dotnet format style ZeyoCut.slnx --verify-no-changes
+
+  dco:
+    name: DCO sign-off
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      # Every commit in the pull request (merges aside) needs a "Signed-off-by:" line that matches
+      # its author, as "git commit -s" writes it. See CONTRIBUTING.md.
+      - name: Check every commit is signed off
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          missing=0
+          for commit in $(git rev-list --no-merges "$BASE..$HEAD"); do
+            author="$(git log -1 --format='%an <%ae>' "$commit")"
+            if ! git log -1 --format='%(trailers:key=Signed-off-by,valueonly)' "$commit" | grep -qxF -- "$author"; then
+              echo "::error::Commit $(git log -1 --format='%h' "$commit") has no 'Signed-off-by: $author' line. Sign it off with 'git commit -s' (to fix earlier commits: git rebase --signoff $BASE)."
+              missing=1
+            fi
+          done
+          if [ "$missing" -eq 0 ]; then
+            echo "Every commit is signed off."
+          fi
+          exit $missing

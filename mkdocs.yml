@@ -1,0 +1,61 @@
+site_name: ZeyoCut
+site_url: https://cut.zeyoapp.com/
+site_description: A video and animation editor for Windows that an AI model drives through MCP.
+site_author: Zeyo
+copyright: Copyright &copy; 2026 Zeyo. Released under the MIT License.
+
+theme:
+  name: material
+  # System fonts only: the site loads nothing from other sites.
+  font: false
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: deep orange
+      accent: orange
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: deep orange
+      accent: orange
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+  features:
+    - content.code.copy
+    - navigation.top
+    - search.highlight
+
+# A plain link rather than repo_url, whose header widget asks GitHub's API for star counts from
+# every visitor's browser.
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/zeyarwinthu/zeyocut
+      name: ZeyoCut on GitHub
+  generator: false
+
+nav:
+  - Home: index.md
+  - Quick start: quick-start.md
+  - Install: install.md
+  - Examples: examples.md
+  - Guide: GUIDE.md
+  - Tool reference: TOOLS.md
+  - Project format: project-format.md
+  - Architecture: architecture.md
+  - Privacy: privacy.md
+  - License: license.md
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.highlight
+  - pymdownx.inlinehilite
+  - pymdownx.superfences

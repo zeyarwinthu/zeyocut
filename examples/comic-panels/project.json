@@ -1,0 +1,864 @@
+{
+  "formatVersion": 6,
+  "name": "comic-panels",
+  "width": 1280,
+  "height": 720,
+  "fps": 30,
+  "duration": 9,
+  "backgroundColor": "#1E1E1E",
+  "audio": {
+    "loudnessTarget": -14,
+    "truePeak": -1,
+    "ducking": true
+  },
+  "assets": [
+    {
+      "id": "panel1",
+      "type": "image",
+      "file": "assets/panel1.png",
+      "width": 1296,
+      "height": 736
+    },
+    {
+      "id": "panel2",
+      "type": "image",
+      "file": "assets/panel2.png",
+      "width": 1296,
+      "height": 736
+    },
+    {
+      "id": "panel3",
+      "type": "image",
+      "file": "assets/panel3.png",
+      "width": 1296,
+      "height": 736
+    },
+    {
+      "id": "boing",
+      "type": "audio",
+      "file": "assets/boing.wav",
+      "duration": 0.6
+    },
+    {
+      "id": "thud",
+      "type": "audio",
+      "file": "assets/thud.wav",
+      "duration": 0.3
+    }
+  ],
+  "layers": [
+    {
+      "type": "image",
+      "id": "panel1",
+      "name": "panel1",
+      "start": 0,
+      "end": 3.25,
+      "zIndex": 1,
+      "parentId": null,
+      "visible": true,
+      "anchorX": 648,
+      "anchorY": 368,
+      "flipX": false,
+      "drawings": {
+        "normal": "panel1"
+      },
+      "drawing": {
+        "value": "normal"
+      },
+      "x": {
+        "value": 640
+      },
+      "y": {
+        "value": 360
+      },
+      "rotation": {
+        "value": 0
+      },
+      "scaleX": {
+        "value": 0.86,
+        "keyframes": [
+          {
+            "time": 0,
+            "value": 0.86,
+            "easing": "easeInOut"
+          },
+          {
+            "time": 3,
+            "value": 0.94,
+            "easing": "linear"
+          }
+        ]
+      },
+      "scaleY": {
+        "value": 0.86,
+        "keyframes": [
+          {
+            "time": 0,
+            "value": 0.86,
+            "easing": "easeInOut"
+          },
+          {
+            "time": 3,
+            "value": 0.94,
+            "easing": "linear"
+          }
+        ]
+      },
+      "opacity": {
+        "value": 1
+      },
+      "brightness": {
+        "value": 0
+      },
+      "contrast": {
+        "value": 1
+      },
+      "saturation": {
+        "value": 1
+      }
+    },
+    {
+      "type": "image",
+      "id": "panel2",
+      "name": "panel2",
+      "start": 2.75,
+      "end": 6.25,
+      "zIndex": 1,
+      "parentId": null,
+      "visible": true,
+      "anchorX": 648,
+      "anchorY": 368,
+      "flipX": false,
+      "drawings": {
+        "normal": "panel2"
+      },
+      "drawing": {
+        "value": "normal"
+      },
+      "x": {
+        "value": 640,
+        "keyframes": [
+          {
+            "time": 3,
+            "value": 600,
+            "easing": "easeInOut"
+          },
+          {
+            "time": 5.75,
+            "value": 679.8148148148148,
+            "easing": "easeInOut"
+          },
+          {
+            "time": 6.25,
+            "value": -600,
+            "easing": "linear"
+          }
+        ]
+      },
+      "y": {
+        "value": 360
+      },
+      "rotation": {
+        "value": 0
+      },
+      "scaleX": {
+        "value": 0.86
+      },
+      "scaleY": {
+        "value": 0.86
+      },
+      "opacity": {
+        "value": 1,
+        "keyframes": [
+          {
+            "time": 2.75,
+            "value": 0,
+            "easing": "linear"
+          },
+          {
+            "time": 3.25,
+            "value": 1,
+            "easing": "linear"
+          }
+        ]
+      },
+      "brightness": {
+        "value": 0
+      },
+      "contrast": {
+        "value": 1
+      },
+      "saturation": {
+        "value": 1
+      }
+    },
+    {
+      "type": "image",
+      "id": "panel3",
+      "name": "panel3",
+      "start": 5.75,
+      "end": 9,
+      "zIndex": 1,
+      "parentId": null,
+      "visible": true,
+      "anchorX": 648,
+      "anchorY": 368,
+      "flipX": false,
+      "drawings": {
+        "normal": "panel3"
+      },
+      "drawing": {
+        "value": "normal"
+      },
+      "x": {
+        "value": 640,
+        "keyframes": [
+          {
+            "time": 5.75,
+            "value": 1920,
+            "easing": "easeInOut"
+          },
+          {
+            "time": 6.25,
+            "value": 640,
+            "easing": "linear"
+          }
+        ]
+      },
+      "y": {
+        "value": 360
+      },
+      "rotation": {
+        "value": 0
+      },
+      "scaleX": {
+        "value": 0.86,
+        "keyframes": [
+          {
+            "time": 6,
+            "value": 0.94,
+            "easing": "easeOut"
+          },
+          {
+            "time": 9,
+            "value": 0.86,
+            "easing": "linear"
+          }
+        ]
+      },
+      "scaleY": {
+        "value": 0.86,
+        "keyframes": [
+          {
+            "time": 6,
+            "value": 0.94,
+            "easing": "easeOut"
+          },
+          {
+            "time": 9,
+            "value": 0.86,
+            "easing": "linear"
+          }
+        ]
+      },
+      "opacity": {
+        "value": 1
+      },
+      "brightness": {
+        "value": 0
+      },
+      "contrast": {
+        "value": 1
+      },
+      "saturation": {
+        "value": 1
+      }
+    },
+    {
+      "type": "audio",
+      "id": "sfx_boing",
+      "name": "sfx_boing",
+      "start": 3.4,
+      "end": null,
+      "zIndex": 0,
+      "parentId": null,
+      "visible": true,
+      "asset": "boing",
+      "trimIn": 0,
+      "trimOut": null,
+      "volume": 0.8,
+      "role": "effects",
+      "fadeIn": 0,
+      "fadeOut": 0
+    },
+    {
+      "type": "audio",
+      "id": "sfx_thud",
+      "name": "sfx_thud",
+      "start": 6.3,
+      "end": null,
+      "zIndex": 0,
+      "parentId": null,
+      "visible": true,
+      "asset": "thud",
+      "trimIn": 0,
+      "trimOut": null,
+      "volume": 1,
+      "role": "effects",
+      "fadeIn": 0,
+      "fadeOut": 0
+    },
+    {
+      "type": "image",
+      "id": "captions_en",
+      "name": "captions (en)",
+      "start": 0,
+      "end": null,
+      "zIndex": 11,
+      "parentId": null,
+      "visible": true,
+      "language": "en",
+      "anchorX": 0,
+      "anchorY": 0,
+      "ignoreCamera": true,
+      "flipX": false,
+      "drawings": {},
+      "drawing": {
+        "value": ""
+      },
+      "x": {
+        "value": 0
+      },
+      "y": {
+        "value": 0
+      },
+      "rotation": {
+        "value": 0
+      },
+      "scaleX": {
+        "value": 1
+      },
+      "scaleY": {
+        "value": 1
+      },
+      "opacity": {
+        "value": 1
+      },
+      "brightness": {
+        "value": 0
+      },
+      "contrast": {
+        "value": 1
+      },
+      "saturation": {
+        "value": 1
+      }
+    },
+    {
+      "type": "text",
+      "id": "captions_en_1",
+      "name": "Tora sits in the sun.",
+      "start": 0.4,
+      "end": 2.7,
+      "zIndex": 11,
+      "parentId": "captions_en",
+      "visible": true,
+      "anchorX": 550.4000244140625,
+      "anchorY": 46.818748474121094,
+      "text": "Tora sits in the sun.",
+      "fontFamily": "Segoe UI",
+      "fontAsset": null,
+      "bold": false,
+      "fontSize": 32,
+      "color": "#FFFFFF",
+      "strokeColor": null,
+      "strokeWidth": 0,
+      "align": "center",
+      "maxWidth": 1100.8,
+      "lineHeight": 1.1,
+      "box": {
+        "color": "#000000B3",
+        "padding": 10,
+        "cornerRadius": 6
+      },
+      "x": {
+        "value": 640
+      },
+      "y": {
+        "value": 669.6
+      },
+      "rotation": {
+        "value": 0
+      },
+      "scaleX": {
+        "value": 1
+      },
+      "scaleY": {
+        "value": 1
+      },
+      "opacity": {
+        "value": 1
+      }
+    },
+    {
+      "type": "text",
+      "id": "captions_en_2",
+      "name": "Then he jumps as high as he can!",
+      "start": 3.4,
+      "end": 5.7,
+      "zIndex": 11,
+      "parentId": "captions_en",
+      "visible": true,
+      "anchorX": 550.4000244140625,
+      "anchorY": 46.818748474121094,
+      "text": "Then he jumps as high as he can!",
+      "fontFamily": "Segoe UI",
+      "fontAsset": null,
+      "bold": false,
+      "fontSize": 32,
+      "color": "#FFFFFF",
+      "strokeColor": null,
+      "strokeWidth": 0,
+      "align": "center",
+      "maxWidth": 1100.8,
+      "lineHeight": 1.1,
+      "box": {
+        "color": "#000000B3",
+        "padding": 10,
+        "cornerRadius": 6
+      },
+      "x": {
+        "value": 640
+      },
+      "y": {
+        "value": 669.6
+      },
+      "rotation": {
+        "value": 0
+      },
+      "scaleX": {
+        "value": 1
+      },
+      "scaleY": {
+        "value": 1
+      },
+      "opacity": {
+        "value": 1
+      }
+    },
+    {
+      "type": "text",
+      "id": "captions_en_3",
+      "name": "And lands with a big smile.",
+      "start": 6.4,
+      "end": 8.7,
+      "zIndex": 11,
+      "parentId": "captions_en",
+      "visible": true,
+      "anchorX": 550.4000244140625,
+      "anchorY": 46.818748474121094,
+      "text": "And lands with a big smile.",
+      "fontFamily": "Segoe UI",
+      "fontAsset": null,
+      "bold": false,
+      "fontSize": 32,
+      "color": "#FFFFFF",
+      "strokeColor": null,
+      "strokeWidth": 0,
+      "align": "center",
+      "maxWidth": 1100.8,
+      "lineHeight": 1.1,
+      "box": {
+        "color": "#000000B3",
+        "padding": 10,
+        "cornerRadius": 6
+      },
+      "x": {
+        "value": 640
+      },
+      "y": {
+        "value": 669.6
+      },
+      "rotation": {
+        "value": 0
+      },
+      "scaleX": {
+        "value": 1
+      },
+      "scaleY": {
+        "value": 1
+      },
+      "opacity": {
+        "value": 1
+      }
+    },
+    {
+      "type": "image",
+      "id": "captions_ja",
+      "name": "captions (ja)",
+      "start": 0,
+      "end": null,
+      "zIndex": 21,
+      "parentId": null,
+      "visible": true,
+      "language": "ja",
+      "anchorX": 0,
+      "anchorY": 0,
+      "ignoreCamera": true,
+      "flipX": false,
+      "drawings": {},
+      "drawing": {
+        "value": ""
+      },
+      "x": {
+        "value": 0
+      },
+      "y": {
+        "value": 0
+      },
+      "rotation": {
+        "value": 0
+      },
+      "scaleX": {
+        "value": 1
+      },
+      "scaleY": {
+        "value": 1
+      },
+      "opacity": {
+        "value": 1
+      },
+      "brightness": {
+        "value": 0
+      },
+      "contrast": {
+        "value": 1
+      },
+      "saturation": {
+        "value": 1
+      }
+    },
+    {
+      "type": "text",
+      "id": "captions_ja_1",
+      "name": "トラはひなたぼっこ。",
+      "start": 0.4,
+      "end": 2.7,
+      "zIndex": 21,
+      "parentId": "captions_ja",
+      "visible": true,
+      "anchorX": 550.4000244140625,
+      "anchorY": 56.392189025878906,
+      "text": "トラはひなたぼっこ。",
+      "fontFamily": "Yu Gothic",
+      "fontAsset": null,
+      "bold": false,
+      "fontSize": 32,
+      "color": "#FFFFFF",
+      "strokeColor": null,
+      "strokeWidth": 0,
+      "align": "center",
+      "maxWidth": 1100.8,
+      "lineHeight": 1.1,
+      "box": {
+        "color": "#000000B3",
+        "padding": 10,
+        "cornerRadius": 6
+      },
+      "x": {
+        "value": 640
+      },
+      "y": {
+        "value": 669.6
+      },
+      "rotation": {
+        "value": 0
+      },
+      "scaleX": {
+        "value": 1
+      },
+      "scaleY": {
+        "value": 1
+      },
+      "opacity": {
+        "value": 1
+      }
+    },
+    {
+      "type": "text",
+      "id": "captions_ja_2",
+      "name": "そして、思いきりジャンプ！",
+      "start": 3.4,
+      "end": 5.7,
+      "zIndex": 21,
+      "parentId": "captions_ja",
+      "visible": true,
+      "anchorX": 550.4000244140625,
+      "anchorY": 56.392189025878906,
+      "text": "そして、思いきりジャンプ！",
+      "fontFamily": "Yu Gothic",
+      "fontAsset": null,
+      "bold": false,
+      "fontSize": 32,
+      "color": "#FFFFFF",
+      "strokeColor": null,
+      "strokeWidth": 0,
+      "align": "center",
+      "maxWidth": 1100.8,
+      "lineHeight": 1.1,
+      "box": {
+        "color": "#000000B3",
+        "padding": 10,
+        "cornerRadius": 6
+      },
+      "x": {
+        "value": 640
+      },
+      "y": {
+        "value": 669.6
+      },
+      "rotation": {
+        "value": 0
+      },
+      "scaleX": {
+        "value": 1
+      },
+      "scaleY": {
+        "value": 1
+      },
+      "opacity": {
+        "value": 1
+      }
+    },
+    {
+      "type": "text",
+      "id": "captions_ja_3",
+      "name": "にっこり着地。",
+      "start": 6.4,
+      "end": 8.7,
+      "zIndex": 21,
+      "parentId": "captions_ja",
+      "visible": true,
+      "anchorX": 550.4000244140625,
+      "anchorY": 56.392189025878906,
+      "text": "にっこり着地。",
+      "fontFamily": "Yu Gothic",
+      "fontAsset": null,
+      "bold": false,
+      "fontSize": 32,
+      "color": "#FFFFFF",
+      "strokeColor": null,
+      "strokeWidth": 0,
+      "align": "center",
+      "maxWidth": 1100.8,
+      "lineHeight": 1.1,
+      "box": {
+        "color": "#000000B3",
+        "padding": 10,
+        "cornerRadius": 6
+      },
+      "x": {
+        "value": 640
+      },
+      "y": {
+        "value": 669.6
+      },
+      "rotation": {
+        "value": 0
+      },
+      "scaleX": {
+        "value": 1
+      },
+      "scaleY": {
+        "value": 1
+      },
+      "opacity": {
+        "value": 1
+      }
+    },
+    {
+      "type": "image",
+      "id": "captions_my",
+      "name": "captions (my)",
+      "start": 0,
+      "end": null,
+      "zIndex": 31,
+      "parentId": null,
+      "visible": true,
+      "language": "my",
+      "anchorX": 0,
+      "anchorY": 0,
+      "ignoreCamera": true,
+      "flipX": false,
+      "drawings": {},
+      "drawing": {
+        "value": ""
+      },
+      "x": {
+        "value": 0
+      },
+      "y": {
+        "value": 0
+      },
+      "rotation": {
+        "value": 0
+      },
+      "scaleX": {
+        "value": 1
+      },
+      "scaleY": {
+        "value": 1
+      },
+      "opacity": {
+        "value": 1
+      },
+      "brightness": {
+        "value": 0
+      },
+      "contrast": {
+        "value": 1
+      },
+      "saturation": {
+        "value": 1
+      }
+    },
+    {
+      "type": "text",
+      "id": "captions_my_1",
+      "name": "တိုရာ နေပူထဲမှာ ထိုင်နေတယ်။",
+      "start": 0.4,
+      "end": 2.7,
+      "zIndex": 31,
+      "parentId": "captions_my",
+      "visible": true,
+      "anchorX": 550.4000244140625,
+      "anchorY": 65.5015640258789,
+      "text": "တိုရာ နေပူထဲမှာ ထိုင်နေတယ်။",
+      "fontFamily": "Myanmar Text",
+      "fontAsset": null,
+      "bold": false,
+      "fontSize": 32,
+      "color": "#FFFFFF",
+      "strokeColor": null,
+      "strokeWidth": 0,
+      "align": "center",
+      "maxWidth": 1100.8,
+      "lineHeight": 1.1,
+      "box": {
+        "color": "#000000B3",
+        "padding": 10,
+        "cornerRadius": 6
+      },
+      "x": {
+        "value": 640
+      },
+      "y": {
+        "value": 669.6
+      },
+      "rotation": {
+        "value": 0
+      },
+      "scaleX": {
+        "value": 1
+      },
+      "scaleY": {
+        "value": 1
+      },
+      "opacity": {
+        "value": 1
+      }
+    },
+    {
+      "type": "text",
+      "id": "captions_my_2",
+      "name": "ပြီးတော့ အမြင့်ကြီး ခုန်လိုက်တယ်။",
+      "start": 3.4,
+      "end": 5.7,
+      "zIndex": 31,
+      "parentId": "captions_my",
+      "visible": true,
+      "anchorX": 550.4000244140625,
+      "anchorY": 65.5015640258789,
+      "text": "ပြီးတော့ အမြင့်ကြီး ခုန်လိုက်တယ်။",
+      "fontFamily": "Myanmar Text",
+      "fontAsset": null,
+      "bold": false,
+      "fontSize": 32,
+      "color": "#FFFFFF",
+      "strokeColor": null,
+      "strokeWidth": 0,
+      "align": "center",
+      "maxWidth": 1100.8,
+      "lineHeight": 1.1,
+      "box": {
+        "color": "#000000B3",
+        "padding": 10,
+        "cornerRadius": 6
+      },
+      "x": {
+        "value": 640
+      },
+      "y": {
+        "value": 669.6
+      },
+      "rotation": {
+        "value": 0
+      },
+      "scaleX": {
+        "value": 1
+      },
+      "scaleY": {
+        "value": 1
+      },
+      "opacity": {
+        "value": 1
+      }
+    },
+    {
+      "type": "text",
+      "id": "captions_my_3",
+      "name": "ပြုံးပြုံးလေးနဲ့ ပြန်ဆင်းလာတယ်။",
+      "start": 6.4,
+      "end": 8.7,
+      "zIndex": 31,
+      "parentId": "captions_my",
+      "visible": true,
+      "anchorX": 550.4000244140625,
+      "anchorY": 65.5015640258789,
+      "text": "ပြုံးပြုံးလေးနဲ့ ပြန်ဆင်းလာတယ်။",
+      "fontFamily": "Myanmar Text",
+      "fontAsset": null,
+      "bold": false,
+      "fontSize": 32,
+      "color": "#FFFFFF",
+      "strokeColor": null,
+      "strokeWidth": 0,
+      "align": "center",
+      "maxWidth": 1100.8,
+      "lineHeight": 1.1,
+      "box": {
+        "color": "#000000B3",
+        "padding": 10,
+        "cornerRadius": 6
+      },
+      "x": {
+        "value": 640
+      },
+      "y": {
+        "value": 669.6
+      },
+      "rotation": {
+        "value": 0
+      },
+      "scaleX": {
+        "value": 1
+      },
+      "scaleY": {
+        "value": 1
+      },
+      "opacity": {
+        "value": 1
+      }
+    }
+  ]
+}

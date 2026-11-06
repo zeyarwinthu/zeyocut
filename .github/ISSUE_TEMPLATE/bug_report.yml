@@ -1,0 +1,49 @@
+name: Bug report
+description: Something in ZeyoCut doesn't work as it should.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for reporting. For a security problem, please don't open an issue: see SECURITY.md.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you asked for, what ZeyoCut did, and what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: The prompts or tool calls, with a small project or file if you can share one.
+      placeholder: |
+        1. create_project with ...
+        2. ...
+    validations:
+      required: true
+  - type: textarea
+    id: output
+    attributes:
+      label: Tool replies and log
+      description: The tool's reply, and the lines from get_logs or the log file in %LOCALAPPDATA%\ZeyoCut\logs. Remove anything private first.
+      render: text
+  - type: input
+    id: version
+    attributes:
+      label: ZeyoCut version
+      placeholder: 0.1.0, or the commit you built
+    validations:
+      required: true
+  - type: input
+    id: client
+    attributes:
+      label: MCP client
+      placeholder: Claude Desktop, Claude Code, ...
+  - type: textarea
+    id: system
+    attributes:
+      label: system_check
+      description: The reply of system_check (FFmpeg, whisper, CPU, GPU and AI models). It shows your folder paths; shorten them if you like.
+      render: text

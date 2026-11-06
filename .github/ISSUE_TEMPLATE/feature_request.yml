@@ -1,0 +1,21 @@
+name: Feature request
+description: Suggest a new tool, or a change to one.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: goal
+    attributes:
+      label: What you want to make
+      description: The video or the edit you're working on, and where ZeyoCut falls short.
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would help
+      description: A tool, a parameter or a change you have in mind, and a prompt you would like to work.
+  - type: textarea
+    id: tried
+    attributes:
+      label: What you tried
+      description: Tools or workarounds you already tried, if any.

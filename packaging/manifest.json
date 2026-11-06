@@ -1,0 +1,78 @@
+{
+  "manifest_version": "0.3",
+  "name": "zeyocut",
+  "display_name": "ZeyoCut",
+  "version": "0.1.0",
+  "description": "A headless 2D animation and video editor for Windows, run through MCP tools: build a project, check rendered frames, export MP4.",
+  "long_description": "ZeyoCut has no editing window: Claude builds and edits the project through its tools, looks at rendered frames to check the work, and exports H.264 MP4 through FFmpeg. It does cutout and puppet animation with rigs and saved actions, comic-panel videos, footage editing with transcripts, captions in many languages (Burmese and Japanese shaped correctly), and privacy blur of faces and license plates with AI models that run on your computer. It needs FFmpeg (winget install Gyan.FFmpeg). ZeyoCut has no telemetry: its only network use is downloading the AI models from their original sources the first time a feature needs one.",
+  "author": {
+    "name": "Zeyo",
+    "url": "https://cut.zeyoapp.com"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/zeyarwinthu/zeyocut"
+  },
+  "homepage": "https://cut.zeyoapp.com",
+  "documentation": "https://cut.zeyoapp.com/quick-start/",
+  "support": "https://github.com/zeyarwinthu/zeyocut/issues",
+  "server": {
+    "type": "binary",
+    "entry_point": "server/ZeyoCut.Mcp.exe",
+    "mcp_config": {
+      "command": "${__dirname}/server/ZeyoCut.Mcp.exe",
+      "args": [],
+      "env": {
+        "ZEYOCUT_PROJECTS_DIR": "${user_config.projects_folder}",
+        "ZEYOCUT_IMPORT_DIRS": "${user_config.import_folder}",
+        "FFMPEG_PATH": "${user_config.ffmpeg_path}",
+        "WHISPER_PATH": "${user_config.whisper_path}",
+        "WHISPER_MODEL": "${user_config.whisper_model}"
+      }
+    }
+  },
+  "tools_generated": true,
+  "prompts_generated": true,
+  "keywords": ["video", "animation", "editor", "captions", "ffmpeg", "privacy", "burmese", "japanese"],
+  "license": "MIT",
+  "compatibility": {
+    "platforms": ["win32"]
+  },
+  "user_config": {
+    "projects_folder": {
+      "type": "directory",
+      "title": "Projects folder",
+      "description": "Where your projects are kept. Leave empty for %USERPROFILE%\\ZeyoCut\\projects.",
+      "required": false,
+      "default": ""
+    },
+    "import_folder": {
+      "type": "directory",
+      "title": "Import folder",
+      "description": "The folder ZeyoCut may import media from, besides the projects folder and the library. Leave empty for your Desktop, Documents, Downloads, Music, Pictures and Videos.",
+      "required": false,
+      "default": ""
+    },
+    "ffmpeg_path": {
+      "type": "file",
+      "title": "FFmpeg",
+      "description": "ffmpeg.exe. Leave empty to find FFmpeg on PATH (install it with: winget install Gyan.FFmpeg).",
+      "required": false,
+      "default": ""
+    },
+    "whisper_path": {
+      "type": "file",
+      "title": "whisper-cli (optional)",
+      "description": "whisper-cli.exe from whisper.cpp, for transcripts. Leave empty to search PATH, or for no transcripts.",
+      "required": false,
+      "default": ""
+    },
+    "whisper_model": {
+      "type": "file",
+      "title": "Whisper model (optional)",
+      "description": "A ggml model file such as ggml-small.bin. Leave empty to use one next to whisper-cli.",
+      "required": false,
+      "default": ""
+    }
+  }
+}

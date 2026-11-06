@@ -1,0 +1,233 @@
+{
+  "formatVersion": 5,
+  "name": "report",
+  "width": 1280,
+  "height": 720,
+  "fps": 24,
+  "duration": 5,
+  "backgroundColor": "#FFFFFF",
+  "audio": {
+    "loudnessTarget": -14,
+    "truePeak": -1,
+    "ducking": true
+  },
+  "assets": [
+    {
+      "id": "walk",
+      "type": "video",
+      "file": "assets/walk.mp4",
+      "width": 1280,
+      "height": 720,
+      "duration": 4,
+      "frameRate": "24",
+      "frameCount": 96,
+      "hasAudio": false,
+      "codec": "h264"
+    }
+  ],
+  "layers": [
+    {
+      "type": "video",
+      "id": "guest",
+      "name": "guest",
+      "start": 0,
+      "zIndex": 0,
+      "parentId": null,
+      "visible": true,
+      "anchorX": 640,
+      "anchorY": 360,
+      "asset": "walk",
+      "trimIn": 0,
+      "trimOut": 4,
+      "speed": 1,
+      "volume": 1,
+      "muted": false,
+      "role": "voice",
+      "fadeIn": 0,
+      "fadeOut": 0,
+      "cropWidth": null,
+      "cropHeight": null,
+      "x": {
+        "value": 640
+      },
+      "y": {
+        "value": 360
+      },
+      "rotation": {
+        "value": 0
+      },
+      "scaleX": {
+        "value": 1
+      },
+      "scaleY": {
+        "value": 1
+      },
+      "opacity": {
+        "value": 1
+      },
+      "brightness": {
+        "value": 0
+      },
+      "contrast": {
+        "value": 1
+      },
+      "saturation": {
+        "value": 1
+      },
+      "cropX": {
+        "value": 0
+      },
+      "cropY": {
+        "value": 0
+      }
+    },
+    {
+      "type": "video",
+      "id": "replay",
+      "name": "replay",
+      "start": 4,
+      "zIndex": 1,
+      "parentId": null,
+      "visible": true,
+      "anchorX": 640,
+      "anchorY": 360,
+      "asset": "walk",
+      "trimIn": 3,
+      "trimOut": 4,
+      "speed": 1,
+      "volume": 1,
+      "muted": false,
+      "role": "voice",
+      "fadeIn": 0,
+      "fadeOut": 0,
+      "cropWidth": null,
+      "cropHeight": null,
+      "x": {
+        "value": 640
+      },
+      "y": {
+        "value": 360
+      },
+      "rotation": {
+        "value": 0
+      },
+      "scaleX": {
+        "value": 1
+      },
+      "scaleY": {
+        "value": 1
+      },
+      "opacity": {
+        "value": 1
+      },
+      "brightness": {
+        "value": 0
+      },
+      "contrast": {
+        "value": 1
+      },
+      "saturation": {
+        "value": 1
+      },
+      "cropX": {
+        "value": 0
+      },
+      "cropY": {
+        "value": 0
+      }
+    },
+    {
+      "type": "redaction",
+      "id": "redaction_1",
+      "name": "redaction_1",
+      "start": 0,
+      "end": null,
+      "zIndex": 0,
+      "parentId": null,
+      "visible": true,
+      "tracks": [
+        "track_2",
+        "face_1"
+      ],
+      "style": "pixelate",
+      "strength": 50,
+      "paddingPercent": 15,
+      "feather": 4,
+      "holdFrames": 15,
+      "color": "#000000"
+    },
+    {
+      "type": "redaction",
+      "id": "redaction_2",
+      "name": "redaction_2",
+      "start": 0,
+      "end": null,
+      "zIndex": 0,
+      "parentId": null,
+      "visible": true,
+      "tracks": [
+        "track_1"
+      ],
+      "style": "pixelate",
+      "strength": 50,
+      "paddingPercent": 15,
+      "feather": 4,
+      "holdFrames": 15,
+      "color": "#000000"
+    }
+  ],
+  "tracks": [
+    {
+      "id": "track_1",
+      "asset": "walk",
+      "layer": "guest",
+      "method": "csrt",
+      "direction": "forward",
+      "firstFrame": 0,
+      "lastFrame": 95,
+      "origin": 0,
+      "file": "tracks/track_1-e52f868e.json",
+      "anchors": [
+        {
+          "frame": 0,
+          "x": 620,
+          "y": 120,
+          "width": 380,
+          "height": 420
+        }
+      ]
+    },
+    {
+      "id": "track_2",
+      "asset": "walk",
+      "layer": "guest",
+      "method": "template",
+      "direction": "forward",
+      "firstFrame": 0,
+      "lastFrame": 95,
+      "origin": 0,
+      "file": "tracks/track_2-c4874869.json",
+      "anchors": [
+        {
+          "frame": 0,
+          "x": 620,
+          "y": 120,
+          "width": 380,
+          "height": 420
+        }
+      ]
+    },
+    {
+      "id": "face_1",
+      "asset": "walk",
+      "layer": "guest",
+      "method": "faces",
+      "direction": "forward",
+      "firstFrame": 0,
+      "lastFrame": 47,
+      "origin": 0,
+      "file": "tracks/face_1-bba80f72.json",
+      "anchors": []
+    }
+  ]
+}

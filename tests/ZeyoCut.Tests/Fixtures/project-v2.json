@@ -1,0 +1,245 @@
+{
+  "formatVersion": 2,
+  "name": "edit-demo",
+  "width": 1280,
+  "height": 720,
+  "fps": 30,
+  "duration": 5,
+  "backgroundColor": "#FFFFFF",
+  "audio": {
+    "loudnessTarget": -14,
+    "truePeak": -1,
+    "ducking": true
+  },
+  "assets": [
+    {
+      "id": "street",
+      "type": "video",
+      "file": "assets/street.mp4",
+      "width": 1280,
+      "height": 720,
+      "duration": 6,
+      "frameRate": "30",
+      "frameCount": 180,
+      "hasAudio": true,
+      "codec": "h264"
+    },
+    {
+      "id": "phone_clip",
+      "type": "video",
+      "file": "assets/phone_clip.mp4",
+      "width": 1280,
+      "height": 720,
+      "duration": 4.037366666666666,
+      "frameRate": "30000/1001",
+      "frameCount": 121,
+      "hasAudio": true,
+      "codec": "h264",
+      "originalFile": "C:\\videos\\phone clip.mp4",
+      "normalized": "variable frame rate (average 29 fps, nominal 30 fps)"
+    }
+  ],
+  "layers": [
+    {
+      "type": "video",
+      "id": "street",
+      "name": "street",
+      "start": 0,
+      "zIndex": 0,
+      "parentId": null,
+      "visible": true,
+      "anchorX": 640,
+      "anchorY": 360,
+      "asset": "street",
+      "trimIn": 0,
+      "trimOut": 2.25,
+      "speed": 1,
+      "volume": 1,
+      "muted": false,
+      "role": "voice",
+      "fadeIn": 0,
+      "fadeOut": 0.5,
+      "cropWidth": null,
+      "cropHeight": null,
+      "x": {
+        "value": 640
+      },
+      "y": {
+        "value": 360
+      },
+      "rotation": {
+        "value": 0
+      },
+      "scaleX": {
+        "value": 1
+      },
+      "scaleY": {
+        "value": 1
+      },
+      "opacity": {
+        "value": 1
+      },
+      "brightness": {
+        "value": 0
+      },
+      "contrast": {
+        "value": 1
+      },
+      "saturation": {
+        "value": 1
+      },
+      "cropX": {
+        "value": 0
+      },
+      "cropY": {
+        "value": 0
+      }
+    },
+    {
+      "type": "video",
+      "id": "street_2",
+      "name": "street_2",
+      "start": 1.75,
+      "zIndex": 0,
+      "parentId": null,
+      "visible": true,
+      "anchorX": 640,
+      "anchorY": 360,
+      "asset": "street",
+      "trimIn": 1.5,
+      "trimOut": 3,
+      "speed": 2,
+      "volume": 1,
+      "muted": false,
+      "role": "voice",
+      "fadeIn": 0.5,
+      "fadeOut": 0.5,
+      "cropWidth": null,
+      "cropHeight": null,
+      "x": {
+        "value": 640
+      },
+      "y": {
+        "value": 360
+      },
+      "rotation": {
+        "value": 0
+      },
+      "scaleX": {
+        "value": 1
+      },
+      "scaleY": {
+        "value": 1
+      },
+      "opacity": {
+        "value": 1,
+        "keyframes": [
+          {
+            "time": 1.75,
+            "value": 0,
+            "easing": "linear"
+          },
+          {
+            "time": 2.25,
+            "value": 1,
+            "easing": "linear"
+          }
+        ]
+      },
+      "brightness": {
+        "value": 0,
+        "keyframes": [
+          {
+            "time": 2,
+            "value": 0,
+            "easing": "linear"
+          },
+          {
+            "time": 2.5,
+            "value": -1,
+            "easing": "linear"
+          }
+        ]
+      },
+      "contrast": {
+        "value": 1
+      },
+      "saturation": {
+        "value": 1
+      },
+      "cropX": {
+        "value": 0
+      },
+      "cropY": {
+        "value": 0
+      }
+    },
+    {
+      "type": "video",
+      "id": "street_3",
+      "name": "street_3",
+      "start": 2.5,
+      "zIndex": 0,
+      "parentId": null,
+      "visible": true,
+      "anchorX": 640,
+      "anchorY": 360,
+      "asset": "street",
+      "trimIn": 3.5,
+      "trimOut": 6,
+      "speed": 1,
+      "volume": 1,
+      "muted": false,
+      "role": "voice",
+      "fadeIn": 0.5,
+      "fadeOut": 0,
+      "cropWidth": null,
+      "cropHeight": null,
+      "x": {
+        "value": 640
+      },
+      "y": {
+        "value": 360
+      },
+      "rotation": {
+        "value": 0
+      },
+      "scaleX": {
+        "value": 1
+      },
+      "scaleY": {
+        "value": 1
+      },
+      "opacity": {
+        "value": 1
+      },
+      "brightness": {
+        "value": 0,
+        "keyframes": [
+          {
+            "time": 2.5,
+            "value": -1,
+            "easing": "linear"
+          },
+          {
+            "time": 3,
+            "value": 0,
+            "easing": "linear"
+          }
+        ]
+      },
+      "contrast": {
+        "value": 1
+      },
+      "saturation": {
+        "value": 1
+      },
+      "cropX": {
+        "value": 0
+      },
+      "cropY": {
+        "value": 0
+      }
+    }
+  ]
+}

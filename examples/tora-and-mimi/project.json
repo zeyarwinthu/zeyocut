@@ -1,0 +1,1311 @@
+{
+  "formatVersion": 6,
+  "name": "tora-and-mimi",
+  "width": 1280,
+  "height": 720,
+  "fps": 30,
+  "duration": 4,
+  "backgroundColor": "#BFE6FF",
+  "audio": {
+    "loudnessTarget": -14,
+    "truePeak": -1,
+    "ducking": true
+  },
+  "assets": [
+    {
+      "id": "clouds",
+      "type": "image",
+      "file": "assets/clouds.png",
+      "width": 1400,
+      "height": 240
+    },
+    {
+      "id": "ground",
+      "type": "image",
+      "file": "assets/ground.png",
+      "width": 1280,
+      "height": 140
+    },
+    {
+      "id": "tora_body",
+      "type": "image",
+      "file": "assets/tora_body.png",
+      "width": 220,
+      "height": 240
+    },
+    {
+      "id": "tora_head",
+      "type": "image",
+      "file": "assets/tora_head.png",
+      "width": 240,
+      "height": 208
+    },
+    {
+      "id": "tora_head_happy",
+      "type": "image",
+      "file": "assets/tora_head_happy.png",
+      "width": 240,
+      "height": 208
+    },
+    {
+      "id": "tora_tail",
+      "type": "image",
+      "file": "assets/tora_tail.png",
+      "width": 180,
+      "height": 92
+    }
+  ],
+  "layers": [
+    {
+      "type": "image",
+      "id": "clouds",
+      "name": "clouds",
+      "start": 0,
+      "end": null,
+      "zIndex": 1,
+      "parentId": null,
+      "visible": true,
+      "anchorX": 0,
+      "anchorY": 0,
+      "flipX": false,
+      "drawings": {
+        "normal": "clouds"
+      },
+      "drawing": {
+        "value": "normal"
+      },
+      "x": {
+        "value": 0
+      },
+      "y": {
+        "value": 0
+      },
+      "rotation": {
+        "value": 0
+      },
+      "scaleX": {
+        "value": 1
+      },
+      "scaleY": {
+        "value": 1
+      },
+      "opacity": {
+        "value": 1
+      },
+      "brightness": {
+        "value": 0
+      },
+      "contrast": {
+        "value": 1
+      },
+      "saturation": {
+        "value": 1
+      }
+    },
+    {
+      "type": "image",
+      "id": "ground",
+      "name": "ground",
+      "start": 0,
+      "end": null,
+      "zIndex": 2,
+      "parentId": null,
+      "visible": true,
+      "anchorX": 0,
+      "anchorY": 0,
+      "flipX": false,
+      "drawings": {
+        "normal": "ground"
+      },
+      "drawing": {
+        "value": "normal"
+      },
+      "x": {
+        "value": 0
+      },
+      "y": {
+        "value": 590
+      },
+      "rotation": {
+        "value": 0
+      },
+      "scaleX": {
+        "value": 1
+      },
+      "scaleY": {
+        "value": 1
+      },
+      "opacity": {
+        "value": 1
+      },
+      "brightness": {
+        "value": 0
+      },
+      "contrast": {
+        "value": 1
+      },
+      "saturation": {
+        "value": 1
+      }
+    },
+    {
+      "type": "image",
+      "id": "tora_tora",
+      "name": "tora_tora",
+      "start": 0,
+      "end": null,
+      "zIndex": 3,
+      "parentId": null,
+      "visible": true,
+      "anchorX": 0,
+      "anchorY": 0,
+      "flipX": false,
+      "drawings": {},
+      "drawing": {
+        "value": ""
+      },
+      "x": {
+        "value": 300,
+        "keyframes": [
+          {
+            "time": 0.2,
+            "value": 300,
+            "easing": "linear"
+          },
+          {
+            "time": 0.6,
+            "value": 300,
+            "easing": "linear"
+          },
+          {
+            "time": 1.5,
+            "value": 500,
+            "easing": "linear"
+          },
+          {
+            "time": 2.1,
+            "value": 500,
+            "easing": "linear"
+          }
+        ]
+      },
+      "y": {
+        "value": 605,
+        "keyframes": [
+          {
+            "time": 0.2,
+            "value": 605,
+            "easing": "linear"
+          },
+          {
+            "time": 0.6,
+            "value": 605,
+            "easing": "easeOut"
+          },
+          {
+            "time": 1.05,
+            "value": 360,
+            "easing": "easeIn"
+          },
+          {
+            "time": 1.5,
+            "value": 605,
+            "easing": "linear"
+          },
+          {
+            "time": 2.1,
+            "value": 605,
+            "easing": "linear"
+          }
+        ]
+      },
+      "rotation": {
+        "value": 0,
+        "keyframes": [
+          {
+            "time": 0.2,
+            "value": 0,
+            "easing": "linear"
+          },
+          {
+            "time": 0.6,
+            "value": 0,
+            "easing": "easeInOut"
+          },
+          {
+            "time": 0.85,
+            "value": 5,
+            "easing": "easeInOut"
+          },
+          {
+            "time": 1.4,
+            "value": -3,
+            "easing": "easeInOut"
+          },
+          {
+            "time": 1.55,
+            "value": 0,
+            "easing": "linear"
+          },
+          {
+            "time": 2.1,
+            "value": 0,
+            "easing": "linear"
+          }
+        ]
+      },
+      "scaleX": {
+        "value": 0.85
+      },
+      "scaleY": {
+        "value": 0.85
+      },
+      "opacity": {
+        "value": 1
+      },
+      "brightness": {
+        "value": 0
+      },
+      "contrast": {
+        "value": 1
+      },
+      "saturation": {
+        "value": 1
+      }
+    },
+    {
+      "type": "image",
+      "id": "tora_body",
+      "name": "tora_body",
+      "rigRole": "body",
+      "start": 0,
+      "end": null,
+      "zIndex": 5,
+      "parentId": "tora_tora",
+      "visible": true,
+      "anchorX": 110,
+      "anchorY": 234,
+      "flipX": false,
+      "drawings": {
+        "normal": "tora_body"
+      },
+      "drawing": {
+        "value": "normal"
+      },
+      "x": {
+        "value": 0
+      },
+      "y": {
+        "value": 0
+      },
+      "rotation": {
+        "value": 0
+      },
+      "scaleX": {
+        "value": 1,
+        "keyframes": [
+          {
+            "time": 0.2,
+            "value": 1,
+            "easing": "easeInOut"
+          },
+          {
+            "time": 0.6,
+            "value": 1.25,
+            "easing": "easeOut"
+          },
+          {
+            "time": 0.7,
+            "value": 0.84,
+            "easing": "easeInOut"
+          },
+          {
+            "time": 1.05,
+            "value": 1.03,
+            "easing": "easeIn"
+          },
+          {
+            "time": 1.45,
+            "value": 0.9,
+            "easing": "linear"
+          },
+          {
+            "time": 1.53,
+            "value": 1.25,
+            "easing": "easeOutBack"
+          },
+          {
+            "time": 2,
+            "value": 1,
+            "easing": "linear"
+          },
+          {
+            "time": 2.1,
+            "value": 1,
+            "easing": "linear"
+          }
+        ]
+      },
+      "scaleY": {
+        "value": 1,
+        "keyframes": [
+          {
+            "time": 0.2,
+            "value": 1,
+            "easing": "easeInOut"
+          },
+          {
+            "time": 0.6,
+            "value": 0.7,
+            "easing": "easeOut"
+          },
+          {
+            "time": 0.7,
+            "value": 1.22,
+            "easing": "easeInOut"
+          },
+          {
+            "time": 1.05,
+            "value": 0.97,
+            "easing": "easeIn"
+          },
+          {
+            "time": 1.45,
+            "value": 1.15,
+            "easing": "linear"
+          },
+          {
+            "time": 1.53,
+            "value": 0.72,
+            "easing": "easeOutBack"
+          },
+          {
+            "time": 2,
+            "value": 1,
+            "easing": "linear"
+          },
+          {
+            "time": 2.1,
+            "value": 1,
+            "easing": "linear"
+          }
+        ]
+      },
+      "opacity": {
+        "value": 1
+      },
+      "brightness": {
+        "value": 0
+      },
+      "contrast": {
+        "value": 1
+      },
+      "saturation": {
+        "value": 1
+      }
+    },
+    {
+      "type": "image",
+      "id": "tora_head",
+      "name": "tora_head",
+      "rigRole": "head",
+      "start": 0,
+      "end": null,
+      "zIndex": 6,
+      "parentId": "tora_body",
+      "visible": true,
+      "anchorX": 120,
+      "anchorY": 196,
+      "flipX": false,
+      "drawings": {
+        "normal": "tora_head",
+        "happy": "tora_head_happy"
+      },
+      "drawing": {
+        "value": "normal",
+        "keyframes": [
+          {
+            "time": 0.2,
+            "value": "normal"
+          },
+          {
+            "time": 0.65,
+            "value": "happy"
+          },
+          {
+            "time": 1.85,
+            "value": "normal"
+          }
+        ]
+      },
+      "x": {
+        "value": 110
+      },
+      "y": {
+        "value": 26,
+        "keyframes": [
+          {
+            "time": 0.2,
+            "value": 26,
+            "easing": "linear"
+          },
+          {
+            "time": 0.25,
+            "value": 26,
+            "easing": "easeOut"
+          },
+          {
+            "time": 0.6,
+            "value": 34,
+            "easing": "easeIn"
+          },
+          {
+            "time": 0.7,
+            "value": 40,
+            "easing": "easeOut"
+          },
+          {
+            "time": 1,
+            "value": 18,
+            "easing": "easeInOut"
+          },
+          {
+            "time": 1.45,
+            "value": 22,
+            "easing": "easeIn"
+          },
+          {
+            "time": 1.53,
+            "value": 44,
+            "easing": "easeOutBack"
+          },
+          {
+            "time": 2.05,
+            "value": 26,
+            "easing": "linear"
+          },
+          {
+            "time": 2.1,
+            "value": 26,
+            "easing": "linear"
+          }
+        ]
+      },
+      "rotation": {
+        "value": 0,
+        "keyframes": [
+          {
+            "time": 0.2,
+            "value": 0,
+            "easing": "linear"
+          },
+          {
+            "time": 0.25,
+            "value": 0,
+            "easing": "easeInOut"
+          },
+          {
+            "time": 0.6,
+            "value": 4,
+            "easing": "easeOut"
+          },
+          {
+            "time": 0.75,
+            "value": -10,
+            "easing": "easeInOut"
+          },
+          {
+            "time": 1.1,
+            "value": 5,
+            "easing": "easeInOut"
+          },
+          {
+            "time": 1.5,
+            "value": -2,
+            "easing": "easeOut"
+          },
+          {
+            "time": 1.6,
+            "value": 8,
+            "easing": "easeOutBack"
+          },
+          {
+            "time": 2.1,
+            "value": 0,
+            "easing": "linear"
+          }
+        ]
+      },
+      "scaleX": {
+        "value": 1
+      },
+      "scaleY": {
+        "value": 1
+      },
+      "opacity": {
+        "value": 1
+      },
+      "brightness": {
+        "value": 0
+      },
+      "contrast": {
+        "value": 1
+      },
+      "saturation": {
+        "value": 1
+      }
+    },
+    {
+      "type": "image",
+      "id": "tora_tail",
+      "name": "tora_tail",
+      "rigRole": "tail",
+      "start": 0,
+      "end": null,
+      "zIndex": 4,
+      "parentId": "tora_body",
+      "visible": true,
+      "anchorX": 164,
+      "anchorY": 72,
+      "flipX": false,
+      "drawings": {
+        "normal": "tora_tail"
+      },
+      "drawing": {
+        "value": "normal"
+      },
+      "x": {
+        "value": 58
+      },
+      "y": {
+        "value": 176
+      },
+      "rotation": {
+        "value": 0,
+        "keyframes": [
+          {
+            "time": 0.2,
+            "value": -3.3333333333333357,
+            "easing": "easeInOut"
+          },
+          {
+            "time": 0.3,
+            "value": -6,
+            "easing": "easeInOut"
+          },
+          {
+            "time": 0.6,
+            "value": 10,
+            "easing": "easeInOut"
+          },
+          {
+            "time": 0.75,
+            "value": -24,
+            "easing": "easeInOut"
+          },
+          {
+            "time": 1,
+            "value": 0,
+            "easing": "easeInOut"
+          },
+          {
+            "time": 1.3,
+            "value": 18,
+            "easing": "easeInOut"
+          },
+          {
+            "time": 1.5,
+            "value": 26,
+            "easing": "easeOut"
+          },
+          {
+            "time": 1.6,
+            "value": -22,
+            "easing": "easeInOut"
+          },
+          {
+            "time": 1.85,
+            "value": 14,
+            "easing": "easeInOut"
+          },
+          {
+            "time": 2.1,
+            "value": -8,
+            "easing": "easeInOut"
+          }
+        ]
+      },
+      "scaleX": {
+        "value": 1
+      },
+      "scaleY": {
+        "value": 1
+      },
+      "opacity": {
+        "value": 1
+      },
+      "brightness": {
+        "value": 0
+      },
+      "contrast": {
+        "value": 1
+      },
+      "saturation": {
+        "value": 1
+      }
+    },
+    {
+      "type": "image",
+      "id": "mimi_tora",
+      "name": "mimi_tora",
+      "start": 0,
+      "end": null,
+      "zIndex": 7,
+      "parentId": null,
+      "visible": true,
+      "anchorX": 0,
+      "anchorY": 0,
+      "flipX": false,
+      "drawings": {},
+      "drawing": {
+        "value": ""
+      },
+      "x": {
+        "value": 760,
+        "keyframes": [
+          {
+            "time": 1.3,
+            "value": 760,
+            "easing": "linear"
+          },
+          {
+            "time": 1.585714286,
+            "value": 760,
+            "easing": "linear"
+          },
+          {
+            "time": 2.228571429,
+            "value": 960,
+            "easing": "linear"
+          },
+          {
+            "time": 2.657142857,
+            "value": 960,
+            "easing": "linear"
+          }
+        ]
+      },
+      "y": {
+        "value": 605,
+        "keyframes": [
+          {
+            "time": 1.3,
+            "value": 605,
+            "easing": "linear"
+          },
+          {
+            "time": 1.585714286,
+            "value": 605,
+            "easing": "easeOut"
+          },
+          {
+            "time": 1.907142857,
+            "value": 360,
+            "easing": "easeIn"
+          },
+          {
+            "time": 2.228571429,
+            "value": 605,
+            "easing": "linear"
+          },
+          {
+            "time": 2.657142857,
+            "value": 605,
+            "easing": "linear"
+          }
+        ]
+      },
+      "rotation": {
+        "value": 0,
+        "keyframes": [
+          {
+            "time": 1.3,
+            "value": 0,
+            "easing": "linear"
+          },
+          {
+            "time": 1.585714286,
+            "value": 0,
+            "easing": "easeInOut"
+          },
+          {
+            "time": 1.764285714,
+            "value": 5,
+            "easing": "easeInOut"
+          },
+          {
+            "time": 2.157142857,
+            "value": -3,
+            "easing": "easeInOut"
+          },
+          {
+            "time": 2.264285714,
+            "value": 0,
+            "easing": "linear"
+          },
+          {
+            "time": 2.657142857,
+            "value": 0,
+            "easing": "linear"
+          }
+        ]
+      },
+      "scaleX": {
+        "value": 0.85
+      },
+      "scaleY": {
+        "value": 0.85
+      },
+      "opacity": {
+        "value": 1
+      },
+      "brightness": {
+        "value": 0
+      },
+      "contrast": {
+        "value": 1
+      },
+      "saturation": {
+        "value": 1
+      }
+    },
+    {
+      "type": "image",
+      "id": "mimi_body",
+      "name": "mimi_body",
+      "rigRole": "body",
+      "start": 0,
+      "end": null,
+      "zIndex": 9,
+      "parentId": "mimi_tora",
+      "visible": true,
+      "anchorX": 110,
+      "anchorY": 234,
+      "flipX": false,
+      "drawings": {
+        "normal": "tora_body"
+      },
+      "drawing": {
+        "value": "normal"
+      },
+      "x": {
+        "value": 0
+      },
+      "y": {
+        "value": 0
+      },
+      "rotation": {
+        "value": 0
+      },
+      "scaleX": {
+        "value": 1,
+        "keyframes": [
+          {
+            "time": 1.3,
+            "value": 1,
+            "easing": "easeInOut"
+          },
+          {
+            "time": 1.585714286,
+            "value": 1.25,
+            "easing": "easeOut"
+          },
+          {
+            "time": 1.657142857,
+            "value": 0.84,
+            "easing": "easeInOut"
+          },
+          {
+            "time": 1.907142857,
+            "value": 1.03,
+            "easing": "easeIn"
+          },
+          {
+            "time": 2.192857143,
+            "value": 0.9,
+            "easing": "linear"
+          },
+          {
+            "time": 2.25,
+            "value": 1.25,
+            "easing": "easeOutBack"
+          },
+          {
+            "time": 2.585714286,
+            "value": 1,
+            "easing": "linear"
+          },
+          {
+            "time": 2.657142857,
+            "value": 1,
+            "easing": "linear"
+          }
+        ]
+      },
+      "scaleY": {
+        "value": 1,
+        "keyframes": [
+          {
+            "time": 1.3,
+            "value": 1,
+            "easing": "easeInOut"
+          },
+          {
+            "time": 1.585714286,
+            "value": 0.7,
+            "easing": "easeOut"
+          },
+          {
+            "time": 1.657142857,
+            "value": 1.22,
+            "easing": "easeInOut"
+          },
+          {
+            "time": 1.907142857,
+            "value": 0.97,
+            "easing": "easeIn"
+          },
+          {
+            "time": 2.192857143,
+            "value": 1.15,
+            "easing": "linear"
+          },
+          {
+            "time": 2.25,
+            "value": 0.72,
+            "easing": "easeOutBack"
+          },
+          {
+            "time": 2.585714286,
+            "value": 1,
+            "easing": "linear"
+          },
+          {
+            "time": 2.657142857,
+            "value": 1,
+            "easing": "linear"
+          }
+        ]
+      },
+      "opacity": {
+        "value": 1
+      },
+      "brightness": {
+        "value": 0
+      },
+      "contrast": {
+        "value": 1
+      },
+      "saturation": {
+        "value": 1
+      },
+      "tint": {
+        "color": "#6F7C93",
+        "amount": {
+          "value": 0.45
+        }
+      }
+    },
+    {
+      "type": "image",
+      "id": "mimi_head",
+      "name": "mimi_head",
+      "rigRole": "head",
+      "start": 0,
+      "end": null,
+      "zIndex": 10,
+      "parentId": "mimi_body",
+      "visible": true,
+      "anchorX": 120,
+      "anchorY": 196,
+      "flipX": false,
+      "drawings": {
+        "normal": "tora_head",
+        "happy": "tora_head_happy"
+      },
+      "drawing": {
+        "value": "normal",
+        "keyframes": [
+          {
+            "time": 1.3,
+            "value": "normal"
+          },
+          {
+            "time": 1.621428571,
+            "value": "happy"
+          },
+          {
+            "time": 2.478571429,
+            "value": "normal"
+          }
+        ]
+      },
+      "x": {
+        "value": 110
+      },
+      "y": {
+        "value": 26,
+        "keyframes": [
+          {
+            "time": 1.3,
+            "value": 26,
+            "easing": "linear"
+          },
+          {
+            "time": 1.335714286,
+            "value": 26,
+            "easing": "easeOut"
+          },
+          {
+            "time": 1.585714286,
+            "value": 34,
+            "easing": "easeIn"
+          },
+          {
+            "time": 1.657142857,
+            "value": 40,
+            "easing": "easeOut"
+          },
+          {
+            "time": 1.871428571,
+            "value": 18,
+            "easing": "easeInOut"
+          },
+          {
+            "time": 2.192857143,
+            "value": 22,
+            "easing": "easeIn"
+          },
+          {
+            "time": 2.25,
+            "value": 44,
+            "easing": "easeOutBack"
+          },
+          {
+            "time": 2.621428571,
+            "value": 26,
+            "easing": "linear"
+          },
+          {
+            "time": 2.657142857,
+            "value": 26,
+            "easing": "linear"
+          }
+        ]
+      },
+      "rotation": {
+        "value": 0,
+        "keyframes": [
+          {
+            "time": 1.3,
+            "value": 0,
+            "easing": "linear"
+          },
+          {
+            "time": 1.335714286,
+            "value": 0,
+            "easing": "easeInOut"
+          },
+          {
+            "time": 1.585714286,
+            "value": 4,
+            "easing": "easeOut"
+          },
+          {
+            "time": 1.692857143,
+            "value": -10,
+            "easing": "easeInOut"
+          },
+          {
+            "time": 1.942857143,
+            "value": 5,
+            "easing": "easeInOut"
+          },
+          {
+            "time": 2.228571429,
+            "value": -2,
+            "easing": "easeOut"
+          },
+          {
+            "time": 2.3,
+            "value": 8,
+            "easing": "easeOutBack"
+          },
+          {
+            "time": 2.657142857,
+            "value": 0,
+            "easing": "linear"
+          }
+        ]
+      },
+      "scaleX": {
+        "value": 1
+      },
+      "scaleY": {
+        "value": 1
+      },
+      "opacity": {
+        "value": 1
+      },
+      "brightness": {
+        "value": 0
+      },
+      "contrast": {
+        "value": 1
+      },
+      "saturation": {
+        "value": 1
+      },
+      "tint": {
+        "color": "#6F7C93",
+        "amount": {
+          "value": 0.45
+        }
+      }
+    },
+    {
+      "type": "image",
+      "id": "mimi_tail",
+      "name": "mimi_tail",
+      "rigRole": "tail",
+      "start": 0,
+      "end": null,
+      "zIndex": 8,
+      "parentId": "mimi_body",
+      "visible": true,
+      "anchorX": 164,
+      "anchorY": 72,
+      "flipX": false,
+      "drawings": {
+        "normal": "tora_tail"
+      },
+      "drawing": {
+        "value": "normal"
+      },
+      "x": {
+        "value": 58
+      },
+      "y": {
+        "value": 176
+      },
+      "rotation": {
+        "value": 0,
+        "keyframes": [
+          {
+            "time": 1.3,
+            "value": -3.3333333333333357,
+            "easing": "easeInOut"
+          },
+          {
+            "time": 1.371428571,
+            "value": -6,
+            "easing": "easeInOut"
+          },
+          {
+            "time": 1.585714286,
+            "value": 10,
+            "easing": "easeInOut"
+          },
+          {
+            "time": 1.692857143,
+            "value": -24,
+            "easing": "easeInOut"
+          },
+          {
+            "time": 1.871428571,
+            "value": 0,
+            "easing": "easeInOut"
+          },
+          {
+            "time": 2.085714286,
+            "value": 18,
+            "easing": "easeInOut"
+          },
+          {
+            "time": 2.228571429,
+            "value": 26,
+            "easing": "easeOut"
+          },
+          {
+            "time": 2.3,
+            "value": -22,
+            "easing": "easeInOut"
+          },
+          {
+            "time": 2.478571429,
+            "value": 14,
+            "easing": "easeInOut"
+          },
+          {
+            "time": 2.657142857,
+            "value": -8,
+            "easing": "easeInOut"
+          }
+        ]
+      },
+      "scaleX": {
+        "value": 1
+      },
+      "scaleY": {
+        "value": 1
+      },
+      "opacity": {
+        "value": 1
+      },
+      "brightness": {
+        "value": 0
+      },
+      "contrast": {
+        "value": 1
+      },
+      "saturation": {
+        "value": 1
+      },
+      "tint": {
+        "color": "#6F7C93",
+        "amount": {
+          "value": 0.45
+        }
+      }
+    },
+    {
+      "type": "text",
+      "id": "title_en",
+      "name": "title_en",
+      "start": 0,
+      "end": null,
+      "zIndex": 20,
+      "parentId": null,
+      "visible": true,
+      "language": "en",
+      "anchorX": 101.390625,
+      "anchorY": 47.8828125,
+      "text": "Hello!",
+      "fontFamily": "Segoe UI",
+      "fontAsset": null,
+      "bold": true,
+      "fontSize": 72,
+      "color": "#FFFFFF",
+      "strokeColor": "#5A3A1E",
+      "strokeWidth": 6,
+      "align": "left",
+      "maxWidth": null,
+      "lineHeight": 1,
+      "box": null,
+      "x": {
+        "value": 640
+      },
+      "y": {
+        "value": 110
+      },
+      "rotation": {
+        "value": 0
+      },
+      "scaleX": {
+        "value": 1
+      },
+      "scaleY": {
+        "value": 1
+      },
+      "opacity": {
+        "value": 1
+      }
+    },
+    {
+      "type": "text",
+      "id": "title_ja",
+      "name": "title_ja",
+      "start": 0,
+      "end": null,
+      "zIndex": 20,
+      "parentId": null,
+      "visible": true,
+      "language": "ja",
+      "anchorX": 216,
+      "anchorY": 57.673828125,
+      "text": "こんにちは！",
+      "fontFamily": "Yu Gothic",
+      "fontAsset": null,
+      "bold": true,
+      "fontSize": 72,
+      "color": "#FFFFFF",
+      "strokeColor": "#5A3A1E",
+      "strokeWidth": 6,
+      "align": "left",
+      "maxWidth": null,
+      "lineHeight": 1,
+      "box": null,
+      "x": {
+        "value": 640
+      },
+      "y": {
+        "value": 110
+      },
+      "rotation": {
+        "value": 0
+      },
+      "scaleX": {
+        "value": 1
+      },
+      "scaleY": {
+        "value": 1
+      },
+      "opacity": {
+        "value": 1
+      }
+    },
+    {
+      "type": "text",
+      "id": "title_my",
+      "name": "title_my",
+      "start": 0,
+      "end": null,
+      "zIndex": 20,
+      "parentId": null,
+      "visible": true,
+      "language": "my",
+      "anchorX": 134.2265625,
+      "anchorY": 68.537109375,
+      "text": "မင်္ဂလာပါ",
+      "fontFamily": "Myanmar Text",
+      "fontAsset": null,
+      "bold": true,
+      "fontSize": 72,
+      "color": "#FFFFFF",
+      "strokeColor": "#5A3A1E",
+      "strokeWidth": 6,
+      "align": "left",
+      "maxWidth": null,
+      "lineHeight": 1,
+      "box": null,
+      "x": {
+        "value": 640
+      },
+      "y": {
+        "value": 110
+      },
+      "rotation": {
+        "value": 0
+      },
+      "scaleX": {
+        "value": 1
+      },
+      "scaleY": {
+        "value": 1
+      },
+      "opacity": {
+        "value": 1
+      }
+    }
+  ]
+}

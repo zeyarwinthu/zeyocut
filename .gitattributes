@@ -1,0 +1,12 @@
+# Text files are stored and checked out with LF on every platform, so the format check
+# gives the same result on Windows runners (where Git would otherwise convert to CRLF).
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.wav binary
+*.mp3 binary

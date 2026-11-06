@@ -1,0 +1,343 @@
+{
+  "formatVersion": 4,
+  "name": "behind",
+  "width": 1280,
+  "height": 720,
+  "fps": 24,
+  "duration": 4,
+  "backgroundColor": "#FFFFFF",
+  "audio": {
+    "loudnessTarget": -14,
+    "truePeak": -1,
+    "ducking": true
+  },
+  "assets": [
+    {
+      "id": "talk",
+      "type": "video",
+      "file": "assets/talk.mp4",
+      "width": 1280,
+      "height": 720,
+      "duration": 4,
+      "frameRate": "24",
+      "frameCount": 96,
+      "hasAudio": false,
+      "codec": "h264"
+    },
+    {
+      "id": "mug",
+      "type": "image",
+      "file": "assets/mug.png",
+      "width": 600,
+      "height": 600
+    }
+  ],
+  "layers": [
+    {
+      "type": "video",
+      "id": "presenter",
+      "name": "presenter",
+      "start": 0,
+      "zIndex": 0,
+      "parentId": null,
+      "visible": true,
+      "anchorX": 640,
+      "anchorY": 360,
+      "asset": "talk",
+      "trimIn": 0,
+      "trimOut": 2,
+      "speed": 1,
+      "volume": 1,
+      "muted": false,
+      "role": "voice",
+      "fadeIn": 0,
+      "fadeOut": 0,
+      "cropWidth": null,
+      "cropHeight": null,
+      "x": {
+        "value": 640
+      },
+      "y": {
+        "value": 360
+      },
+      "rotation": {
+        "value": 0
+      },
+      "scaleX": {
+        "value": 1
+      },
+      "scaleY": {
+        "value": 1
+      },
+      "opacity": {
+        "value": 1
+      },
+      "brightness": {
+        "value": 0
+      },
+      "contrast": {
+        "value": 1
+      },
+      "saturation": {
+        "value": 1
+      },
+      "cropX": {
+        "value": 0
+      },
+      "cropY": {
+        "value": 0
+      }
+    },
+    {
+      "type": "video",
+      "id": "presenter_2",
+      "name": "presenter_2",
+      "start": 2,
+      "zIndex": 0,
+      "parentId": null,
+      "visible": true,
+      "anchorX": 640,
+      "anchorY": 360,
+      "asset": "talk",
+      "trimIn": 2,
+      "trimOut": 4,
+      "speed": 1,
+      "volume": 1,
+      "muted": false,
+      "role": "voice",
+      "fadeIn": 0,
+      "fadeOut": 0,
+      "cropWidth": null,
+      "cropHeight": null,
+      "x": {
+        "value": 640
+      },
+      "y": {
+        "value": 360
+      },
+      "rotation": {
+        "value": 0
+      },
+      "scaleX": {
+        "value": 1
+      },
+      "scaleY": {
+        "value": 1
+      },
+      "opacity": {
+        "value": 1
+      },
+      "brightness": {
+        "value": 0
+      },
+      "contrast": {
+        "value": 1
+      },
+      "saturation": {
+        "value": 1
+      },
+      "cropX": {
+        "value": 0
+      },
+      "cropY": {
+        "value": 0
+      }
+    },
+    {
+      "type": "text",
+      "id": "tagline",
+      "name": "tagline",
+      "start": 0,
+      "end": null,
+      "zIndex": 0,
+      "parentId": null,
+      "visible": true,
+      "anchorX": 264.90625,
+      "anchorY": 37.2421875,
+      "text": "a week on the station",
+      "fontFamily": "Segoe UI",
+      "fontAsset": null,
+      "bold": false,
+      "fontSize": 56,
+      "color": "#FFE066",
+      "strokeColor": null,
+      "strokeWidth": 0,
+      "align": "left",
+      "maxWidth": null,
+      "lineHeight": 1,
+      "box": null,
+      "x": {
+        "value": 640
+      },
+      "y": {
+        "value": 440
+      },
+      "rotation": {
+        "value": 0
+      },
+      "scaleX": {
+        "value": 1
+      },
+      "scaleY": {
+        "value": 1
+      },
+      "opacity": {
+        "value": 1
+      }
+    },
+    {
+      "type": "text",
+      "id": "title",
+      "name": "title",
+      "start": 0,
+      "end": null,
+      "zIndex": 1,
+      "parentId": null,
+      "visible": true,
+      "anchorX": 442.96875,
+      "anchorY": 199.51171875,
+      "text": "ORBIT",
+      "fontFamily": "Segoe UI",
+      "fontAsset": null,
+      "bold": true,
+      "fontSize": 300,
+      "color": "#FFFFFF",
+      "strokeColor": null,
+      "strokeWidth": 0,
+      "align": "left",
+      "maxWidth": null,
+      "lineHeight": 1,
+      "box": null,
+      "x": {
+        "value": 640
+      },
+      "y": {
+        "value": 250
+      },
+      "rotation": {
+        "value": 0
+      },
+      "scaleX": {
+        "value": 1
+      },
+      "scaleY": {
+        "value": 1
+      },
+      "opacity": {
+        "value": 1
+      }
+    },
+    {
+      "type": "cutout",
+      "id": "presenter_subject",
+      "name": "presenter_subject",
+      "start": 0,
+      "end": null,
+      "zIndex": 1,
+      "parentId": null,
+      "visible": true,
+      "sources": [
+        "presenter",
+        "presenter_2"
+      ],
+      "opacity": {
+        "value": 0.9
+      },
+      "matte": {
+        "method": "aiVideo"
+      }
+    },
+    {
+      "type": "text",
+      "id": "price",
+      "name": "price",
+      "start": 0,
+      "end": null,
+      "zIndex": 2,
+      "parentId": null,
+      "visible": true,
+      "anchorX": 103.7109375,
+      "anchorY": 79.8046875,
+      "text": "$12",
+      "fontFamily": "Segoe UI",
+      "fontAsset": null,
+      "bold": true,
+      "fontSize": 120,
+      "color": "#FFFFFF",
+      "strokeColor": null,
+      "strokeWidth": 0,
+      "align": "left",
+      "maxWidth": null,
+      "lineHeight": 1,
+      "box": null,
+      "x": {
+        "value": 1080
+      },
+      "y": {
+        "value": 470
+      },
+      "rotation": {
+        "value": 0
+      },
+      "scaleX": {
+        "value": 1
+      },
+      "scaleY": {
+        "value": 1
+      },
+      "opacity": {
+        "value": 1
+      }
+    },
+    {
+      "type": "image",
+      "id": "product",
+      "name": "product",
+      "start": 0,
+      "end": null,
+      "zIndex": 2,
+      "parentId": null,
+      "visible": true,
+      "anchorX": 300,
+      "anchorY": 300,
+      "flipX": false,
+      "drawings": {
+        "normal": "mug"
+      },
+      "drawing": {
+        "value": "normal"
+      },
+      "x": {
+        "value": 1080
+      },
+      "y": {
+        "value": 520
+      },
+      "rotation": {
+        "value": 0
+      },
+      "scaleX": {
+        "value": 0.5
+      },
+      "scaleY": {
+        "value": 0.5
+      },
+      "opacity": {
+        "value": 1
+      },
+      "brightness": {
+        "value": 0
+      },
+      "contrast": {
+        "value": 1
+      },
+      "saturation": {
+        "value": 1
+      },
+      "matte": {
+        "method": "edgeFill",
+        "tolerance": 0.1
+      }
+    }
+  ]
+}

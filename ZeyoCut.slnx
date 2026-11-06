@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/ZeyoCut.Core/ZeyoCut.Core.csproj" />
+    <Project Path="src/ZeyoCut.Mcp/ZeyoCut.Mcp.csproj" />
+    <Project Path="src/ZeyoCut.Render/ZeyoCut.Render.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/ZeyoCut.Tests/ZeyoCut.Tests.csproj" />
+  </Folder>
+</Solution>
