@@ -26,9 +26,14 @@ jobs:
           dotnet-version: "10.0.x"
 
       # Most render and export tests need FFmpeg; without it they are skipped. The AI model and
-      # whisper tests are skipped here too: CI never downloads models.
+      # whisper tests are skipped here too: CI never downloads models. FFMPEG_PATH points at the real
+      # ffmpeg.exe: Chocolatey's shim runs it as a child process that stopping the shim doesn't wait for.
       - name: Install FFmpeg
-        run: choco install ffmpeg --yes --no-progress
+        run: |
+          choco install ffmpeg --yes --no-progress
+          $ffmpeg = Get-ChildItem C:\ProgramData\chocolatey\lib\ffmpeg\tools -Recurse -Filter ffmpeg.exe | Select-Object -First 1
+          if (-not $ffmpeg) { throw "ffmpeg.exe not found under C:\ProgramData\chocolatey\lib\ffmpeg\tools" }
+          "FFMPEG_PATH=$($ffmpeg.DirectoryName)" >> $env:GITHUB_ENV
 
       - name: Build
         run: dotnet build ZeyoCut.slnx -c Release
@@ -44,7 +49,8 @@ jobs:
 
   dco:
     name: DCO sign-off
-    if: github.event_name == 'pull_request'
+    # Dependabot's pull requests are left out: a bot can't certify the DCO.
+    if: github.event_name == 'pull_request' && github.event.pull_request.user.login != 'dependabot[bot]'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

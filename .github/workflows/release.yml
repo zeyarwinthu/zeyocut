@@ -44,8 +44,13 @@ jobs:
           }
           "version=$version" >> $env:GITHUB_OUTPUT
 
+      # FFMPEG_PATH points at the real ffmpeg.exe, not Chocolatey's shim (see ci.yml).
       - name: Install FFmpeg
-        run: choco install ffmpeg --yes --no-progress
+        run: |
+          choco install ffmpeg --yes --no-progress
+          $ffmpeg = Get-ChildItem C:\ProgramData\chocolatey\lib\ffmpeg\tools -Recurse -Filter ffmpeg.exe | Select-Object -First 1
+          if (-not $ffmpeg) { throw "ffmpeg.exe not found under C:\ProgramData\chocolatey\lib\ffmpeg\tools" }
+          "FFMPEG_PATH=$($ffmpeg.DirectoryName)" >> $env:GITHUB_ENV
 
       - name: Build
         run: dotnet build ZeyoCut.slnx -c Release

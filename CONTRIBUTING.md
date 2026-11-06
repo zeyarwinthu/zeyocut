@@ -86,7 +86,7 @@ This adds a line with the name and email of your git config:
 Signed-off-by: Your Name <you@example.com>
 ```
 
-It must match the commit's author. CI checks every commit in a pull request. To sign off commits you already made, run `git rebase --signoff main` and force-push your branch.
+It must match the commit's author. CI checks every commit in a pull request, except Dependabot's dependency updates. To sign off commits you already made, run `git rebase --signoff main` and force-push your branch.
 
 ## Pull requests
 

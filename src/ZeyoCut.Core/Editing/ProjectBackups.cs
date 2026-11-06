@@ -42,7 +42,15 @@ public static partial class ProjectBackups
 
         var folder = Folder(directory);
         var stamp = DateTime.Now.ToString("yyyyMMdd-HHmmss-fff", CultureInfo.InvariantCulture);
-        var target = Copy(source, folder, $"project-{stamp}", $" before {Clean(label)}.json");
+
+        // A second save in the same millisecond is -2, and so on, so List keeps them in order.
+        var stem = $"project-{stamp}";
+        for (var n = 2; System.IO.Directory.Exists(folder) && System.IO.Directory.EnumerateFiles(folder, stem + " before *").Any(); n++)
+        {
+            stem = $"project-{stamp}-{n}";
+        }
+
+        var target = Copy(source, folder, stem, $" before {Clean(label)}.json");
         Prune(folder);
         return target;
     }
