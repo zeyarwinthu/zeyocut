@@ -627,6 +627,41 @@ public static class ProjectEditor
         return map;
     }
 
+    // Draws a visual layer at zIndex, its children moved by as much, so they keep their places
+    // relative to it. With insert, the layer and its children get levels of their own from zIndex
+    // up: when another layer is drawn at one of those levels, every other layer at zIndex or above
+    // moves up to make room, keeping the order they had.
+    public static string Reorder(Project project, string layerId, int zIndex, bool insert)
+    {
+        var layer = GetVisualLayer(project, layerId);
+        var family = Subtree(project, layer.Id).OfType<VisualLayer>().ToList();
+        var lowest = family.Min(l => l.ZIndex);
+        var span = family.Max(l => l.ZIndex) - lowest + 1;
+        var moved = 0;
+        if (insert)
+        {
+            var others = project.Layers.Where(l => l is VisualLayer or CutoutLayer && !family.Contains(l)).ToList();
+            if (others.Any(l => l.ZIndex >= zIndex && l.ZIndex < zIndex + span))
+            {
+                foreach (var other in others.Where(l => l.ZIndex >= zIndex))
+                {
+                    other.ZIndex += span;
+                    moved++;
+                }
+            }
+        }
+
+        var delta = insert ? zIndex - lowest : zIndex - layer.ZIndex;
+        foreach (var item in family)
+        {
+            item.ZIndex += delta;
+        }
+
+        var children = family.Count > 1 ? $" with {family.Count - 1} child layer(s)" : "";
+        var room = moved > 0 ? $"; {moved} layer(s) drawn at z={zIndex} or above moved up {span}" : "";
+        return $"'{layerId}' now draws at z={layer.ZIndex}{children}{room}";
+    }
+
     public static List<Layer> Subtree(Project project, string rootId)
     {
         var included = new HashSet<string>(StringComparer.Ordinal) { rootId };

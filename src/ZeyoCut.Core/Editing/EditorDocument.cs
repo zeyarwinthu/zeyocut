@@ -29,6 +29,9 @@ public sealed class EditorDocument
 
     public string Status { get; private set; }
 
+    // What the last edit saved did, in its operation's words; null when it wasn't saved.
+    public string? Summary { get; private set; }
+
     public long Revision => View.Revision;
 
     public IReadOnlyList<HistoryEntry> History => Session.History;
@@ -44,9 +47,10 @@ public sealed class EditorDocument
     {
         var shown = View;
         string? changed = null;
+        string summary;
         try
         {
-            Session.Mutate(operation.Label, project =>
+            summary = Session.Mutate(operation.Label, project =>
             {
                 changed = operation.Layers.FirstOrDefault(id => LayerJson(shown, id) != LayerJson(project, id));
                 if (changed is not null)
@@ -60,6 +64,7 @@ public sealed class EditorDocument
         catch (ZeyoCutException ex)
         {
             Take();
+            Summary = null;
             Status = changed is null
                 ? $"{operation.Label} wasn't saved: {ex.Message}"
                 : $"{operation.Label} wasn't saved: another program {(View.FindLayer(changed) is null ? "removed" : "changed")} layer '{changed}' first{SavedBy()}; this is its version now";
@@ -67,6 +72,7 @@ public sealed class EditorDocument
         }
 
         Take();
+        Summary = summary;
         Status = Saved();
         return true;
     }

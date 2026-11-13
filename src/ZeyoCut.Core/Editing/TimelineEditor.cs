@@ -44,6 +44,10 @@ public sealed record RangeResult(
 
 public sealed record TimelineChange(string Summary, double OldDuration, double NewDuration, IReadOnlyList<string> Warnings);
 
+// How far a layer can be dragged on the timeline: the earliest start and the latest end a trim
+// reaches, and the earliest start a move reaches.
+public sealed record TimelineLimits(double EarliestStart, double LatestEnd, double EarliestMove);
+
 // Timeline edits. Keyframe times are absolute, so every edit that moves a layer in time moves its
 // keyframes (and its children) with it. Cuts keep every remaining frame exactly as it was.
 public static partial class TimelineEditor
@@ -66,6 +70,15 @@ public static partial class TimelineEditor
         AudioLayer audio => AudioEnd(project, audio),
         _ => layer.End ?? project.Duration,
     };
+
+    // A trim reaches as far as the clip's or sound's file goes (an image or text back to 0 and on
+    // without end); a move, until the layer or one of its children would start before 0.
+    public static TimelineLimits Limits(Project project, string layerId)
+    {
+        var layer = SubjectEditor.GetEditableLayer(project, layerId);
+        var earliest = ProjectEditor.Subtree(project, layerId).Min(l => l.Start);
+        return new TimelineLimits(layer.Start - HandleBefore(layer), ContentEnd(project, layer) + HandleAfter(project, layer), Math.Max(0, layer.Start - earliest));
+    }
 
     public static SplitResult SplitLayer(Project project, string layerId, double time)
     {

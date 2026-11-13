@@ -171,6 +171,56 @@ public class EditOperationTests
     }
 
     [Fact]
+    public void ReorderingTakesTheChildrenAlongAndInsertingMakesRoom()
+    {
+        // clip_1 draws at z=0, clip_2 at 1 with its label at 5, the title at 10.
+        var project = TestProjects.Footage();
+        Assert.Equal("'clip_2' now draws at z=3 with 1 child layer(s)", new ReorderLayerOperation("clip_2", 3).Apply(project));
+        Assert.Equal((3, 7), (Layer<VideoLayer>(project, "clip_2").ZIndex, Layer<TextLayer>(project, "label").ZIndex));
+
+        // A level of its own where another layer draws: that one and those above it move up.
+        project = TestProjects.Footage();
+        Assert.Equal("'title' now draws at z=1; 2 layer(s) drawn at z=1 or above moved up 1", new ReorderLayerOperation("title", 1, Insert: true).Apply(project));
+        Assert.Equal([0, 1, 2, 6], new[] { "clip_1", "title", "clip_2", "label" }.Select(id => project.FindLayer(id)!.ZIndex));
+
+        // Where nothing draws, nothing else moves.
+        project = TestProjects.Footage();
+        Assert.Equal("'title' now draws at z=3", new ReorderLayerOperation("title", 3, Insert: true).Apply(project));
+        Assert.Equal([0, 1, 5, 3], new[] { "clip_1", "clip_2", "label", "title" }.Select(id => project.FindLayer(id)!.ZIndex));
+
+        // A layer with children takes as many levels as they span, and the sound has no level.
+        project = TestProjects.Footage();
+        Assert.Equal(
+            "'clip_2' now draws at z=0 with 1 child layer(s); 2 layer(s) drawn at z=0 or above moved up 5",
+            new ReorderLayerOperation("clip_2", 0, Insert: true).Apply(project));
+        Assert.Equal([0, 4, 5, 15], new[] { "clip_2", "label", "clip_1", "title" }.Select(id => project.FindLayer(id)!.ZIndex));
+        Assert.Throws<ZeyoCutException>(() => new ReorderLayerOperation("music", 2).Apply(project));
+    }
+
+    [Fact]
+    public void LimitsSayHowFarATrimAndAMoveReach()
+    {
+        // clip_2 plays 4–8 s of a 10 s file. Moved to start at 6 s, its start reaches back to 2 s and
+        // its end on to 12 s, and each limit is where the trim stops.
+        var project = TestProjects.Footage();
+        TimelineEditor.MoveLayer(project, "clip_2", 6);
+        Assert.Equal(new TimelineLimits(2, 12, 0), TimelineEditor.Limits(project, "clip_2"));
+        Assert.Throws<ZeyoCutException>(() => TimelineEditor.TrimLayer(ProjectJson.Copy(project), "clip_2", 1.9, null));
+        Assert.Throws<ZeyoCutException>(() => TimelineEditor.TrimLayer(ProjectJson.Copy(project), "clip_2", null, 12.1));
+        TimelineEditor.TrimLayer(ProjectJson.Copy(project), "clip_2", 2, 12);
+
+        // The music plays the first 8 s of a 20 s file; a title reaches on without end.
+        Assert.Equal(new TimelineLimits(0, 20, 0), TimelineEditor.Limits(project, "music"));
+        Assert.Equal(new TimelineLimits(0, double.PositiveInfinity, 0), TimelineEditor.Limits(project, "title"));
+
+        // A child that starts before its parent stops a move first.
+        ProjectEditor.AddTextLayer(project, new TextLayerOptions { Id = "early", Text = "Early", ParentId = "clip_2", Start = 5, End = 7 });
+        Assert.Equal(1, TimelineEditor.Limits(project, "clip_2").EarliestMove);
+        Assert.Throws<ZeyoCutException>(() => TimelineEditor.MoveLayer(ProjectJson.Copy(project), "clip_2", 0.9));
+        TimelineEditor.MoveLayer(ProjectJson.Copy(project), "clip_2", 1);
+    }
+
+    [Fact]
     public void UpdateLayerOperationChangesSoundFadesAndCaptions()
     {
         var project = TestProjects.Footage();
@@ -207,6 +257,7 @@ public class EditOperationTests
         var drag = new BatchOperation("drag clip_2", [new MoveLayerOperation("clip_2", 5), new ReorderLayerOperation("clip_2", 3)]);
         Assert.Equal(["clip_2"], drag.Layers);
         Assert.True(document.Apply(drag));
+        Assert.Equal("moved 'clip_2' with 1 child layer(s) by +1s: now 5–9s; 'clip_2' now draws at z=3 with 1 child layer(s)", document.Summary);
         Assert.Equal(1, document.Session.UndoCount);
         var saved = ProjectStore.Load(directory);
         Assert.Equal((5.0, 3), (saved.FindLayer("clip_2")!.Start, Layer<VideoLayer>(saved, "clip_2").ZIndex));

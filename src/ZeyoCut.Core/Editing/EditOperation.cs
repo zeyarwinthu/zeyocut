@@ -79,18 +79,15 @@ public sealed record UpdateLayerOperation(string LayerId, JsonObject Changes) : 
     }
 }
 
-// Draw order: a layer's zIndex (higher draws on top); the timeline's lanes follow it.
-public sealed record ReorderLayerOperation(string LayerId, int ZIndex) : EditOperation
+// Draw order: a layer's zIndex (higher draws on top); the timeline's lanes follow it. Its children
+// move with it. With Insert, it gets levels of its own from ZIndex up (see ProjectEditor.Reorder).
+public sealed record ReorderLayerOperation(string LayerId, int ZIndex, bool Insert = false) : EditOperation
 {
     public override string Label => $"reorder_layer {LayerId}";
 
     public override IReadOnlyList<string> Layers => [LayerId];
 
-    public override string Apply(Project project)
-    {
-        ProjectEditor.UpdateLayer(project, LayerId, new JsonObject { ["zIndex"] = ZIndex });
-        return $"'{LayerId}' now draws at z={ZIndex}";
-    }
+    public override string Apply(Project project) => ProjectEditor.Reorder(project, LayerId, ZIndex, Insert);
 }
 
 // A file AssetImporter.Prepare copied into the project, added as an asset, as import_asset and
