@@ -482,6 +482,15 @@ public sealed class PreviewServer : IDisposable
             return null;
         }
 
+        try
+        {
+            // Another program may have saved the project; the page follows its edits too.
+            session.Sync();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+        }
+
         var json = session.Read(ProjectJson.Serialize);
         var revision = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(session.Directory + "\n" + json)))[..16].ToLowerInvariant();
         lock (_viewGate)

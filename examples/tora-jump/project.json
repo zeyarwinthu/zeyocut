@@ -1,5 +1,6 @@
 {
-  "formatVersion": 6,
+  "formatVersion": 7,
+  "revision": 0,
   "name": "Tora Jumps",
   "width": 1280,
   "height": 720,

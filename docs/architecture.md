@@ -15,8 +15,9 @@ ZeyoCut is a .NET 10 console app for Windows. It speaks the Model Context Protoc
 
 1. The MCP client starts `ZeyoCut.Mcp.exe` and sends JSON-RPC over its stdin. The server writes protocol messages, and only those, to stdout; logs go to stderr and to a daily JSON-lines file.
 2. The tool checks every path it is given against the folders it may use (`AllowedFolders`): projects live inside the projects folder, and files are read only from there, the library and the import folders, after links and junctions are resolved.
-3. One project is open at a time. An editing tool changes a copy of it, validates the whole project, copies the old `project.json` to `backups\`, writes the new one atomically and adds an undo step. If anything is invalid, nothing changes.
-4. Work that takes long (normalizing video, analysis, AI mattes and detection, tracking, exports) runs as a background job and returns a job id at once. Each job's record is kept in the jobs folder, so jobs outlast a restart.
+3. Before the tool runs, the open project catches up with `project.json` in case another program saved it (`ProjectSession.Sync`, from a call filter), and the reply then starts with a note that lists what changed.
+4. One project is open at a time. An editing tool holds `project.lock`, reads `project.json` and takes another program's version if its SHA-256 differs from the last one this server read or wrote, then changes a copy of the project, validates the whole project, copies the old `project.json` to `backups\`, writes the new one atomically as the next `revision` and adds an undo step. If anything is invalid, nothing changes. See [Saving alongside another program](project-format.md#saving-alongside-another-program).
+5. Work that takes long (normalizing video, analysis, AI mattes and detection, tracking, exports) runs as a background job and returns a job id at once. Each job's record is kept in the jobs folder, so jobs outlast a restart.
 
 The server's instructions to the model (`ServerInfo`), the tools (`Tools\`), the workflow prompts (`WorkflowPrompts`) and the preview page (`PreviewServer`) are all in `src/ZeyoCut.Mcp`.
 

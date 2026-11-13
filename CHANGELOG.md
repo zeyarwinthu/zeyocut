@@ -8,7 +8,25 @@ when they open.
 
 ## [Unreleased]
 
+### Added
+
+- **Two programs on one project:** the server, a second server or (later) the ZeyoCut editor can
+  have a project open at once without overwriting each other. A save holds `project.lock`, checks
+  `project.json` by its SHA-256 and makes the edit on top of another program's version. Before each
+  tool call the server takes a newer `project.json`, and the reply starts with a note listing what
+  changed (up to 10 items). Undo stops at a change another program saved.
+- **Project format 7:** `revision`, the count of saves. It never goes back, even after undo, redo,
+  `restore_backup` or an older `project.json` put back by hand. Older projects update as they open.
+
+### Changed
+
+- A program reading `project.json` no longer holds up a save: saves rename the new file over the
+  old one even while a reader that shares delete access has it open.
+
 ### Fixed
+
+- The server no longer overwrites a `project.json` that another program saved while the project was
+  open; before, its next edit silently replaced the other program's changes.
 
 - A release's `SHA256SUMS.txt` has Unix line endings, so `sha256sum -c` can check the downloads too,
   not only PowerShell.

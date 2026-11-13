@@ -1,6 +1,6 @@
 # Project format
 
-A ZeyoCut project is a folder. `project.json` in it is the single source of truth: every tool call validates the change, saves it atomically and adds an undo step. Before each save, the file it replaces is copied to `backups\`, and the last 20 are kept; `restore_backup` lists them and puts one back.
+A ZeyoCut project is a folder. `project.json` in it is the single source of truth: every tool call validates the change, saves it atomically and adds an undo step. Before each save, the file it replaces is copied to `backups\`, and the last 20 are kept; `restore_backup` lists them and puts one back. Another program can save the same project at the same time; see [Saving alongside another program](#saving-alongside-another-program).
 
 This page describes the folder, the file, and how ZeyoCut reads what is in it: space and time, transforms, the camera, animation, text, video, captions, languages, the library and audio. The [guide](GUIDE.md) shows the tools that change it.
 
@@ -22,6 +22,7 @@ my-project\
   cache\chunks\    the 2 s chunks of earlier exports, reused by the next export (at most 2 GB)
   cache\preview\   the sound mix the preview page plays (mix-<key>.m4a, the latest one)
   proxies\         1920 px copies of footage over 2560 px, for previews and tracking (exports read the originals)
+  project.lock     open only while a program saves project.json; it holds the highest revision saved
 ```
 
 ## project.json
@@ -32,7 +33,8 @@ Here is the demo project (`ZeyoCut.Mcp.exe demo`) cut down to one asset and one 
 
 ```json
 {
-  "formatVersion": 6,
+  "formatVersion": 7,
+  "revision": 2,
   "name": "Tora Jumps",
   "width": 1280,
   "height": 720,
@@ -88,7 +90,8 @@ Here is the demo project (`ZeyoCut.Mcp.exe demo`) cut down to one asset and one 
 
 | Field | Default | What it is |
 |---|---|---|
-| `formatVersion` | 6 | The format the file was saved in; see [Format versions](#format-versions) |
+| `formatVersion` | 7 | The format the file was saved in; see [Format versions](#format-versions) |
+| `revision` | 0 | How many times the project has been saved. Every save adds 1, whichever program saves it, and it never goes back: undo, redo and `restore_backup` put back older content as a new revision. ZeyoCut sets it; no tool does |
 | `name` | | The project's name |
 | `width`, `height` | 1920, 1080 | The canvas in pixels |
 | `fps` | 30 | Frames per second |
@@ -175,8 +178,22 @@ A marker has an `id`, a `time`, a `name` and a `kind`, `chapter` or `scene`. `ex
 | 4 | Subject cutouts |
 | 5 | Tracks and redactions |
 | 6 | Markers and language tags |
+| 7 | `revision`, the count of saves |
 
 A project saved by an older ZeyoCut opens too: it's updated to the current format as it opens, and the file as it was is kept in `backups\` for good. So far every version has only added fields, and a field an older file lacks gets its default.
+
+### Saving alongside another program
+
+Two programs can have one project open at once, such as the MCP server and the ZeyoCut editor, or two servers. Each keeps the project in memory, and neither overwrites what the other saved:
+
+- **A save checks first.** While it saves, a program holds `project.lock` open so no other program can save at the same moment (a second save waits up to 5 s). It reads `project.json` and compares its SHA-256 with the file it last read or wrote. If another program changed it, that version becomes the open project first, and the edit is made on top of it.
+- **The server catches up before every tool call.** It compares the file's size and time, reads it only if they changed, and takes the new version. The reply then starts with a note that lists what changed (up to 10 items) and ends with "Re-read with get_project or list_layers before relying on earlier details."
+- **Undo stops at a change another program saved.** Putting back content from before it would undo that change too. `restore_backup` still lists every copy kept.
+- **Readers never hold up a save.** ZeyoCut opens `project.json` for reading with read, write and delete sharing, and saves by renaming the new file over it, which Windows allows while such a reader has it open.
+- **A program that dies lets go of `project.lock`.** The file stays, but it means nothing while no program has it open, so a lock never goes stale.
+- **A `project.json` that can't be read stops edits.** If another program leaves a file that isn't valid JSON, or deletes it, the next tool reply says so, and every edit is refused until the file is fixed or `restore_backup` puts a backup back (the unreadable file is kept in `backups\` too).
+
+ZeyoCut 0.1.0 doesn't know about `project.lock` and never re-reads `project.json`, so it can overwrite another program's save. Don't use it on a project another program has open.
 
 ## Space and time
 - Pixels, origin at the top-left, y points down, rotation in degrees clockwise.

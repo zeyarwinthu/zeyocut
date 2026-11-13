@@ -1,5 +1,6 @@
 {
-  "formatVersion": 6,
+  "formatVersion": 7,
+  "revision": 0,
   "name": "comic-panels",
   "width": 1280,
   "height": 720,

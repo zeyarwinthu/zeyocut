@@ -6,9 +6,14 @@ namespace ZeyoCut.Core.Model;
 
 public sealed class Project
 {
-    public const int CurrentFormatVersion = 6;
+    public const int CurrentFormatVersion = 7;
 
     public int FormatVersion { get; set; } = CurrentFormatVersion;
+
+    // How many times the project has been saved; every save adds 1, whichever program saves it. Set
+    // by ProjectSession, never by an edit.
+    public long Revision { get; set; }
+
     public string Name { get; set; } = "";
     public int Width { get; set; } = 1920;
     public int Height { get; set; } = 1080;

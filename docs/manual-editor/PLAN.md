@@ -6,6 +6,49 @@
 - Numbers marked *measured* come from a throwaway benchmark (kept outside the repository) that calls the real `FrameRenderer` and `ProjectSession`. It ran on the development laptop (Intel Core Ultra 9 285H, 16 threads) with a 1920x1080, 30 fps H.264 test clip (keyframe every 60 frames).
 - File references are `path:line` on this commit.
 
+## Approved decisions and changes (2026-11-13)
+
+The plan below was approved with these answers and changes. Where they disagree with a later section, they win.
+
+**Decisions (section D):**
+
+| # | Answer |
+|---|---|
+| D1 | WPF |
+| D2 | Lanes from type, `zIndex` and caption groups |
+| D3 | Selective undo, with change 2 |
+| D4 | Operations recorded as commands; undo restores recorded before-values |
+| D5 | Yes, with change 4 |
+| D6 | Yes for now: the editor in the zip and the `.mcpb`. In Phase 2, also measure a shared-runtime folder layout against two single-file exes and report the size difference |
+| D7 | Audio mute uses `visible` |
+| D8 | Add both `open_in_editor` and `trim_layer` |
+| D9 | Yes. Each move out of `ZeyoCut.Mcp` is its own commit, with no behavior change |
+| D10 | Add `exclude_docs: manual-editor/` (done in Phase 1a) |
+
+**Changes:**
+
+1. **Commit on every edit** instead of pending edits and rebase: on mouse-up, on Enter or focus loss, on slider release. Each commit goes through the same lock and hash path. If `project.json` changed, the editor reloads and re-applies its edit on top; if the edit no longer applies, it's dropped and the status bar says why.
+    - No Save button. The editor shows "Saved · revision N".
+    - Gone: the pending-operations queue, rebase, the conflict review UI and "Save as copy" (section 3 scenario b, section B's `EditorDocument`, Phase 1 step 5, Phase 4's conflict review, cut-list item 6).
+    - Autosave and recovery are cut from Phase 6.
+    - Editor backups are grouped so a burst of editor commits can't push the MCP backups out of the 20-save window (for example at most one editor backup a minute, or separate limits).
+2. **Undo granularity.** `duration` changes (auto-extend, ripple) and layer-order changes caused by adding layers don't count as "touched". Test: split `clip_2`, Claude adds a caption track, undo the split: it succeeds.
+3. **`revision` never goes backwards.** Undo, redo, `restore_backup` and an outside write of an older file all save as one more than the highest revision saved. Each has a test.
+4. **The reply note** after an outside change lists the changed items (ids and labels, up to 10, then "and N more") and ends with: "Re-read with get_project or list_layers before relying on earlier details."
+5. **Phase 1 is split in two.**
+    - 1a: format 7 `revision`, `project.lock`, the hash check, `Sync()` before each tool, the reply note, and the two-session, cross-process, hammer and killed-lock tests. It fixes the overwrite bug for MCP alone and can merge to `main` by itself.
+    - 1b: operation records, `TrimLayer` and `trim_layer`, change-set undo, `EditorDocument`.
+6. **Reads outside the lock share everything.** Any read of `project.json` outside the lock (the editor's watcher, `Sync`'s check) opens with `FileShare.ReadWrite | FileShare.Delete`, so a reader never blocks the other process's rename.
+7. **Preview on 4 cores.** Before finishing Phase 3, re-run the preview benchmark with the process limited to 4 cores (CPU affinity). Plan on reduced-resolution preview being needed, not optional.
+
+**What Phase 1a found and did differently:**
+
+- `File.Move` (`MoveFileEx`) refuses to rename over a file another process has open, even when that reader shares delete access (error 5). `ProjectStore.Save` now renames with POSIX semantics (`FILE_RENAME_INFO` with `FILE_RENAME_FLAG_POSIX_SEMANTICS`), which Windows allows while such a reader has the file open. The old rename and its retries remain the fallback, for file systems without POSIX semantics.
+- `Sync` doesn't take `project.lock`: it compares size and time, then reads with full sharing and takes the new version. Every save still checks again under the lock, so nothing is lost, and `Sync` never waits behind a slow save in the other process.
+- `project.lock` holds the highest revision saved, so a session that never saw the newer revisions still counts on from there after an older file is put back.
+- Until 1b brings selective undo, an outside change is an undo barrier in the session that takes it. A version that differs only in how the file is written (same content) is no outside change and keeps the history.
+- A `project.json` that isn't a project (bad JSON, missing) is reported once in the next reply, and edits are refused until it's fixed or `restore_backup` replaces it.
+
 ## Summary
 
 What I found:

@@ -248,6 +248,18 @@ public sealed class EditorState : IDisposable
         }
     }
 
+    // The open project's session; null when none is open.
+    public ProjectSession? CurrentSession
+    {
+        get
+        {
+            lock (_gate)
+            {
+                return _session;
+            }
+        }
+    }
+
     public bool HasSession
     {
         get

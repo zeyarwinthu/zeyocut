@@ -33,9 +33,13 @@ public class BackupTests
         session.Redo();
         var backups = ProjectBackups.List(directory);
         Assert.Equal(["redo update_project", "undo update_project", "update_project"], backups.Select(b => b.Before));
-        Assert.Equal(created, File.ReadAllText(backups[0].Path));
+
+        // Undo puts back the content, saved as a new revision.
+        Assert.Equal(TestProjects.WithoutRevision(created), TestProjects.WithoutRevision(File.ReadAllText(backups[0].Path)));
+        Assert.Equal(3, ProjectBackups.Load(backups[0]).Revision);
         Assert.Equal(five, File.ReadAllText(backups[1].Path));
         Assert.Equal(5, ProjectStore.Load(directory).Duration);
+        Assert.Equal(4, ProjectStore.Load(directory).Revision);
         Assert.Empty(Directory.GetFiles(ProjectBackups.Folder(directory), "*.tmp"));
 
         // By its whole name, with .json, or by enough of its time.
@@ -72,7 +76,7 @@ public class BackupTests
 
         // The copy from format 4 reads as the current format.
         var old = ProjectBackups.Load(original);
-        Assert.Equal(6, old.FormatVersion);
+        Assert.Equal(7, old.FormatVersion);
         Assert.Equal("behind", old.Name);
     }
 
@@ -87,19 +91,23 @@ public class BackupTests
 
         var backup = ProjectBackups.List(directory).Single(b => b.Before == "update_layer tora_body");
         session.Replace("restore_backup " + backup.Name.Split(" before ")[0], ProjectBackups.Load(backup));
-        Assert.Equal(ProjectJson.Serialize(ProjectBackups.Load(backup)), ProjectJson.Serialize(session.Snapshot()));
+        Assert.Equal(TestProjects.WithoutRevision(ProjectJson.Serialize(ProjectBackups.Load(backup))), TestProjects.WithoutRevision(ProjectJson.Serialize(session.Snapshot())));
+        Assert.Equal(1, ProjectBackups.Load(backup).Revision);
+        Assert.Equal(4, session.Revision);
         Assert.NotNull(session.Read(p => p.FindLayer("tora_tail")));
         Assert.Equal(3, session.UndoCount);
         Assert.StartsWith("restore_backup project-", ProjectBackups.List(directory)[0].Before);
         Assert.Equal(now, File.ReadAllText(ProjectBackups.List(directory)[0].Path));
 
         Assert.StartsWith("restore_backup ", session.Undo());
-        Assert.Equal(now, ProjectJson.Serialize(session.Snapshot()));
+        Assert.Equal(TestProjects.WithoutRevision(now), TestProjects.WithoutRevision(ProjectJson.Serialize(session.Snapshot())));
+        Assert.Equal(5, session.Revision);
 
         var invalid = session.Snapshot();
         invalid.Width = 3;
         Assert.Throws<ZeyoCutException>(() => session.Replace("restore_backup bad", invalid));
-        Assert.Equal(now, ProjectJson.Serialize(session.Snapshot()));
+        Assert.Equal(TestProjects.WithoutRevision(now), TestProjects.WithoutRevision(ProjectJson.Serialize(session.Snapshot())));
+        Assert.Equal(5, session.Revision);
     }
 
     [Fact]

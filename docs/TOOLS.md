@@ -1088,7 +1088,7 @@ Turn a hidden track's box into keyframes on its redaction (one undo step), to ed
 
 ### `undo`
 
-Undo the last change to the open project (in-memory history of this session, up to 200 steps).
+Undo the last change to the open project (in-memory history of this session, up to 200 steps). It stops at a change another program (such as the editor) saved to project.json, since going back past it would undo that change too.
 
 No parameters.
 

@@ -74,6 +74,7 @@ public static class ProjectJson
     public static void Normalize(Project project)
     {
         project.FormatVersion = Math.Max(project.FormatVersion, Project.CurrentFormatVersion);
+        project.Revision = Math.Max(project.Revision, 0);
         project.Name ??= "";
         project.BackgroundColor ??= "#FFFFFF";
         project.Audio ??= new AudioSettings();

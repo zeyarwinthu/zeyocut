@@ -36,7 +36,7 @@ var mcp = builder.Services
     .WithStdioServerTransport()
     .WithToolsFromAssembly()
     .WithPromptsFromAssembly()
-    .WithRequestFilters(filters => filters.AddCallToolFilter(ToolCallLog.Filter));
+    .WithRequestFilters(filters => filters.AddCallToolFilter(ToolCallLog.Filter).AddCallToolFilter(OutsideChangeNotes.Filter));
 var describer = ClipDescribers.Create(settings, out var describerStatus);
 if (describer is not null)
 {

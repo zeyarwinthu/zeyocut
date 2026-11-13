@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 
+using System.Text.RegularExpressions;
 using ZeyoCut.Core.Editing;
 using ZeyoCut.Core.Model;
 
@@ -63,4 +64,7 @@ public static class TestProjects
         });
         return project;
     }
+
+    // project.json's text with its revision left out, to compare content saved as different revisions.
+    public static string WithoutRevision(string json) => Regex.Replace(json, @"""revision"": \d+,\r?\n\s*", "");
 }

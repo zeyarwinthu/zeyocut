@@ -26,6 +26,8 @@ public static class ProjectMigrations
         new(5, _ => { }),
         // 6: markers and language tags.
         new(6, _ => { }),
+        // 7: revision, the count of saves.
+        new(7, _ => { }),
     ];
 
     private static readonly JsonNodeOptions NodeOptions = new() { PropertyNameCaseInsensitive = true };

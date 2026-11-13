@@ -9,6 +9,7 @@ The `zeyocut` server has 90 tools, plus [`describe_clip`](#optional-describe_cli
     - Editing tools: `update_project`, `restore_backup`, `import_asset`, `import_folder`, `import_video`, `add_*_layer`, `update_layer`, `remove_layer`, `duplicate_layer`, `set_keyframes`, `remove_keyframes`, `clear_keyframes`, `split_layer`, `remove_range`, `move_layer`, `set_speed`, `add_transition`, `add_markers`, `remove_markers`, `remove_silences`, `cut_by_transcript`, `generate_captions`, `add_caption_track`, `import_srt`, `reframe_to_vertical`, `add_rig`, `apply_action`, `apply_style`, `add_sfx`, `auto_lip_flap`, `set_camera`, `camera_shake`, `set_effect`, `set_mask`, `set_motion_path`, `remove_background`, `refine_matte`, `text_behind_subject`, `track_object`, `reanchor_track`, `detect_and_track`, `attach_to_track`, `apply_redaction`, `tracks_to_keyframes`.
     - `build_from_script` creates a project, and its build is one undo step on top of the empty project.
     - Library saves (`save_rig`, `save_action`, `save_style`, `save_template`) write to the shared library and don't change the project, so they aren't undo steps.
+- **Another program may save the open project too,** such as a second server or the ZeyoCut editor. Before each tool runs, the server takes the newer `project.json`, and the reply starts with a note that lists what changed. Edits are made on top of the other program's, never over them, and undo stops at its change. See [`undo` / `redo`](#undo-redo) for an example, and [Saving alongside another program](project-format.md#saving-alongside-another-program).
 - **Long work runs in the background** and returns a job id right away: `import_video` when the file needs normalizing (`import_N`), `analyze_video` (`analyze_N`), `frame_diff` over more than 150 frames (`framediff_N`), `audio_levels` over more than 120s (`audiolevels_N`), `detect_beats` on more than 120s of sound (`beats_N`), `export_batch` (`batch_N`), `export_language_versions` (`versions_N`), `export_frames` (`frames_N`), `prerender_layers` (`prerender_N`), `remove_background`, `text_behind_subject` or `generate_captions` with an AI method (`matte_N`), `text_occlusion` over more than 150 frames (`occlusion_N`), `generate_captions` with `behindSubject=auto` over more than 600 caption frames or before its matte is computed (`captions_N`), `system_check` (`syscheck_N`), `track_object` and `reanchor_track` over more than 150 frames (`tracking_N`), `detect_and_track` (`detect_N`), the [proxy](#import_video) of footage over 2560 px (`proxy_N`), `start_export` (`export_N`) and, when configured, `describe_clip` (`describe_N`). Poll `get_job_status` (or `get_export_status` for exports). A running job's status estimates the time left.
 - **Jobs outlast a restart of the server.** Each one is written to the jobs folder (see the README's Configuration). An export (`export_N`, `batch_N`, `versions_N`) that was running when the server stopped starts again under its id when the server next starts; any other running job shows as failed, saying how far it got. See [`get_job_status`](#get_job_status).
 - **AI jobs say how long they should take,** from [`system_check`](#system_check)'s benchmark, or a rough guess before it. One that would take more than 5 minutes isn't started: the reply gives the estimate and nothing changes, so the user hears first how long it takes. Calling again with `confirmLongJob: true` starts it. This applies to `remove_background`, `text_behind_subject` and `generate_captions` with an AI method, and to `detect_and_track`.
@@ -93,7 +94,7 @@ next: import_asset / import_video, then add_image_layer / add_text_layer / add_a
 
 Opens an existing project and returns its layer tree. Undo history starts fresh.
 
-A project saved by an older ZeyoCut is updated to the current format (6) as it opens, without losing anything, and the reply says so. The file as it was is kept in the project's `backups` folder as `project-v<format>-<time>.json`.
+A project saved by an older ZeyoCut is updated to the current format (7) as it opens, without losing anything, and the reply says so. The file as it was is kept in the project's `backups` folder as `project-v<format>-<time>.json`.
 
 Footage over 2560 px that has no [proxy](#import_video) yet gets one in the background, and the reply ends with a line like `making a 1920 px proxy of 'street' in the background as proxy_2: previews and object tracking read it once it is done, exports always read the original`.
 
@@ -122,7 +123,7 @@ A project saved by Phase 1 (format 1):
 ```
 ```text
 opened C:\Users\you\ZeyoCut\projects\tora-jumps
-updated project.json from format 1 (saved by an older ZeyoCut) to 6; the file as it was is kept as backups\project-v1-20261104-160855.json
+updated project.json from format 1 (saved by an older ZeyoCut) to 7; the file as it was is kept as backups\project-v1-20261104-160855.json
 Tora Jumps: 1280x720 @ 30 fps, 3s, 11 layer(s), 9 asset(s)
 clouds [image]  z=1  t=0–end  drawings=normal  anchor=(0,0)  keys: x(2)
 ground [image]  z=2  t=0–end  drawings=normal  anchor=(0,0)
@@ -277,6 +278,28 @@ undid: remove_layer mimi_body (18 more undo step(s), 1 redo step(s))
 ```
 ```text
 redid: remove_layer mimi_body (19 undo step(s), 0 more redo step(s))
+```
+
+Undo stops at a change another program saved to `project.json`, because putting back content from before it would undo that change too. Here the ZeyoCut editor saved three edits between two calls. The next call, `list_layers`, starts with a note:
+
+```text
+project.json was changed outside this server since your last call (now revision 6; saved: editor update_layer title, editor remove_layer subtitle, editor add_markers (1 marker)). What changed:
+- changed layer 'title'
+- removed layer 'subtitle'
+- added marker 'intro' (Intro)
+Re-read with get_project or list_layers before relying on earlier details.
+tora-test: 1280x720 @ 30 fps, 6s, 1 layer(s), 0 asset(s)
+markers: intro chapter at 0s "Intro"
+title [text]  z=0  t=0-4  text="Tora Jumps!"  font=Segoe UI 72px  anchor=(177.82,47.883)
+```
+
+After one more edit (`update_layer title`), the first `undo` takes it back and the second stops:
+
+```text
+undid: update_layer title (0 more undo step(s), 1 redo step(s))
+```
+```text
+An error occurred invoking 'undo': nothing more to undo: undo stops at revision 6, which another program saved (restore_backup lists the copies of project.json kept before each save)
 ```
 
 ### `restore_backup`

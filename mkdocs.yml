@@ -37,6 +37,10 @@ extra:
       name: ZeyoCut on GitHub
   generator: false
 
+# The manual editor's working plan is for the repository, not the site.
+exclude_docs: |
+  manual-editor/
+
 nav:
   - Home: index.md
   - Quick start: quick-start.md

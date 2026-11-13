@@ -1463,7 +1463,7 @@ public class McpServerTests
         }
 
         var first = JsonDocument.Parse(File.ReadAllText(projectFile)).RootElement.GetProperty("tracks")[0];
-        Assert.Equal(6, JsonDocument.Parse(File.ReadAllText(projectFile)).RootElement.GetProperty("formatVersion").GetInt32());
+        Assert.Equal(7, JsonDocument.Parse(File.ReadAllText(projectFile)).RootElement.GetProperty("formatVersion").GetInt32());
         var firstFile = first.GetProperty("file").GetString()!;
         Assert.True(File.Exists(Path.Combine(root, "projects", "tracking", firstFile)));
 
@@ -2520,10 +2520,10 @@ public class McpServerTests
         await using var client = await StartServer(root, projects, Path.Combine(root, "logs"), ct);
 
         var opened = await CallOk(client, "open_project", new() { ["nameOrPath"] = "tora" }, ct);
-        Assert.Matches(@"\nupdated project\.json from format 1 \(saved by an older ZeyoCut\) to 6; the file as it was is kept as backups\\project-v1-\d{8}-\d{6}\.json\n", opened);
+        Assert.Matches(@"\nupdated project\.json from format 1 \(saved by an older ZeyoCut\) to 7; the file as it was is kept as backups\\project-v1-\d{8}-\d{6}\.json\n", opened);
         Assert.Contains("tora_head", opened);
         Assert.Single(Directory.GetFiles(Path.Combine(projects, "tora", "backups"), "project-v1-*.json"));
-        Assert.Contains("\"formatVersion\": 6", await CallOk(client, "get_project", new(), ct));
+        Assert.Matches("\"formatVersion\": 7,\r?\n  \"revision\": 1,", await CallOk(client, "get_project", new(), ct));
 
         Assert.DoesNotContain("updated project.json", await CallOk(client, "open_project", new() { ["nameOrPath"] = "tora" }, ct));
     }
