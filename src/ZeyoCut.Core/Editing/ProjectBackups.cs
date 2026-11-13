@@ -13,11 +13,14 @@ namespace ZeyoCut.Core.Editing;
 public sealed record ProjectBackup(string Name, string Path, DateTime Time, string? Before, int? Format);
 
 // Before every save the project.json being replaced is copied to backups\, as
-// project-<time> before <edit>.json, and only the newest Kept of those stay. The copies kept when
-// an older format is updated (project-v<format>-<time>.json) are never removed.
+// project-<time> before <edit>.json, and only the newest Kept of those stay: Kept of the editor's
+// (labelled "editor ...") and Kept of the others, so a burst of edits in the editor can't push out
+// the server's. The copies kept when an older format is updated (project-v<format>-<time>.json)
+// are never removed.
 public static partial class ProjectBackups
 {
     public const int Kept = 20;
+    public const string EditorProgram = "editor";
 
     private const int CopyAttempts = 5;
     private const int LabelLength = 80;
@@ -61,6 +64,9 @@ public static partial class ProjectBackups
         var stamp = DateTime.Now.ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture);
         return Copy(Path.Combine(directory, ProjectStore.ProjectFileName), Folder(directory), $"project-v{savedVersion}-{stamp}", ".json");
     }
+
+    // The backup at this path; null when it isn't named as one.
+    public static ProjectBackup? Describe(string path) => Parse(path)?.Item1;
 
     // Newest first.
     public static IReadOnlyList<ProjectBackup> List(string directory)
@@ -186,9 +192,8 @@ public static partial class ProjectBackups
             .Select(Parse)
             .OfType<(ProjectBackup Backup, int N)>()
             .Where(b => b.Backup.Format is null)
-            .OrderByDescending(b => b.Backup.Time)
-            .ThenByDescending(b => b.N)
-            .Skip(Kept);
+            .GroupBy(b => b.Backup.Before!.StartsWith(EditorProgram + " ", StringComparison.Ordinal))
+            .SelectMany(g => g.OrderByDescending(b => b.Backup.Time).ThenByDescending(b => b.N).Skip(Kept));
         foreach (var (backup, _) in rolling)
         {
             try

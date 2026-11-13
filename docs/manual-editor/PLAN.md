@@ -49,6 +49,15 @@ The plan below was approved with these answers and changes. Where they disagree 
 - Until 1b brings selective undo, an outside change is an undo barrier in the session that takes it. A version that differs only in how the file is written (same content) is no outside change and keeps the history.
 - A `project.json` that isn't a project (bad JSON, missing) is reported once in the next reply, and edits are refused until it's fixed or `restore_backup` replaces it.
 
+**What Phase 1b found and did differently:**
+
+- Phase 1 step 5 is done as change 1 says: `EditorDocument` saves each edit at once (`Apply`, `Undo`, `Redo`, `Refresh`), with no working copy, pending operations or rebase. An edit is dropped, with the reason in `Status`, when it fails or when another program changed a layer it works on after the editor last showed it (`View`); `View` then shows that program's version.
+- MCP tools keep calling the Core editors directly, so their behavior is unchanged. The operation records (`EditOperation`) call the same functions, and a test checks that each gives the same project.
+- Each undo step keeps the whole project before it, as before, plus a change set. The exact snapshot is used while no other program has saved since the step; the change set only after that. Change sets are worked out from the two versions in memory, and only the changed items are read back the way `project.json` holds them (about 10 ms on a 2.3 MB project).
+- The project's length is set back by a selective undo only when no other layer runs past the old end; otherwise it stays.
+- Backups are grouped by label: the last 20 `editor ...` saves and the last 20 others.
+- The 1a undo barrier is gone. A refusal names the items and the other program's edits, from the backups it kept.
+
 ## Summary
 
 What I found:

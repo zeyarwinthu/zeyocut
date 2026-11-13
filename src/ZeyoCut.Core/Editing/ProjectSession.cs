@@ -10,36 +10,47 @@ namespace ZeyoCut.Core.Editing;
 // checks that project.json is still what this session last read or wrote (by its SHA-256); when it
 // isn't, the file's version becomes the open project first and the change is made on top of it.
 // Sync takes such a version between changes, and TakeOutsideChanges says what it changed.
+//
+// Undo and redo put back what a step changed. When no other program saved since, that is the
+// whole project as it was; after another program's change it is only the items the step changed,
+// so the other change stays, and it's refused when another program changed one of those items.
 public sealed class ProjectSession
 {
     public const int MaxUndo = 200;
 
     private readonly object _gate = new();
-    private readonly LinkedList<(string Label, string Json)> _undo = new();
-    private readonly Stack<(string Label, string Json)> _redo = new();
+    private readonly LinkedList<Step> _undo = new();
+    private readonly Stack<Step> _redo = new();
     private readonly List<OutsideChange> _outside = [];
+
+    // The changes other programs saved, for History, newest last, and how many there have been.
+    private readonly List<OutsideChange> _outsideLog = [];
+    private int _outsideCount;
+
+    // What this session's backups are labelled with first ("editor "), or "".
+    private readonly string _program;
     private Project _project;
+
+    private const int ItemsNamed = 5;
 
     // project.json as this session last read or wrote it, and the newest backup then, so the
     // backups other programs keep after that tell what they saved.
     private string _hash = "";
     private ProjectFileStamp _stamp;
-    private string? _newestBackup;
+    private ProjectBackup? _newestBackup;
 
     // The highest revision this session has read or saved.
     private long _highest;
 
-    // Why undo stops where it does, once another program changed project.json.
-    private string? _undoStop;
-
     // The hash of an unreadable project.json (or "missing") already reported, so it's reported once.
     private string? _unreadable;
 
-    private ProjectSession(string directory, Project project)
+    private ProjectSession(string directory, Project project, string? program)
     {
         Directory = directory;
         _project = project;
-        _newestBackup = ProjectBackups.List(directory).FirstOrDefault()?.Name;
+        _program = program is null ? "" : program + " ";
+        _newestBackup = ProjectBackups.List(directory).FirstOrDefault();
     }
 
     public string Directory { get; }
@@ -86,13 +97,31 @@ public sealed class ProjectSession
         }
     }
 
-    public static ProjectSession Open(string directory)
+    // Oldest first: the steps undo can take back, with the changes other programs saved among
+    // them (Outside set), which it can't.
+    public IReadOnlyList<HistoryEntry> History
+    {
+        get
+        {
+            lock (_gate)
+            {
+                return _undo.Select(s => new HistoryEntry(s.Label, s.Revision, null))
+                    .Concat(_outsideLog.Select(o => new HistoryEntry(o.Edits.Count > 0 ? string.Join(", ", o.Edits) : $"{ProjectStore.ProjectFileName} changed", o.Revision, o)))
+                    .OrderBy(e => e.Revision)
+                    .ToList();
+            }
+        }
+    }
+
+    // 'program' names who saves, as the first word of each backup's label ("editor"); the server
+    // leaves it out.
+    public static ProjectSession Open(string directory, string? program = null)
     {
         var full = Path.GetFullPath(directory);
         var bytes = ProjectStore.ReadBytes(full, out var stamp);
         var project = ProjectStore.Parse(bytes, out var savedVersion);
         ProjectStore.EnsureFolders(full);
-        var session = new ProjectSession(full, project);
+        var session = new ProjectSession(full, project, program);
         session.Took(project, bytes, stamp);
         if (savedVersion < Project.CurrentFormatVersion)
         {
@@ -113,7 +142,7 @@ public sealed class ProjectSession
         ProjectJson.Normalize(project);
         ProjectValidator.ThrowIfInvalid(project);
         ProjectStore.EnsureFolders(full);
-        var session = new ProjectSession(full, project);
+        var session = new ProjectSession(full, project, null);
         lock (session._gate)
         {
             using var held = ProjectLock.Acquire(full, session.LockTimeout);
@@ -171,29 +200,29 @@ public sealed class ProjectSession
         }
     }
 
-    // Undo and redo put back earlier content, saved as a new revision. They stop at a change
-    // another program saved: putting back content from before it would undo that change too.
+    // Undo and redo save what they put back as a new revision.
     public string Undo()
     {
         lock (_gate)
         {
             if (_undo.Count == 0)
             {
-                throw new ZeyoCutException(_undoStop ?? "nothing to undo");
+                throw new ZeyoCutException("nothing to undo");
             }
 
             using var held = ProjectLock.Acquire(Directory, LockTimeout);
             CatchUp(overwriteUnreadable: false);
             if (_undo.Last is not { } last)
             {
-                throw new ZeyoCutException(_undoStop ?? "nothing to undo");
+                throw new ZeyoCutException("nothing to undo");
             }
 
+            var step = last.Value;
             var current = ProjectJson.Serialize(_project);
-            Save(held, ProjectJson.Deserialize(last.Value.Json), $"undo {last.Value.Label}");
+            Save(held, PutBack(step, backwards: true), $"undo {step.Label}");
             _undo.RemoveLast();
-            _redo.Push((last.Value.Label, current));
-            return last.Value.Label;
+            _redo.Push(step with { Json = current, Outside = _outsideCount, Revision = _project.Revision });
+            return step.Label;
         }
     }
 
@@ -213,12 +242,12 @@ public sealed class ProjectSession
                 throw new ZeyoCutException("nothing to redo");
             }
 
-            var (label, json) = _redo.Peek();
+            var step = _redo.Peek();
             var current = ProjectJson.Serialize(_project);
-            Save(held, ProjectJson.Deserialize(json), $"redo {label}");
+            Save(held, PutBack(step, backwards: false), $"redo {step.Label}");
             _redo.Pop();
-            _undo.AddLast((label, current));
-            return label;
+            AddStep(step with { Json = current, Outside = _outsideCount, Revision = _project.Revision });
+            return step.Label;
         }
     }
 
@@ -336,6 +365,52 @@ public sealed class ProjectSession
         }
     }
 
+    // What undo (backwards) or redo of a step saves. With no change from another program since,
+    // it's the whole project the step kept; otherwise the open project with the step's items put
+    // back, refused when another program changed one of them.
+    private Project PutBack(Step step, bool backwards)
+    {
+        if (step.Outside == _outsideCount)
+        {
+            return ProjectJson.Deserialize(step.Json);
+        }
+
+        var verb = backwards ? "undo" : "redo";
+        var conflicts = ProjectDiff.Conflicts(_project, step.Changes, backwards);
+        if (conflicts.Count > 0)
+        {
+            var named = conflicts.Take(ItemsNamed).Select(c => ProjectDiff.DescribeConflict(_project, c, backwards)).ToList();
+            if (conflicts.Count > ItemsNamed)
+            {
+                named.Add($"changed {conflicts.Count - ItemsNamed} more");
+            }
+
+            var edits = _outsideLog.Where(o => o.Revision > step.Revision && conflicts.Any(o.Touches))
+                .SelectMany(o => o.Edits).Distinct().ToList();
+            var saved = edits.Count == 0 ? "" : $" (saved: {string.Join(", ", edits.TakeLast(ItemsNamed))})";
+            throw new ZeyoCutException($"can't {verb} '{step.Label}': another program {And(named)} since {(backwards ? "that edit" : "it was undone")}{saved}, "
+                + $"and {(backwards ? "undoing" : "redoing")} it would throw that change away. "
+                + $"restore_backup lists the copies of {ProjectStore.ProjectFileName} kept before each save");
+        }
+
+        var working = ProjectJson.Clone(_project);
+        ProjectDiff.Apply(working, step.Changes, backwards);
+        ProjectJson.Normalize(working);
+        try
+        {
+            ProjectValidator.ThrowIfInvalid(working);
+        }
+        catch (ZeyoCutException ex)
+        {
+            throw new ZeyoCutException($"can't {verb} '{step.Label}' on top of what another program changed since: {ex.Message}", ex);
+        }
+
+        return working;
+    }
+
+    private static string And(List<string> items) =>
+        items.Count == 1 ? items[0] : string.Join(", ", items[..^1]) + " and " + items[^1];
+
     private ZeyoCutException NotSaved(string problem) =>
         new($"{ProjectStore.ProjectFileName} was changed by another program and can't be read ({problem}), so nothing was saved; "
             + $"fix the file, or put a backup back with restore_backup (the open project is revision {_project.Revision})");
@@ -362,11 +437,15 @@ public sealed class ProjectSession
         Took(outside, bytes, stamp);
         if (items.Count > 0)
         {
-            _undo.Clear();
-            _redo.Clear();
-            _undoStop = $"nothing more to undo: undo stops at revision {outside.Revision}, which another program saved "
-                + $"(restore_backup lists the copies of {ProjectStore.ProjectFileName} kept before each save)";
-            _outside.Add(new OutsideChange(outside.Revision, edits, items, null));
+            var change = new OutsideChange(outside.Revision, edits, items, null);
+            _outside.Add(change);
+            _outsideLog.Add(change);
+            if (_outsideLog.Count > MaxUndo)
+            {
+                _outsideLog.RemoveAt(0);
+            }
+
+            _outsideCount++;
         }
 
         return true;
@@ -392,35 +471,42 @@ public sealed class ProjectSession
 
     // The edits other programs saved since this session last looked, oldest first, from the
     // backups they kept (project-<time> before <edit>.json). A hand edit keeps none.
+    // (The one this session knew may have been pruned since: those older than it don't count.)
     private List<string> EditsSince()
     {
         var backups = ProjectBackups.List(Directory);
-        var newer = backups.TakeWhile(b => b.Name != _newestBackup).ToList();
-        _newestBackup = backups.FirstOrDefault()?.Name ?? _newestBackup;
+        var known = _newestBackup;
+        var newer = backups.TakeWhile(b => known is null || (b.Name != known.Name && b.Time >= known.Time)).ToList();
+        _newestBackup = backups.FirstOrDefault() ?? _newestBackup;
         return newer.Select(b => b.Before).OfType<string>().Reverse().ToList();
     }
 
     private void Commit(ProjectLock held, string label, string before, Project working)
     {
         ProjectValidator.ThrowIfInvalid(working);
+        var changes = ProjectDiff.Changes(_project, working);
         Save(held, working, label);
-        _undo.AddLast((label, before));
+        AddStep(new Step(label, before, changes, _outsideCount, working.Revision));
+        _redo.Clear();
+    }
+
+    private void AddStep(Step step)
+    {
+        _undo.AddLast(step);
         if (_undo.Count > MaxUndo)
         {
             _undo.RemoveFirst();
         }
-
-        _redo.Clear();
     }
 
-    // The project.json being replaced goes to backups\ first.
+    // The project.json being replaced goes to backups\ first, labelled with the program and edit.
     private void Save(ProjectLock held, Project project, string label)
     {
-        var backup = ProjectBackups.Add(Directory, label);
+        var backup = ProjectBackups.Add(Directory, _program + label);
         Write(held, project);
         if (backup is not null)
         {
-            _newestBackup = Path.GetFileNameWithoutExtension(backup);
+            _newestBackup = ProjectBackups.Describe(backup) ?? _newestBackup;
         }
     }
 
@@ -438,4 +524,14 @@ public sealed class ProjectSession
         _stamp = ProjectStore.Stamp(Directory);
         _unreadable = null;
     }
+
+    // One step undo can take back (or redo put back): its label, the whole project.json it puts
+    // back when no other program saved since (the version before the step; for redo, the one
+    // before the undo), the items it changed, how many outside changes had come by then, and the
+    // revision it saved.
+    private sealed record Step(string Label, string Json, IReadOnlyList<ItemDelta> Changes, int Outside, long Revision);
 }
+
+// One entry of a session's history: a step this session saved, which undo can take back, or a
+// change another program saved (Outside; Label lists the edits it saved), which it can't.
+public sealed record HistoryEntry(string Label, long Revision, OutsideChange? Outside);

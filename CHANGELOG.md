@@ -14,7 +14,13 @@ when they open.
   have a project open at once without overwriting each other. A save holds `project.lock`, checks
   `project.json` by its SHA-256 and makes the edit on top of another program's version. Before each
   tool call the server takes a newer `project.json`, and the reply starts with a note listing what
-  changed (up to 10 items). Undo stops at a change another program saved.
+  changed (up to 10 items).
+- **Undo alongside another program:** after another program saves, `undo` and `redo` put back only
+  what each step changed, and the other program's changes stay. They're refused, with the items
+  named, when the other program changed the same layers or settings since.
+- **`trim_layer`:** trims a layer's start, end or both, as dragging the edge of a clip does. Trimming
+  in cuts the layer and its children shorter; trimming out shows more, as far as a clip's source
+  goes. Fades stay at the new edges.
 - **Project format 7:** `revision`, the count of saves. It never goes back, even after undo, redo,
   `restore_backup` or an older `project.json` put back by hand. Older projects update as they open.
 
@@ -22,6 +28,8 @@ when they open.
 
 - A program reading `project.json` no longer holds up a save: saves rename the new file over the
   old one even while a reader that shares delete access has it open.
+- `backups\` keeps the last 20 saves of the ZeyoCut editor (labelled `editor ...`) apart from the
+  last 20 others, so a burst of edits in the editor can't push out the server's.
 
 ### Fixed
 

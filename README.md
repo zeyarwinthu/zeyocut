@@ -201,7 +201,7 @@ To try your own build, point the MCP client at `src\ZeyoCut.Mcp\bin\Debug\net10.
 
 ## Limitations
 
-- Undo history lives in memory for the current server session (200 steps), and stops at a change another program saved to the project. `project.json` itself always holds the latest state, and `backups\` the 20 before it.
+- Undo history lives in memory for the current server session (200 steps). After another program saves the project, undo takes back only what each step changed, and is refused where that program changed the same items. `project.json` itself always holds the latest state, and `backups\` the 20 before it.
 - One project is open at a time.
 - The preview page plays frames of up to 640 px, about 15 a second, drawn when first shown, so a part's first play can stutter. `render_frame` shows the full size.
 - The finished video is MP4 (H.264 + AAC) only. Other editors get the timeline instead, from `export_otio` and `export_fcpxml`.

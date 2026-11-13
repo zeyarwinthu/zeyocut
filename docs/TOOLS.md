@@ -3,7 +3,7 @@
 
 # Tool reference
 
-The `zeyocut` server has 90 tools and 4 [workflow prompts](#workflow-prompts). Each is listed here as the server describes it to the model, with its parameters. The [guide](GUIDE.md) shows how they work together, with an example call and the real response for each. One more tool, `describe_clip`, appears only when a clip describer is configured (see the [guide](GUIDE.md#optional-describe_clip)).
+The `zeyocut` server has 91 tools and 4 [workflow prompts](#workflow-prompts). Each is listed here as the server describes it to the model, with its parameters. The [guide](GUIDE.md) shows how they work together, with an example call and the real response for each. One more tool, `describe_clip`, appears only when a clip describer is configured (see the [guide](GUIDE.md#optional-describe_clip)).
 
 | Tool | What it does |
 |---|---|
@@ -93,6 +93,7 @@ The `zeyocut` server has 90 tools and 4 [workflow prompts](#workflow-prompts). E
 | [`text_occlusion`](#text_occlusion) | Measure how much of a text layer is covered by what is drawn above it (a subject cutout from text_behind_subject, or any other layer), frame by frame: the min, max and average share of the text hidden, and the frames in runs of equal values (every frame is saved to renders/text_occlusion_&lt;id&gt;_&lt;first&gt;-&lt;last&gt;.json). |
 | [`track_object`](#track_object) | Follow an object through a video clip with OpenCV and save its box on every frame as a track (one undo step). |
 | [`tracks_to_keyframes`](#tracks_to_keyframes) | Turn a hidden track's box into keyframes on its redaction (one undo step), to edit by hand: x, y, width and height keyframes named &lt;track&gt;.x, &lt;track&gt;.y, &lt;track&gt;.width and &lt;track&gt;.height on the redaction layer, made from the fail-safe box (padding, gaps, holds and smoothing included) and kept only where needed to stay within 0.2 px of it. |
+| [`trim_layer`](#trim_layer) | Trim a layer's start, end or both, as dragging the edge of a clip does: the rest stays where it is on the timeline. |
 | [`undo`](#undo) | Undo the last change to the open project (in-memory history of this session, up to 200 steps). |
 | [`update_layer`](#update_layer) | Change static fields of a layer. |
 | [`update_project`](#update_project) | Change the open project's settings. |
@@ -873,7 +874,7 @@ Where a finished export's time went: per stage (evaluating keyframes, decoding v
 
 ### `restore_backup`
 
-List the open project's backups, newest first, or put one back. Before every save the project.json being replaced is copied to the project's backups folder, named after the edit saved over it; the last 20 are kept. When open_project updates a file from an older ZeyoCut, the file as it was is kept there too, for good. Backups hold project.json only, not the assets. Restoring is one undo step, and what it replaces is backed up as well.
+List the open project's backups, newest first, or put one back. Before every save the project.json being replaced is copied to the project's backups folder, named after the edit saved over it; the last 20 are kept, and the last 20 the editor saved besides (labelled editor ...). When open_project updates a file from an older ZeyoCut, the file as it was is kept there too, for good. Backups hold project.json only, not the assets. Restoring is one undo step, and what it replaces is backed up as well.
 
 | Parameter | Type | Description |
 |---|---|---|
@@ -1086,9 +1087,19 @@ Turn a hidden track's box into keyframes on its redaction (one undo step), to ed
 |---|---|---|
 | `trackId` | string, required | The track whose box to turn into keyframes; apply_redaction must hide it first. |
 
+### `trim_layer`
+
+Trim a layer's start, end or both, as dragging the edge of a clip does: the rest stays where it is on the timeline. Trimming in cuts the layer and its children shorter, keyframes included (a child with nothing left is removed); trimming out shows more of it, as far as a video or audio layer's source goes. Fades stay at the new edges. The project grows if the layer now runs past the end.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `layerId` | string, required |  |
+| `start` | number | New start time, seconds. Leave out to keep the start. |
+| `end` | number | New end time, seconds. Leave out to keep the end. |
+
 ### `undo`
 
-Undo the last change to the open project (in-memory history of this session, up to 200 steps). It stops at a change another program (such as the editor) saved to project.json, since going back past it would undo that change too.
+Undo the last change to the open project (in-memory history of this session, up to 200 steps). When another program (such as the editor) has saved since, only what that change did is put back, and the other program's changes stay; it's refused when the other program changed the same layers or settings since.
 
 No parameters.
 

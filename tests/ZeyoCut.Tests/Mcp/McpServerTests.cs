@@ -21,7 +21,7 @@ public class McpServerTests
         "render_frame", "render_contact_sheet", "preview_server",
         "start_export", "get_export_status", "report_render_stats", "export_language_versions",
         "import_video", "add_video_layer", "get_job_status", "reframe_to_vertical",
-        "split_layer", "remove_range", "move_layer", "set_speed", "add_transition",
+        "split_layer", "remove_range", "move_layer", "trim_layer", "set_speed", "add_transition",
         "add_markers", "remove_markers", "export_markers", "build_from_script",
         "analyze_video", "get_transcript", "view_source", "remove_silences", "cut_by_transcript",
         "generate_captions", "add_caption_track", "export_srt", "import_srt",
@@ -345,6 +345,14 @@ public class McpServerTests
         var moved = await CallOk(client, "move_layer", new() { ["layerId"] = "street_clip", ["start"] = 0.25 }, ct);
         Assert.Contains("moved 'street_clip' by +0.25s: now 0.25–1.25s", moved);
 
+        Assert.Contains("trimmed 'street_clip': now 0.25–1s (was 0.25–1.25s)", await CallOk(client, "trim_layer", new() { ["layerId"] = "street_clip", ["end"] = 1 }, ct));
+        Assert.Contains("trimmed 'street_clip': now 0–1s (was 0.25–1s)", await CallOk(client, "trim_layer", new() { ["layerId"] = "street_clip", ["start"] = 0 }, ct));
+        var tooLong = await Call(client, "trim_layer", new() { ["layerId"] = "street_clip", ["end"] = 2 }, ct);
+        Assert.True(tooLong.IsError);
+        Assert.Contains("'street_clip' can end at 1.25s at the latest: its source has nothing after that", Text(tooLong));
+
+        await CallOk(client, "undo", new(), ct);
+        await CallOk(client, "undo", new(), ct);
         await CallOk(client, "undo", new(), ct);
         await CallOk(client, "undo", new(), ct);
         await CallOk(client, "undo", new(), ct);

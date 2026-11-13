@@ -56,7 +56,7 @@ public class SyncTests
     }
 
     [Fact]
-    public void UndoStopsAtAChangeAnotherProgramSaved()
+    public void UndoTakesBackOnlyWhatItsStepChangedOnceAnotherProgramSaved()
     {
         var directory = TestPaths.NewDirectory("sync-undo");
         var server = ProjectSession.Create(directory, TestProjects.Empty(duration: 3));
@@ -66,15 +66,19 @@ public class SyncTests
 
         server.Mutate("update_project", p => p.Name = "renamed");
         Assert.Equal(6, server.Read(p => p.Duration));
-        Assert.Equal(1, server.UndoCount);
+        Assert.Equal(2, server.UndoCount);
         Assert.Equal(0, server.RedoCount);
 
         Assert.Equal("update_project", server.Undo());
         Assert.Equal("test", server.Read(p => p.Name));
         Assert.Equal(6, server.Read(p => p.Duration));
+
+        // The first step set the duration, which the editor changed since.
         var error = Assert.Throws<ZeyoCutException>(() => server.Undo());
-        Assert.Equal("nothing more to undo: undo stops at revision 3, which another program saved (restore_backup lists the copies of project.json kept before each save)", error.Message);
+        Assert.Equal("can't undo 'update_project': another program changed the project's duration since that edit (saved: editor update_project), "
+            + "and undoing it would throw that change away. restore_backup lists the copies of project.json kept before each save", error.Message);
         Assert.Equal(6, ProjectStore.Load(directory).Duration);
+        Assert.Equal(1, server.UndoCount);
 
         Assert.Equal("update_project", server.Redo());
         Assert.Equal("renamed", ProjectStore.Load(directory).Name);

@@ -1,0 +1,227 @@
+// SPDX-License-Identifier: MIT
+
+using System.Text.Json.Nodes;
+using ZeyoCut.Core;
+using ZeyoCut.Core.Editing;
+using ZeyoCut.Core.Model;
+using ZeyoCut.Core.Serialization;
+using ZeyoCut.Tests.TestSupport;
+
+namespace ZeyoCut.Tests.Core;
+
+// trim_layer, and the operations the editor records: each makes the change its MCP tool makes.
+public class EditOperationTests
+{
+    private static T Layer<T>(Project project, string id) where T : Layer => Assert.IsType<T>(project.FindLayer(id));
+
+    [Fact]
+    public void TrimmingInCutsTheLayerAndItsChildrenAndKeepsTheFades()
+    {
+        var project = TestProjects.Footage();
+        var end = TimelineEditor.TrimLayer(project, "clip_2", null, 7);
+        Assert.Equal("trimmed 'clip_2': now 4–7s (was 4–8s)", end.Summary);
+        var clip = Layer<VideoLayer>(project, "clip_2");
+        Assert.Equal((4.0, 4.0, 7.0, 0.5), (clip.Start, clip.TrimIn, clip.TrimOut, clip.FadeOut));
+        Assert.Equal((4.0, 7.0), (project.FindLayer("label")!.Start, project.FindLayer("label")!.End));
+
+        // Trimming doesn't shorten the project.
+        Assert.Equal(8, project.Duration);
+        Assert.Equal(end.OldDuration, end.NewDuration);
+
+        var start = TimelineEditor.TrimLayer(project, "clip_2", 5, null);
+        Assert.Equal("trimmed 'clip_2': now 5–7s (was 4–7s)", start.Summary);
+        clip = Layer<VideoLayer>(project, "clip_2");
+        Assert.Equal((5.0, 5.0, 7.0, 0.0, 0.5), (clip.Start, clip.TrimIn, clip.TrimOut, clip.FadeIn, clip.FadeOut));
+        Assert.Equal((5.0, 7.0), (project.FindLayer("label")!.Start, project.FindLayer("label")!.End));
+
+        // Both edges at once; the first clip keeps its fade in.
+        TimelineEditor.TrimLayer(project, "clip_1", 1, 3);
+        var first = Layer<VideoLayer>(project, "clip_1");
+        Assert.Equal((1.0, 1.0, 3.0, 0.5), (first.Start, first.TrimIn, first.TrimOut, first.FadeIn));
+    }
+
+    [Fact]
+    public void TrimmingInRemovesAChildWithNothingLeft()
+    {
+        var project = TestProjects.Footage();
+        ProjectEditor.AddTextLayer(project, new TextLayerOptions { Id = "tag", Text = "Tag", ParentId = "clip_2", Start = 4, End = 5 });
+        var change = TimelineEditor.TrimLayer(project, "clip_2", 6, null);
+        Assert.Equal("trimmed 'clip_2': now 6–8s (was 4–8s); removed 'tag', which had nothing left", change.Summary);
+        Assert.Null(project.FindLayer("tag"));
+        Assert.Equal(6, project.FindLayer("label")!.Start);
+    }
+
+    [Fact]
+    public void TrimmingOutShowsMoreAsFarAsTheSourceGoes()
+    {
+        var project = TestProjects.Footage();
+        var change = TimelineEditor.TrimLayer(project, "clip_2", null, 10);
+        Assert.Equal("trimmed 'clip_2': now 4–10s (was 4–8s)", change.Summary);
+        Assert.Equal((8.0, 10.0), (change.OldDuration, change.NewDuration));
+        Assert.Equal(10, Layer<VideoLayer>(project, "clip_2").TrimOut);
+        Assert.Equal(10, project.Duration);
+
+        // Children stay as they are.
+        Assert.Equal(8, project.FindLayer("label")!.End);
+
+        var late = Assert.Throws<ZeyoCutException>(() => TimelineEditor.TrimLayer(project, "clip_2", null, 10.5));
+        Assert.Equal("'clip_2' can end at 10s at the latest: its source has nothing after that", late.Message);
+
+        TimelineEditor.TrimLayer(project, "clip_2", 2, null);
+        var clip = Layer<VideoLayer>(project, "clip_2");
+        Assert.Equal((2.0, 2.0, 10.0), (clip.Start, clip.TrimIn, clip.TrimOut));
+
+        // Sound: the music can end where its 20 s run out, and start no earlier than its source.
+        TimelineEditor.MoveLayer(project, "music", 1);
+        var early = Assert.Throws<ZeyoCutException>(() => TimelineEditor.TrimLayer(project, "music", 0.5, null));
+        Assert.Equal("'music' can start at 1s at the earliest: its source has nothing before that", early.Message);
+        var past = Assert.Throws<ZeyoCutException>(() => TimelineEditor.TrimLayer(project, "music", null, 22));
+        Assert.Equal("'music' can end at 21s at the latest: its source has nothing after that", past.Message);
+        TimelineEditor.TrimLayer(project, "music", 3, 21);
+        var music = Layer<AudioLayer>(project, "music");
+        Assert.Equal((3.0, 2.0, 21.0, 1.0), (music.Start, music.TrimIn, music.End!.Value, music.FadeOut));
+        Assert.Equal(21, project.Duration);
+
+        // Text and pictures have no source to run out of.
+        TimelineEditor.TrimLayer(project, "title", null, 25);
+        Assert.Equal((0.0, 25.0), (project.FindLayer("title")!.Start, project.FindLayer("title")!.End));
+        Assert.Equal(25, project.Duration);
+    }
+
+    [Fact]
+    public void ALayerWithoutAnEndCanBeTrimmed()
+    {
+        var project = TestProjects.Footage();
+        project.Assets.Add(new Asset { Id = "logo", Type = AssetType.Image, File = "assets/logo.png", Width = 200, Height = 100 });
+        ProjectEditor.AddImageLayer(project, new ImageLayerOptions { Id = "logo", Drawings = new Dictionary<string, string> { ["normal"] = "logo" } });
+        Assert.Null(project.FindLayer("logo")!.End);
+
+        Assert.Equal("trimmed 'logo': now 0–2s (was 0–8s)", TimelineEditor.TrimLayer(project, "logo", null, 2).Summary);
+        Assert.Equal(2, project.FindLayer("logo")!.End);
+        TimelineEditor.TrimLayer(project, "logo", 1, 9);
+        Assert.Equal((1.0, 9.0, 9.0), (project.FindLayer("logo")!.Start, project.FindLayer("logo")!.End!.Value, project.Duration));
+    }
+
+    [Fact]
+    public void TrimmingNeedsANewEdge()
+    {
+        var project = TestProjects.Footage();
+        Assert.Equal("give a new start, a new end or both", Assert.Throws<ZeyoCutException>(() => TimelineEditor.TrimLayer(project, "clip_2", null, null)).Message);
+        Assert.Equal("the end (5s) must be after the start (6s)", Assert.Throws<ZeyoCutException>(() => TimelineEditor.TrimLayer(project, "clip_2", 6, 5)).Message);
+        Assert.Equal("layer 'clip_2' already runs 4–8s", Assert.Throws<ZeyoCutException>(() => TimelineEditor.TrimLayer(project, "clip_2", 4, 8)).Message);
+        Assert.Equal("start must be >= 0 and the times finite (got -1–8)", Assert.Throws<ZeyoCutException>(() => TimelineEditor.TrimLayer(project, "clip_2", -1, null)).Message);
+        Assert.Contains("nope", Assert.Throws<ZeyoCutException>(() => TimelineEditor.TrimLayer(project, "nope", 1, null)).Message);
+        Assert.Equal(ProjectJson.Serialize(TestProjects.Footage()), ProjectJson.Serialize(project));
+    }
+
+    [Fact]
+    public void OperationsMakeTheSameChangesAsTheEditorsTheirToolsCall()
+    {
+        var volume = new JsonObject { ["volume"] = 0.3 };
+        var cases = new (EditOperation Operation, Action<Project> Direct)[]
+        {
+            (new MoveLayerOperation("clip_2", 9), p => TimelineEditor.MoveLayer(p, "clip_2", 9)),
+            (new TrimLayerOperation("clip_2", 5, 7), p => TimelineEditor.TrimLayer(p, "clip_2", 5, 7)),
+            (new SplitLayerOperation("clip_2", 6), p => TimelineEditor.SplitLayer(p, "clip_2", 6)),
+            (new RemoveLayerOperation("clip_2", WithChildren: true), p => ProjectEditor.RemoveLayer(p, "clip_2", withChildren: true)),
+            (new RemoveLayerOperation("label", WithChildren: false), p => ProjectEditor.RemoveLayer(p, "label", withChildren: false)),
+            (new UpdateLayerOperation("music", volume), p => ProjectEditor.UpdateLayer(p, "music", new JsonObject { ["volume"] = 0.3 })),
+            (new ReorderLayerOperation("title", 2), p => ProjectEditor.UpdateLayer(p, "title", new JsonObject { ["zIndex"] = 2 })),
+        };
+        foreach (var (operation, direct) in cases)
+        {
+            var applied = TestProjects.Footage();
+            operation.Apply(applied);
+            var expected = TestProjects.Footage();
+            direct(expected);
+            Assert.Equal(ProjectJson.Serialize(expected), ProjectJson.Serialize(applied));
+        }
+
+        // The same operation applies again (its changes are copied each time).
+        var again = TestProjects.Footage();
+        cases[5].Operation.Apply(again);
+        Assert.Equal(0.3, Layer<AudioLayer>(again, "music").Volume);
+    }
+
+    [Fact]
+    public void OperationsAreLabelledAndSummedUpLikeTheirTools()
+    {
+        var project = TestProjects.Footage();
+        var move = new MoveLayerOperation("title", 1);
+        Assert.Equal("move_layer title", move.Label);
+        Assert.Equal(["title"], move.Layers);
+        Assert.Equal("moved 'title' by +1s: now 1–4s", move.Apply(project));
+
+        var trim = new TrimLayerOperation("clip_2", null, 7);
+        Assert.Equal("trim_layer clip_2", trim.Label);
+        Assert.Equal("trimmed 'clip_2': now 4–7s (was 4–8s)", trim.Apply(project));
+
+        var split = new SplitLayerOperation("clip_1", 2);
+        Assert.Equal("split_layer clip_1", split.Label);
+        Assert.Equal("split 'clip_1' at 2s into 'clip_1' and 'clip_3'", split.Apply(project));
+
+        var remove = new RemoveLayerOperation("clip_2", WithChildren: true);
+        Assert.Equal("remove_layer clip_2", remove.Label);
+        Assert.Equal("removed: clip_2, label", remove.Apply(project));
+
+        var reorder = new ReorderLayerOperation("title", 1);
+        Assert.Equal("reorder_layer title", reorder.Label);
+        Assert.Equal("'title' now draws at z=1", reorder.Apply(project));
+        Assert.Equal(1, Layer<TextLayer>(project, "title").ZIndex);
+    }
+
+    [Fact]
+    public void UpdateLayerOperationChangesSoundFadesAndCaptions()
+    {
+        var project = TestProjects.Footage();
+        var captions = TestProjects.AddCaptions(project);
+
+        var louder = new UpdateLayerOperation("music", new JsonObject { ["volume"] = 0.25, ["fadeIn"] = 1.5 });
+        Assert.Equal(("update_layer music", "updated layer 'music'"), (louder.Label, louder.Apply(project)));
+        var music = Layer<AudioLayer>(project, "music");
+        Assert.Equal((0.25, 1.5, 1.0), (music.Volume, music.FadeIn, music.FadeOut));
+
+        // An audio layer is muted by hiding it.
+        new UpdateLayerOperation("music", new JsonObject { ["visible"] = false }).Apply(project);
+        Assert.False(Layer<AudioLayer>(project, "music").Visible);
+
+        new UpdateLayerOperation("clip_2", new JsonObject { ["fadeIn"] = 0.25, ["fadeOut"] = 0 }).Apply(project);
+        Assert.Equal((0.25, 0.0), (Layer<VideoLayer>(project, "clip_2").FadeIn, Layer<VideoLayer>(project, "clip_2").FadeOut));
+
+        // A caption's text and timing.
+        var cue = captions.LayerIds[0];
+        new UpdateLayerOperation(cue, new JsonObject { ["text"] = "Hi there", ["start"] = 0.5, ["end"] = 1.75 }).Apply(project);
+        var text = Layer<TextLayer>(project, cue);
+        Assert.Equal(("Hi there", 0.5, 1.75), (text.Text, text.Start, text.End!.Value));
+        Assert.Equal(captions.GroupId, text.ParentId);
+    }
+
+    [Fact]
+    public void ABatchIsOneStepAndKeepsNothingWhenAPartFails()
+    {
+        var directory = TestPaths.NewDirectory("edit-batch");
+        ProjectSession.Create(directory, TestProjects.Footage());
+        var file = Path.Combine(directory, ProjectStore.ProjectFileName);
+        var original = TestProjects.WithoutRevision(File.ReadAllText(file));
+        var document = EditorDocument.Open(directory);
+        var drag = new BatchOperation("drag clip_2", [new MoveLayerOperation("clip_2", 5), new ReorderLayerOperation("clip_2", 3)]);
+        Assert.Equal(["clip_2"], drag.Layers);
+        Assert.True(document.Apply(drag));
+        Assert.Equal(1, document.Session.UndoCount);
+        var saved = ProjectStore.Load(directory);
+        Assert.Equal((5.0, 3), (saved.FindLayer("clip_2")!.Start, Layer<VideoLayer>(saved, "clip_2").ZIndex));
+        Assert.Equal("drag clip_2", ProjectBackups.List(directory)[0].Before![(ProjectBackups.EditorProgram.Length + 1)..]);
+
+        var bad = new BatchOperation("drag clip_1", [new MoveLayerOperation("clip_1", 1), new TrimLayerOperation("clip_1", null, 20)]);
+        Assert.Equal(["clip_1"], bad.Layers);
+        Assert.False(document.Apply(bad));
+        Assert.Equal("drag clip_1 wasn't saved: 'clip_1' can end at 11s at the latest: its source has nothing after that", document.Status);
+        Assert.Equal(saved.Revision, ProjectStore.Load(directory).Revision);
+        Assert.Equal(0, document.View.FindLayer("clip_1")!.Start);
+
+        Assert.Equal("the batch has no operations", Assert.Throws<ZeyoCutException>(() => new BatchOperation("nothing", []).Apply(TestProjects.Footage())).Message);
+
+        Assert.True(document.Undo());
+        Assert.Equal(original, TestProjects.WithoutRevision(File.ReadAllText(file)));
+    }
+}

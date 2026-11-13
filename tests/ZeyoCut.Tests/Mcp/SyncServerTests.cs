@@ -55,11 +55,15 @@ public class SyncServerTests
         Assert.Equal(40, title.GetProperty("fontSize").GetDouble());
         Assert.Equal(5, ProjectStore.Load(directory).Revision);
 
-        // Undo goes back to the editor's version, and no further.
-        Assert.StartsWith("undid: update_layer title (0 more undo step(s), 1 redo step(s))", await CallOk(client, "undo", new(), ct));
+        // Undo takes back the server's own edit and keeps the editor's. It can't take back adding
+        // 'title': the editor changed it since.
+        Assert.StartsWith("undid: update_layer title (1 more undo step(s), 1 redo step(s))", await CallOk(client, "undo", new(), ct));
         var stopped = await Call(client, "undo", new(), ct);
         Assert.True(stopped.IsError == true);
-        Assert.Contains("nothing more to undo: undo stops at revision 4, which another program saved (restore_backup lists the copies of project.json kept before each save)", Text(stopped));
+        Assert.Contains(
+            "can't undo 'add_text_layer title': another program changed layer 'title' since that edit (saved: editor update_layer title, editor add_markers (1 marker)), "
+            + "and undoing it would throw that change away. restore_backup lists the copies of project.json kept before each save",
+            Text(stopped));
         var undone = ProjectStore.Load(directory);
         Assert.Equal(6, undone.Revision);
         Assert.Equal("Edited", ((TextLayer)undone.FindLayer("title")!).Text);

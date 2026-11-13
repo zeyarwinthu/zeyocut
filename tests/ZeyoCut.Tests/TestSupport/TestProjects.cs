@@ -65,6 +65,26 @@ public static class TestProjects
         return project;
     }
 
+    // Two clips of one 10 s video back to back: clip_1 shows source 0–4 s at 0–4 s (fade in 0.5 s)
+    // and clip_2 source 4–8 s at 4–8 s (fade out 0.5 s), with the text 'label' under clip_2. Music
+    // (20 s long, volume 0.8, fade out 1 s) plays 0–8 s and a title shows 0–3 s. 8 s long.
+    public static Project Footage()
+    {
+        var project = Empty(duration: 8);
+        project.Assets.Add(new Asset { Id = "clip", Type = AssetType.Video, File = "assets/clip.mp4", Width = 640, Height = 360, FrameRate = "30", FrameCount = 300, Duration = 10, HasAudio = true, Codec = "h264" });
+        project.Assets.Add(new Asset { Id = "music", Type = AssetType.Audio, File = "assets/music.wav", Duration = 20 });
+        ProjectEditor.AddVideoLayer(project, new VideoLayerOptions { Asset = "clip", Id = "clip_1", Start = 0, TrimIn = 0, TrimOut = 4, FadeIn = 0.5 });
+        ProjectEditor.AddVideoLayer(project, new VideoLayerOptions { Asset = "clip", Id = "clip_2", Start = 4, TrimIn = 4, TrimOut = 8, FadeOut = 0.5 });
+        ProjectEditor.AddTextLayer(project, new TextLayerOptions { Id = "label", Text = "Second", ParentId = "clip_2", Start = 4, End = 8, ZIndex = 5 });
+        ProjectEditor.AddAudioLayer(project, new AudioLayerOptions { Asset = "music", Id = "music", End = 8, Volume = 0.8, FadeOut = 1 });
+        ProjectEditor.AddTextLayer(project, new TextLayerOptions { Id = "title", Text = "Hello", Start = 0, End = 3, ZIndex = 10 });
+        return project;
+    }
+
+    // An English caption track of two captions, 0–2 s and 2–4 s, as add_caption_track adds it.
+    public static CaptionTrack AddCaptions(Project project) =>
+        CaptionTracks.Add(project, "en", CaptionTracks.Check([new CueEntry(0, 2, "Hello"), new CueEntry(2, 4, "World")], project.Duration).Cues, new CaptionOptions(), [], null);
+
     // project.json's text with its revision left out, to compare content saved as different revisions.
     public static string WithoutRevision(string json) => Regex.Replace(json, @"""revision"": \d+,\r?\n\s*", "");
 }

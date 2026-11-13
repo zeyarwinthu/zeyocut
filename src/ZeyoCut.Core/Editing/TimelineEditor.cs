@@ -204,6 +204,88 @@ public static partial class TimelineEditor
         return new TimelineChange($"moved '{layerId}'{moved} by {Signed(delta)}s: now {Num(layer.Start)}–{Num(ContentEnd(project, layer))}s", oldDuration, project.Duration, EndWarnings(project));
     }
 
+    // Moves a layer's start, its end or both on the timeline, the way an editor's trim does: what
+    // plays at every other time stays where it is. Trimming in cuts the layer and its children the
+    // way remove_range does without ripple (keyframes stay in step, and a child left with nothing
+    // goes); the layer keeps its fade at that edge. Trimming out uncovers more: of a clip's or a
+    // sound's file as far as it goes, of an image or text back to 0 or on past the end, which then
+    // grows the project. Children are not lengthened.
+    public static TimelineChange TrimLayer(Project project, string layerId, double? start, double? end)
+    {
+        var layer = SubjectEditor.GetEditableLayer(project, layerId);
+        if (start is null && end is null)
+        {
+            throw new ZeyoCutException("give a new start, a new end or both");
+        }
+
+        var oldStart = layer.Start;
+        var oldEnd = ContentEnd(project, layer);
+        var newStart = start ?? oldStart;
+        var newEnd = end ?? oldEnd;
+        if (!double.IsFinite(newStart) || !double.IsFinite(newEnd) || newStart < 0)
+        {
+            throw new ZeyoCutException($"start must be >= 0 and the times finite (got {Num(newStart)}–{Num(newEnd)})");
+        }
+
+        if (newEnd <= newStart + Epsilon)
+        {
+            throw new ZeyoCutException($"the end ({Num(newEnd)}s) must be after the start ({Num(newStart)}s)");
+        }
+
+        if (Math.Abs(newStart - oldStart) < Epsilon && Math.Abs(newEnd - oldEnd) < Epsilon)
+        {
+            throw new ZeyoCutException($"layer '{layerId}' already runs {Num(oldStart)}–{Num(oldEnd)}s");
+        }
+
+        var before = HandleBefore(layer);
+        if (oldStart - newStart > before + Epsilon)
+        {
+            throw new ZeyoCutException($"'{layerId}' can start at {Num(oldStart - before)}s at the earliest: its source has nothing before that");
+        }
+
+        var after = HandleAfter(project, layer);
+        if (newEnd - oldEnd > after + Epsilon)
+        {
+            throw new ZeyoCutException($"'{layerId}' can end at {Num(oldEnd + after)}s at the latest: its source has nothing after that");
+        }
+
+        var oldDuration = project.Duration;
+        var removed = new List<string>();
+        if (newStart > oldStart + Epsilon)
+        {
+            var fadeIn = Fades(layer).In;
+            removed.AddRange(CutAway(project, layerId, double.NegativeInfinity, newStart));
+            SetFades(project.FindLayer(layerId)!, fadeIn: fadeIn);
+        }
+
+        if (newEnd < oldEnd - Epsilon)
+        {
+            var fadeOut = Fades(layer).Out;
+            removed.AddRange(CutAway(project, layerId, newEnd, double.PositiveInfinity));
+            SetFades(project.FindLayer(layerId)!, fadeOut: fadeOut);
+        }
+
+        layer = project.FindLayer(layerId)!;
+        if (newStart < oldStart - Epsilon)
+        {
+            ExtendStart(layer, oldStart - newStart);
+            layer.Start = KeyframeWindow.Round(newStart);
+        }
+
+        if (newEnd > oldEnd + Epsilon)
+        {
+            ExtendEnd(project, layer, newEnd - oldEnd);
+            ProjectEditor.ExtendToFit(project, ContentEnd(project, layer));
+        }
+
+        var gone = removed.Count > 0 ? $"; removed {string.Join(", ", removed.Select(id => $"'{id}'"))}, which had nothing left" : "";
+        return new TimelineChange(
+            $"trimmed '{layerId}': now {Num(layer.Start)}–{Num(ContentEnd(project, layer))}s (was {Num(oldStart)}–{Num(oldEnd)}s){gone}",
+            oldDuration,
+            project.Duration,
+            EndWarnings(project));
+    }
+
     public static TimelineChange SetSpeed(Project project, string layerId, double speed, bool ripple)
     {
         var layer = SubjectEditor.GetEditableLayer(project, layerId);
@@ -1038,6 +1120,41 @@ public static partial class TimelineEditor
                 audio.FadeOut = Math.Max(audio.FadeOut, fadeOut);
                 break;
         }
+    }
+
+    private static (double In, double Out) Fades(Layer layer) => layer switch
+    {
+        VideoLayer video => (video.FadeIn, video.FadeOut),
+        AudioLayer audio => (audio.FadeIn, audio.FadeOut),
+        _ => (0, 0),
+    };
+
+    private static void SetFades(Layer layer, double? fadeIn = null, double? fadeOut = null)
+    {
+        switch (layer)
+        {
+            case VideoLayer video:
+                video.FadeIn = fadeIn ?? video.FadeIn;
+                video.FadeOut = fadeOut ?? video.FadeOut;
+                break;
+            case AudioLayer audio:
+                audio.FadeIn = fadeIn ?? audio.FadeIn;
+                audio.FadeOut = fadeOut ?? audio.FadeOut;
+                break;
+        }
+    }
+
+    // Cuts from..to out of a layer and its children, leaving a gap; returns the layers that had
+    // nothing left (and cutouts that went with them).
+    private static List<string> CutAway(Project project, string layerId, double from, double to)
+    {
+        var targets = ProjectEditor.Subtree(project, layerId);
+        var sets = Cut(project, targets, from, to, mergeStatic: false);
+        AssignIds(project, sets);
+        FixParents(project, sets, targets);
+        Rebuild(project, sets);
+        var followed = SubjectEditor.Follow(project, PieceIds(sets));
+        return sets.Values.Where(s => s.Pieces.Count == 0).Select(s => s.Original.Id).Concat(followed).ToList();
     }
 
     private static bool DrawnAbove(Project project, VisualLayer top, VisualLayer bottom) =>
