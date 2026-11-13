@@ -18,11 +18,28 @@ public static class VideoImport
         return (probe, probe.NormalizeReasons());
     }
 
-    // Copies a file that needs no normalizing into the project and adds it, as one undo step.
-    public static Asset AddAsIs(ProjectSession session, string label, string source, string? id, VideoProbeResult probe)
+    // Copies a file that needs no normalizing into the project's assets folder (AssetImporter.Prepare).
+    public static PreparedAsset Prepare(string projectDirectory, string source, VideoProbeResult probe)
     {
         var info = probe.ToAssetInfo();
-        return session.Mutate(label, p => AssetImporter.Import(p, session.Directory, source, id, new AssetProbe(video: _ => info), AssetType.Video));
+        return AssetImporter.Prepare(projectDirectory, source, new AssetProbe(video: _ => info), AssetType.Video);
+    }
+
+    // A normalized file the project's assets folder already holds, ready to be added.
+    public static PreparedAsset PrepareNormalized(string projectDirectory, string output, VideoProbeResult normalized)
+    {
+        var info = normalized.ToAssetInfo();
+        return AssetImporter.Prepare(projectDirectory, output, new AssetProbe(video: _ => info), AssetType.Video);
+    }
+
+    // What the asset notes about why it was normalized.
+    public static string Reasons(IReadOnlyList<string> reasons) => string.Join("; ", reasons);
+
+    // Copies a file that needs no normalizing into the project, then adds it as one undo step.
+    public static Asset AddAsIs(ProjectSession session, string label, string source, string? id, VideoProbeResult probe)
+    {
+        var prepared = Prepare(session.Directory, source, probe);
+        return session.Mutate(label, p => AssetImporter.Add(p, prepared, id));
     }
 
     // Adds a normalized file the project's assets folder already holds, noting the original and why it
@@ -31,14 +48,8 @@ public static class VideoImport
     {
         try
         {
-            var info = normalized.ToAssetInfo();
-            return session.Mutate(label, p =>
-            {
-                var added = AssetImporter.Import(p, session.Directory, output, id, new AssetProbe(video: _ => info), AssetType.Video);
-                added.OriginalFile = source;
-                added.Normalized = string.Join("; ", reasons);
-                return added;
-            });
+            var prepared = PrepareNormalized(session.Directory, output, normalized);
+            return session.Mutate(label, p => AssetImporter.Add(p, prepared, id, source, Reasons(reasons)));
         }
         catch
         {

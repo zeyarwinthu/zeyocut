@@ -26,8 +26,15 @@ public static class AssetTools
     {
         var session = state.Session;
         var probe = state.AssetProbe;
-        var source = AllowedFolders.Readable(state.Settings, path);
-        var asset = session.Mutate($"import_asset {Path.GetFileName(source)}", p => AssetImporter.Import(p, session.Directory, source, id, probe));
+        var source = AssetImporter.CheckSource(AllowedFolders.Readable(state.Settings, path), null);
+        session.Read(p =>
+        {
+            AssetImporter.CheckNewId(p, id);
+            return 0;
+        });
+
+        var prepared = AssetImporter.Prepare(session.Directory, source, probe);
+        var asset = session.Mutate($"import_asset {Path.GetFileName(source)}", p => AssetImporter.Add(p, prepared, id));
         return $"imported {Describe(asset)}";
     });
 
@@ -81,18 +88,31 @@ public static class AssetTools
 
         var known = new KnownProbe(infos);
         var now = listing.Files.Where(infos.ContainsKey).ToList();
+        var prepared = new List<PreparedAsset>();
+        foreach (var file in now)
+        {
+            try
+            {
+                prepared.Add(AssetImporter.Prepare(session.Directory, file, known, AssetImporter.DetectType(file) == AssetType.Video ? AssetType.Video : null));
+            }
+            catch (Exception ex) when (ex is ZeyoCutException or IOException)
+            {
+                failed.Add($"{Path.GetFileName(file)}: {ex.Message}");
+            }
+        }
+
         var imported = now.Count == 0 ? [] : session.Mutate($"import_folder {Path.GetFileName(listing.Folder)} ({now.Count} file{(now.Count == 1 ? "" : "s")})", p =>
         {
             var added = new List<Asset>();
-            foreach (var file in now)
+            foreach (var file in prepared)
             {
                 try
                 {
-                    added.Add(AssetImporter.Import(p, session.Directory, file, null, known, AssetImporter.DetectType(file) == AssetType.Video ? AssetType.Video : null));
+                    added.Add(AssetImporter.Add(p, file, null));
                 }
                 catch (Exception ex) when (ex is ZeyoCutException or IOException)
                 {
-                    failed.Add($"{Path.GetFileName(file)}: {ex.Message}");
+                    failed.Add($"{Path.GetFileName(file.Source)}: {ex.Message}");
                 }
             }
 

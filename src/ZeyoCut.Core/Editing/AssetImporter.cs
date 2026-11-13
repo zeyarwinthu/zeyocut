@@ -20,6 +20,10 @@ public interface IAssetProbe
     AssetInfo Probe(string path, AssetType type);
 }
 
+// A file Prepare has checked, probed and copied into the project's assets folder (Path), ready to
+// be added as an asset.
+public sealed record PreparedAsset(string Source, string Path, AssetType Type, AssetInfo Info);
+
 public static class AssetImporter
 {
     private static readonly Dictionary<string, AssetType> Extensions = new(StringComparer.OrdinalIgnoreCase)
@@ -100,9 +104,19 @@ public static class AssetImporter
 
     public static Asset Import(Project project, string projectDirectory, string sourcePath, string? id, IAssetProbe probe, AssetType? expected = null)
     {
+        CheckSource(sourcePath, expected);
+        CheckNewId(project, id);
+        return Add(project, Prepare(projectDirectory, sourcePath, probe, expected), id);
+    }
+
+    // Checks and probes the file and copies it into the project's assets folder, without a project
+    // open: a big file is copied before the change that adds it takes project.lock, so the other
+    // program's saves don't wait for the copy. A file already there with the same content is used as
+    // it is.
+    public static PreparedAsset Prepare(string projectDirectory, string sourcePath, IAssetProbe probe, AssetType? expected = null)
+    {
         var source = CheckSource(sourcePath, expected);
         var type = DetectType(source)!.Value;
-        CheckNewId(project, id);
 
         AssetInfo info;
         try
@@ -120,29 +134,33 @@ public static class AssetImporter
 
         var assetsDir = Path.GetFullPath(Path.Combine(projectDirectory, ProjectStore.AssetsFolder));
         Directory.CreateDirectory(assetsDir);
-        var destination = ChooseDestination(assetsDir, source);
-        if (!string.Equals(destination, source, StringComparison.OrdinalIgnoreCase) && !File.Exists(destination))
-        {
-            File.Copy(source, destination);
-        }
+        return new PreparedAsset(source, CopyIn(assetsDir, source), type, info);
+    }
 
+    // Adds a prepared file as an asset, with the id given or one from the file's name. A normalized
+    // video names its original and why it was normalized.
+    public static Asset Add(Project project, PreparedAsset prepared, string? id, string? originalFile = null, string? normalized = null)
+    {
+        CheckNewId(project, id);
         var assetId = !string.IsNullOrWhiteSpace(id)
             ? id
-            : Ids.Unique(Ids.Slug(Path.GetFileNameWithoutExtension(source), EnumNames.ToName(type)), c => project.FindAsset(c) is not null);
+            : Ids.Unique(Ids.Slug(Path.GetFileNameWithoutExtension(prepared.Source), EnumNames.ToName(prepared.Type)), c => project.FindAsset(c) is not null);
 
         var asset = new Asset
         {
             Id = assetId,
-            Type = type,
-            File = $"{ProjectStore.AssetsFolder}/{Path.GetFileName(destination)}",
-            Width = info.Width,
-            Height = info.Height,
-            Duration = info.Duration,
-            FontFamily = info.FontFamily,
-            FrameRate = info.FrameRate,
-            FrameCount = info.FrameCount,
-            HasAudio = info.HasAudio,
-            Codec = info.Codec,
+            Type = prepared.Type,
+            File = $"{ProjectStore.AssetsFolder}/{Path.GetFileName(prepared.Path)}",
+            Width = prepared.Info.Width,
+            Height = prepared.Info.Height,
+            Duration = prepared.Info.Duration,
+            FontFamily = prepared.Info.FontFamily,
+            FrameRate = prepared.Info.FrameRate,
+            FrameCount = prepared.Info.FrameCount,
+            HasAudio = prepared.Info.HasAudio,
+            Codec = prepared.Info.Codec,
+            OriginalFile = originalFile,
+            Normalized = normalized,
         };
         project.Assets.Add(asset);
         return asset;
@@ -196,6 +214,51 @@ public static class AssetImporter
         }
 
         return candidate;
+    }
+
+    // Copies the file into the assets folder under a name of its own, or finds it there. It's copied
+    // under a temporary name and renamed when complete, so a program reading the folder never sees
+    // half a file, and two programs copying files of the same name at once each get one.
+    private static string CopyIn(string assetsDir, string source)
+    {
+        var destination = ChooseDestination(assetsDir, source);
+        if (string.Equals(destination, source, StringComparison.OrdinalIgnoreCase) || File.Exists(destination))
+        {
+            return destination;
+        }
+
+        var partial = Path.Combine(assetsDir, $"{Path.GetFileNameWithoutExtension(destination)}.{Guid.NewGuid():N}.partial{Path.GetExtension(destination)}");
+        try
+        {
+            File.Copy(source, partial);
+            while (true)
+            {
+                try
+                {
+                    File.Move(partial, destination);
+                    return destination;
+                }
+                catch (IOException) when (File.Exists(destination))
+                {
+                    // Another program put a file of that name there meanwhile: use it if it's the same, else the next name.
+                    destination = ChooseDestination(assetsDir, source);
+                    if (File.Exists(destination))
+                    {
+                        File.Delete(partial);
+                        return destination;
+                    }
+                }
+            }
+        }
+        catch
+        {
+            if (File.Exists(partial))
+            {
+                File.Delete(partial);
+            }
+
+            throw;
+        }
     }
 
     private static string ChooseDestination(string assetsDir, string source)

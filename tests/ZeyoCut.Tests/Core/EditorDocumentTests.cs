@@ -162,6 +162,34 @@ public class EditorDocumentTests
     }
 
     [Fact]
+    public void AnImportIsSavedAsAnEdit()
+    {
+        var (_, editor, directory) = Open("editor-import");
+        var source = Path.Combine(TestPaths.NewDirectory("editor-import-src"), "logo.png");
+        File.WriteAllBytes(source, [1, 2, 3]);
+        Assert.True(editor.Apply(new AddAssetOperation(AssetImporter.Prepare(directory, source, new FakeAssetProbe()))));
+        var logo = Assert.IsType<Asset>(ProjectStore.Load(directory).FindAsset("logo"));
+        Assert.Equal(("assets/logo.png", 200), (logo.File, logo.Width));
+        Assert.NotNull(editor.View.FindAsset("logo"));
+        Assert.Equal("editor import_asset logo.png", ProjectBackups.List(directory)[0].Before);
+
+        // A normalized video names its original and why.
+        var output = AssetImporter.NewAssetPath(directory, @"C:\clips\phone.mov", ".mp4");
+        File.WriteAllBytes(output, [7]);
+        var normalized = new PreparedAsset(output, output, AssetType.Video, new AssetInfo(Width: 1920, Height: 1080, Duration: 2, FrameRate: "30", FrameCount: 60, HasAudio: true, Codec: "h264"));
+        Assert.True(editor.Apply(new AddAssetOperation(normalized, null, @"C:\clips\phone.mov", "variable frame rate")), editor.Status);
+        var phone = Assert.IsType<Asset>(ProjectStore.Load(directory).FindAsset("phone"));
+        Assert.Equal(("assets/phone.mp4", @"C:\clips\phone.mov", "variable frame rate"), (phone.File, phone.OriginalFile, phone.Normalized));
+        Assert.Equal("editor import_video phone.mov", ProjectBackups.List(directory)[0].Before);
+
+        // An id that's taken is refused, and undo takes an import back.
+        Assert.False(editor.Apply(new AddAssetOperation(normalized, "logo")));
+        Assert.StartsWith("import_video phone.mp4 wasn't saved: asset id 'logo' already exists", editor.Status);
+        Assert.True(editor.Undo());
+        Assert.Null(ProjectStore.Load(directory).FindAsset("phone"));
+    }
+
+    [Fact]
     public void AnUnreadableProjectFileIsReportedAndNothingIsSaved()
     {
         var (_, editor, directory) = Open("editor-unreadable");

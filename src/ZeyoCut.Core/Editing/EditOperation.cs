@@ -93,6 +93,21 @@ public sealed record ReorderLayerOperation(string LayerId, int ZIndex) : EditOpe
     }
 }
 
+// A file AssetImporter.Prepare copied into the project, added as an asset, as import_asset and
+// import_video add it. A normalized video names its original and why it was normalized.
+public sealed record AddAssetOperation(PreparedAsset Asset, string? Id = null, string? OriginalFile = null, string? Normalized = null) : EditOperation
+{
+    public override string Label => $"{(Asset.Type == AssetType.Video ? "import_video" : "import_asset")} {Path.GetFileName(OriginalFile ?? Asset.Source)}";
+
+    public override IReadOnlyList<string> Layers => [];
+
+    public override string Apply(Project project)
+    {
+        var added = AssetImporter.Add(project, Asset, Id, OriginalFile, Normalized);
+        return $"imported '{added.Id}' ({EnumNames.ToName(added.Type)}, {added.File})";
+    }
+}
+
 // Several operations as one undo step, such as a drag to another lane (move and reorder). They run
 // in order; if one fails, none is kept.
 public sealed record BatchOperation(string Name, IReadOnlyList<EditOperation> Operations) : EditOperation

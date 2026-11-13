@@ -272,6 +272,59 @@ public class EditingTests
         Assert.StartsWith("file not found", missing.Message);
     }
 
+    // A file is copied in before the change that adds it takes project.lock, so another program's
+    // saves don't wait for a big copy.
+    [Fact]
+    public void AFileIsCopiedInWithoutTheProjectLock()
+    {
+        var directory = TestPaths.NewDirectory("editing-prepare");
+        var source = Path.Combine(TestPaths.NewDirectory("editing-prepare-src"), "Tora Body.png");
+        File.WriteAllBytes(source, [1, 2, 3]);
+        var session = ProjectSession.Create(directory, TestProjects.Empty());
+
+        PreparedAsset prepared;
+        using (ProjectLock.Acquire(directory, TimeSpan.Zero))
+        {
+            prepared = AssetImporter.Prepare(directory, source, new FakeAssetProbe());
+        }
+
+        var assets = Path.Combine(directory, "assets");
+        Assert.Equal(Path.Combine(assets, "Tora_Body.png"), prepared.Path);
+        Assert.Equal([1, 2, 3], File.ReadAllBytes(prepared.Path));
+        Assert.Equal(["Tora_Body.png"], Directory.GetFiles(assets).Select(Path.GetFileName));
+        var asset = session.Mutate("import", p => AssetImporter.Add(p, prepared, null));
+        Assert.Equal(("tora_body", "assets/Tora_Body.png", 200), (asset.Id, asset.File, asset.Width));
+
+        // The same file again is used as it is; another file of that name gets its own.
+        Assert.Equal(prepared.Path, AssetImporter.Prepare(directory, source, new FakeAssetProbe()).Path);
+        var other = Path.Combine(TestPaths.NewDirectory("editing-prepare-other"), "Tora Body.png");
+        File.WriteAllBytes(other, [4, 5]);
+        Assert.Equal(Path.Combine(assets, "Tora_Body_2.png"), AssetImporter.Prepare(directory, other, new FakeAssetProbe()).Path);
+    }
+
+    [Fact]
+    public async Task ProgramsCopyingInFilesOfTheSameNameAtOnceEachGetOne()
+    {
+        var directory = TestPaths.NewDirectory("editing-prepare-race");
+        var sources = Enumerable.Range(0, 8).Select(i =>
+        {
+            var file = Path.Combine(TestPaths.NewDirectory($"editing-prepare-race-{i}"), "clip.png");
+            File.WriteAllBytes(file, Enumerable.Repeat((byte)i, 1_000_000).ToArray());
+            return file;
+        }).ToList();
+
+        var ct = TestContext.Current.CancellationToken;
+        var paths = await Task.WhenAll(sources.Select(s => Task.Run(() => AssetImporter.Prepare(directory, s, new FakeAssetProbe()).Path, ct)));
+
+        Assert.Equal(8, paths.Distinct(StringComparer.OrdinalIgnoreCase).Count());
+        for (var i = 0; i < sources.Count; i++)
+        {
+            Assert.Equal(File.ReadAllBytes(sources[i]), File.ReadAllBytes(paths[i]));
+        }
+
+        Assert.Equal(8, Directory.GetFiles(Path.Combine(directory, "assets")).Length);
+    }
+
     [Fact]
     public void ValidatorRejectsOddSizesAndBadColors()
     {

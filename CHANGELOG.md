@@ -30,6 +30,9 @@ when they open.
   old one even while a reader that shares delete access has it open.
 - `backups\` keeps the last 20 saves of the ZeyoCut editor (labelled `editor ...`) apart from the
   last 20 others, so a burst of edits in the editor can't push out the server's.
+- `import_asset`, `import_video` and `import_folder` copy files into the project before the save
+  takes `project.lock`, so another program's saves don't wait for a big copy (they give up after
+  5 s). A file is copied under a temporary name and renamed when complete.
 
 ### Fixed
 
