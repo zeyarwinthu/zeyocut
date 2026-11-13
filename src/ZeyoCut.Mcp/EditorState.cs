@@ -18,8 +18,6 @@ namespace ZeyoCut.Mcp;
 public sealed class EditorState : IDisposable
 {
     private readonly object _gate = new();
-    private readonly object _encoderGate = new();
-    private readonly Lazy<string> _machine = new(() => SystemInfo.Hardware().Machine);
     private readonly ProxyJobs _proxies;
     private ProjectSession? _session;
     private FrameRenderer? _renderer;
@@ -32,16 +30,17 @@ public sealed class EditorState : IDisposable
         Models = new ModelStore(settings.ModelsPath ?? Path.Combine(settings.LibraryPath ?? Settings.DefaultLibraryPath, "models"));
         AiDevice = AiSession.ParseDevice(settings.AiDevice);
         BenchmarkPath = Path.Combine(settings.LibraryPath ?? Settings.DefaultLibraryPath, AiBenchmark.FileName);
-        EncoderTestsPath = Path.Combine(settings.LibraryPath ?? Settings.DefaultLibraryPath, VideoEncoders.FileName);
+        VideoEncoder? encoder = null;
         try
         {
-            VideoEncoder = VideoEncoders.Parse(settings.VideoEncoder);
+            encoder = VideoEncoders.Parse(settings.VideoEncoder);
         }
         catch (ZeyoCutException ex)
         {
             Console.Error.WriteLine($"warning: VideoEncoder setting: {ex.Message}; using auto");
         }
 
+        ExportStart = new ExportStart(encoder, settings.LibraryPath ?? Settings.DefaultLibraryPath, RequireFfmpeg);
         JobRecords = settings.JobsDirectory is { } jobs ? new JobStore(jobs) : null;
         Exports = new ExportJobManager(JobRecords) { ChooseEncoder = ChooseEncoder };
         Jobs = new JobManager(JobRecords);
@@ -54,6 +53,9 @@ public sealed class EditorState : IDisposable
     public Library Library { get; }
 
     public ExportJobManager Exports { get; }
+
+    // How start_export starts an export, and the video encoder exports use.
+    public ExportStart ExportStart { get; }
 
     public JobManager Jobs { get; }
 
@@ -71,13 +73,7 @@ public sealed class EditorState : IDisposable
     // system_check's results (<library>\benchmark.json).
     public string BenchmarkPath { get; }
 
-    // The VideoEncoder setting, or null for auto.
-    public VideoEncoder? VideoEncoder { get; }
-
-    // What the encoder test encodes found (<library>\encoders.json).
-    public string EncoderTestsPath { get; }
-
-    public string Machine => _machine.Value;
+    public string Machine => ExportStart.Machine;
 
     // Running AI matte jobs by the matte file they write, so asking again joins the running job.
     public ConcurrentDictionary<string, BackgroundJob> MatteJobs { get; } = new(StringComparer.OrdinalIgnoreCase);
@@ -93,14 +89,7 @@ public sealed class EditorState : IDisposable
     public DeviceChoice PickDevice(AiFeature feature) => AiBenchmark.Pick(AiDevice, feature, Benchmark());
 
     // The encoder for an export at this CRF; the first export on a computer tests the GPU encoders.
-    public EncoderChoice ChooseEncoder(int crf)
-    {
-        var ffmpeg = RequireFfmpeg();
-        lock (_encoderGate)
-        {
-            return VideoEncoders.Choose(VideoEncoder, crf, EncoderTestsPath, Machine, VideoEncoders.Stamp(ffmpeg), encoder => VideoEncoders.Try(ffmpeg, encoder));
-        }
-    }
+    public EncoderChoice ChooseEncoder(int crf) => ExportStart.ChooseEncoder(crf);
 
     // Starts the jobs that make the proxies the session's footage over 2560 px is missing (ProxyJobs.Start).
     public string StartProxies(ProjectSession session, IReadOnlyCollection<string>? assetIds = null) => _proxies.Start(session, assetIds);
