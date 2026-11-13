@@ -15,8 +15,9 @@ namespace ZeyoCut.Render;
 // Previews can leave the background transparent (checkerboard) or draw only some layers (a layer and
 // its children, to look at one layer's edges); exports always draw everything. After draws only what
 // is drawn above that layer (text_occlusion). Proxies draws footage from its proxy where it has one
-// (previews only).
-public sealed record RenderOptions(bool Transparent = false, IReadOnlySet<string>? Only = null, string? After = null, bool Proxies = false);
+// (previews only). Scale draws a smaller frame, 0.5 one of half the width and height, with video
+// decoded smaller to match (the editor's playback; exports always draw at 1).
+public sealed record RenderOptions(bool Transparent = false, IReadOnlySet<string>? Only = null, string? After = null, bool Proxies = false, double Scale = 1);
 
 // The single drawing path shared by previews, contact sheets, the CLI and the exporter.
 public sealed class FrameRenderer : IDisposable
@@ -52,6 +53,10 @@ public sealed class FrameRenderer : IDisposable
     public static SKImageInfo FrameInfo(Project project) =>
         new(project.Width, project.Height, SKColorType.Rgba8888, SKAlphaType.Premul);
 
+    // The size of a frame drawn at the scale.
+    public static (int Width, int Height) ScaledSize(Project project, double scale) =>
+        scale == 1 ? (project.Width, project.Height) : (Math.Max(1, (int)Math.Round(project.Width * scale)), Math.Max(1, (int)Math.Round(project.Height * scale)));
+
     public IReadOnlyList<string> TakeWarnings()
     {
         var warnings = _warnings.Keys.Order(StringComparer.Ordinal).ToList();
@@ -63,6 +68,12 @@ public sealed class FrameRenderer : IDisposable
     {
         var stats = Stats;
         var time = FrameMath.TimeOf(project, frame);
+        var scale = options?.Scale ?? 1;
+        if (!(scale > 0 && scale <= 1))
+        {
+            throw new ZeyoCutException($"the render scale must be above 0 and at most 1 (got {scale})");
+        }
+
         canvas.Clear(options?.Transparent == true ? SKColors.Transparent : SkiaConvert.ParseColor(project.BackgroundColor));
         var reached = options?.After is null;
         var scene = SceneEvaluator.Evaluate(project, time, cutouts: true);
@@ -86,9 +97,13 @@ public sealed class FrameRenderer : IDisposable
             var opacity = evaluated.Opacity;
             var layer = evaluated.Layer;
             var cutout = evaluated.Cutout;
-            using var filter = LayerEffects.Filter(layer, time, LayerEffects.ScreenScale(evaluated), cutout is not null);
+            using var filter = LayerEffects.Filter(layer, time, LayerEffects.ScreenScale(evaluated) * scale, cutout is not null);
             using var effectPaint = filter is not null || layer.Mask is not null ? new SKPaint() : null;
             var matrix = evaluated.World.ToSkia();
+            if (scale != 1)
+            {
+                matrix = SKMatrix.CreateScale((float)scale, (float)scale).PreConcat(matrix);
+            }
             if (effectPaint is not null)
             {
                 effectPaint.Color = SKColors.White.WithAlpha(SkiaConvert.Alpha(opacity));
@@ -124,7 +139,7 @@ public sealed class FrameRenderer : IDisposable
                     stats?.Lap(RenderStage.Text);
                     break;
                 case VideoLayer video:
-                    DrawVideo(project, video, time, opacity, canvas, cutout, options?.Proxies == true);
+                    DrawVideo(project, video, time, opacity, canvas, cutout, options?.Proxies == true, scale);
                     stats?.Lap(RenderStage.Compositing);
                     break;
             }
@@ -218,8 +233,9 @@ public sealed class FrameRenderer : IDisposable
 
     public SKImage RenderImage(Project project, int frame, RenderOptions? options = null)
     {
-        using var surface = SKSurface.Create(FrameInfo(project))
-            ?? throw new ZeyoCutException($"could not create a {project.Width}x{project.Height} drawing surface");
+        var (width, height) = ScaledSize(project, options?.Scale ?? 1);
+        using var surface = SKSurface.Create(FrameInfo(project).WithSize(width, height))
+            ?? throw new ZeyoCutException($"could not create a {width}x{height} drawing surface");
         Render(project, frame, surface.Canvas, options);
         return surface.Snapshot();
     }
@@ -250,13 +266,14 @@ public sealed class FrameRenderer : IDisposable
     public (SKImage Picture, SKImage Alpha)? MattedDrawing(Asset asset, Matte matte) =>
         _mattes.Image(ProjectDirectory, asset, DrawingImage(asset), matte);
 
-    // proxy reads the clip's proxy where it has one, at most at the proxy's size.
-    public SKImage VideoFrame(Project project, VideoLayer layer, double time, bool proxy = false)
+    // proxy reads the clip's proxy where it has one, at most at the proxy's size. scale is the render
+    // scale: a smaller frame decodes the clip smaller.
+    public SKImage VideoFrame(Project project, VideoLayer layer, double time, bool proxy = false, double scale = 1)
     {
         var asset = project.FindAsset(layer.Asset)
             ?? throw new ZeyoCutException($"layer '{layer.Id}': asset '{layer.Asset}' not found");
         var frame = VideoTiming.FrameAt(asset, VideoTiming.SourceTime(layer, time));
-        var (width, height) = VideoDecoder.DecodeSize(asset, project);
+        var (width, height) = VideoDecoder.DecodeSize(asset, project, scale);
         var file = ProjectStore.AssetPath(ProjectDirectory, asset);
         if (proxy && Proxies.Ready(ProjectDirectory, asset) is { } proxyFile)
         {
@@ -293,11 +310,11 @@ public sealed class FrameRenderer : IDisposable
 
     // A cutout draws the clip with its own matte, and nothing while that matte isn't computed. Both
     // draw the frame with apply_redaction's boxes hidden.
-    private void DrawVideo(Project project, VideoLayer layer, double time, double opacity, SKCanvas canvas, CutoutLayer? cutout, bool proxy)
+    private void DrawVideo(Project project, VideoLayer layer, double time, double opacity, SKCanvas canvas, CutoutLayer? cutout, bool proxy, double scale)
     {
         var asset = project.FindAsset(layer.Asset)
             ?? throw new ZeyoCutException($"layer '{layer.Id}': asset '{layer.Asset}' not found");
-        var decoded = VideoFrame(project, layer, time, proxy);
+        var decoded = VideoFrame(project, layer, time, proxy, scale);
         Stats?.Lap(RenderStage.Decode);
         using var redacted = Redacted(project, asset, VideoTiming.FrameAt(asset, VideoTiming.SourceTime(layer, time)), decoded);
         Stats?.Lap(RenderStage.Redaction);
