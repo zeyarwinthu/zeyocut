@@ -77,9 +77,9 @@ public class RenderScaleTests
         session.Mutate("layer", p => ProjectEditor.AddVideoLayer(p, new VideoLayerOptions { Id = "clip", Asset = "ramp" }));
         var project = session.Snapshot();
 
-        // At most twice the canvas: 640x480 for the full frame, half that for a frame of half the size.
+        // At most twice the canvas for the full frame; at most the frame's own size for a smaller one.
         Assert.Equal((640, 480), VideoDecoder.DecodeSize(asset, project));
-        Assert.Equal((320, 240), VideoDecoder.DecodeSize(asset, project, 0.5));
+        Assert.Equal((160, 120), VideoDecoder.DecodeSize(asset, project, 0.5));
 
         using var renderer = new FrameRenderer(directory, () => Ffmpeg.Require().Ffmpeg);
         foreach (var frame in new[] { 0, 7, 19 })
@@ -87,7 +87,8 @@ public class RenderScaleTests
             using var half = renderer.RenderImage(project, frame, new RenderOptions(Scale: 0.5));
             Assert.Equal((160, 120), (half.Width, half.Height));
             Assert.Equal(frame, TestVideos.FrameCode(half, 0, 0, 160, 120));
-            Assert.Equal((320, 240), (renderer.VideoFrame(project, (VideoLayer)project.FindLayer("clip")!, frame / 10.0, scale: 0.5).Width, 240));
+            var decoded = renderer.VideoFrame(project, (VideoLayer)project.FindLayer("clip")!, frame / 10.0, scale: 0.5);
+            Assert.Equal((160, 120), (decoded.Width, decoded.Height));
         }
     }
 }
