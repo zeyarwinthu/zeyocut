@@ -7,7 +7,7 @@ using ZeyoCut.Core.Model;
 
 namespace ZeyoCut.Editor.Tests;
 
-// The preview: how big it shows the frame, the time ruler under it, and drawing frames.
+// The preview: how big it shows the frame, and drawing frames paused and while playing.
 public class PreviewTests
 {
     [Fact]
@@ -29,25 +29,6 @@ public class PreviewTests
         Assert.Equal((1920.0, 1080.0, 2.0), PreviewZoom.Layout(960, 540, 2, 500, 500, 1));
     }
 
-    [Theory]
-    [InlineData(230, 0.5)]
-    [InlineData(640, 0.1)]
-    [InlineData(10, 10)]
-    [InlineData(0.001, 3600)]
-    public void RulerLabelsLeaveRoomForTheirText(double pixelsPerSecond, double step) => Assert.Equal(step, TimeRuler.LabelStep(pixelsPerSecond));
-
-    [Fact]
-    public void ClickingTheRulerPicksTheFrameUnderThePointer()
-    {
-        Assert.Equal(0, TimeRuler.FrameAt(0, 600, 180));
-        Assert.Equal(179, TimeRuler.FrameAt(599.9, 600, 180));
-        Assert.Equal(0, TimeRuler.FrameAt(-20, 600, 180));
-        Assert.Equal(179, TimeRuler.FrameAt(900, 600, 180));
-        Assert.Equal(0, TimeRuler.FrameAt(100, 0, 180));
-        Assert.Equal(300, TimeRuler.XOf(90, 600, 180));
-        Assert.All(Enumerable.Range(0, 180), f => Assert.Equal(f, TimeRuler.FrameAt(TimeRuler.XOf(f, 600, 180) + 0.5, 600, 180)));
-    }
-
     [Fact]
     public void AFrameIsDrawnOnceAndShownFromTheCacheUntilItChanges()
     {
@@ -56,7 +37,7 @@ public class PreviewTests
         var folder = TestFiles.NewProject("preview-cache", project);
         using var preview = new FramePreview(folder, () => throw new ZeyoCutException("no FFmpeg needed"), _ => { });
 
-        var first = preview.Render(project, 10);
+        var first = preview.Render(preview.Source(project, 1), 10);
         Assert.Null(first.Error);
         Assert.Equal((320, 180, 320 * 180 * 4), (first.Width, first.Height, first.Pixels!.Length));
         Assert.False(first.Cached);
@@ -64,14 +45,14 @@ public class PreviewTests
         // The background, in BGRA.
         Assert.Equal(new byte[] { 0x20, 0x20, 0x20, 0xFF }, first.Pixels[..4]);
 
-        var again = preview.Render(project, 10);
+        var again = preview.Render(preview.Source(project, 1), 10);
         Assert.True(again.Cached);
         Assert.Same(first.Pixels, again.Pixels);
 
         // A frame the title doesn't change still comes from the cache after an edit; one it does doesn't.
         var edited = ProjectJsonCopy(project);
         ProjectEditor.UpdateLayer(edited, "title", new JsonObject { ["text"] = "Hello" });
-        Assert.False(preview.Render(edited, 10).Cached);
+        Assert.False(preview.Render(preview.Source(edited, 1), 10).Cached);
     }
 
     [Fact]
@@ -85,7 +66,7 @@ public class PreviewTests
         File.WriteAllBytes(Path.Combine(folder, "assets", "clip.mp4"), [0]);
         using var preview = new FramePreview(folder, () => throw new ZeyoCutException("no FFmpeg here"), _ => { });
 
-        var frame = preview.Render(project, 0);
+        var frame = preview.Render(preview.Source(project, 1), 0);
         Assert.Null(frame.Pixels);
         Assert.Contains("no FFmpeg here", frame.Error);
     }
@@ -98,10 +79,75 @@ public class PreviewTests
         var drawn = new TaskCompletionSource<PreviewFrame>(TaskCreationOptions.RunContinuationsAsynchronously);
         using var preview = new FramePreview(folder, () => throw new ZeyoCutException("no FFmpeg needed"), f => drawn.TrySetResult(f));
 
-        preview.Request(project, 42);
+        preview.Request(preview.Source(project, 1), 42);
         var frame = await drawn.Task.WaitAsync(TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken);
         Assert.Equal(42, frame.Frame);
         Assert.NotNull(frame.Pixels);
+    }
+
+    [Fact]
+    public async Task PlayingDrawsSmallerFramesAheadAndKeepsThemApart()
+    {
+        var project = TestFiles.Project();
+        var title = ProjectEditor.AddTextLayer(project, new TextLayerOptions { Id = "title", Text = "Hi", FontSize = 40 });
+        // Moving, so no two frames are alike.
+        title.X.Keyframes.AddRange([new Keyframe { Time = 0, Value = 0 }, new Keyframe { Time = 2, Value = 300 }]);
+        var folder = TestFiles.NewProject("preview-playing", project);
+        using var preview = new FramePreview(folder, () => throw new ZeyoCutException("no FFmpeg needed"), _ => { });
+
+        var paused = preview.Render(preview.Source(project, 1), 3);
+        var half = preview.Render(preview.Source(project, 0.5), 3);
+        Assert.Equal((320, 180), (paused.Width, paused.Height));
+        Assert.Equal((160, 90), (half.Width, half.Height));
+        Assert.False(half.Cached);
+
+        // The frames ahead are drawn in the background, a step apart.
+        var source = preview.Source(project, 0.5, step: 2);
+        preview.Play(source, 0);
+        var stop = DateTime.UtcNow + TimeSpan.FromSeconds(30);
+        while (preview.Cached(source, 6) is null && DateTime.UtcNow < stop)
+        {
+            await Task.Delay(20, TestContext.Current.CancellationToken);
+        }
+
+        preview.Pause();
+        Assert.Equal((160, 90, 6, true), (preview.Cached(source, 6)!.Width, preview.Cached(source, 6)!.Height, preview.Cached(source, 6)!.Frame, preview.Cached(source, 6)!.Cached));
+        Assert.Null(preview.Cached(source, 5));
+
+        // A frame drawn before a proxy was made is drawn again after it.
+        preview.ProxiesChanged();
+        Assert.False(preview.Render(preview.Source(project, 1), 3).Cached);
+    }
+
+    [Fact]
+    public void FramesAheadFitInHalfTheMemory()
+    {
+        var folder = TestFiles.NewProject("preview-ahead");
+        using var preview = new FramePreview(folder, () => throw new ZeyoCutException("no FFmpeg needed"), _ => { });
+
+        // Small frames: 5 s ahead. A 4K canvas at full size: never less than a second; at half size,
+        // every second frame, about 2 s.
+        Assert.Equal(5, preview.Source(TestFiles.Project(), 0.5).AheadSeconds);
+        Assert.Equal(1, preview.Source(TestFiles.Project(3840, 2160), 1).AheadSeconds);
+        Assert.InRange(preview.Source(TestFiles.Project(3840, 2160), 0.5, step: 2).AheadSeconds, 2.1, 2.2);
+    }
+
+    [Fact]
+    public void ThePictureFollowsTheSound()
+    {
+        var clock = new PlaybackClock();
+        Assert.False(clock.Follow(3));
+        clock.Start(1, 2);
+        Assert.True(clock.Running);
+        Assert.InRange(clock.Now, 1, 1.5);
+
+        // Within the drift it's left alone; past it, it's set to the sound.
+        Assert.False(clock.Follow(clock.Now + PlaybackClock.Drift / 2));
+        Assert.True(clock.Follow(5));
+        Assert.InRange(clock.Now, 5, 5.5);
+        Assert.Equal(2, clock.Speed);
+        clock.Stop();
+        Assert.False(clock.Running);
     }
 
     private static Project ProjectJsonCopy(Project project) => ZeyoCut.Core.Serialization.ProjectJson.Copy(project);

@@ -13,8 +13,12 @@ when they open.
 - **The ZeyoCut editor (early):** `ZeyoCut.Editor.exe`, a window for working on a project by hand,
   in the release zip and the bundle. So far it opens a project (from a start page with the projects
   folder and recent projects, File → Open, or a folder on the command line), lists its media, imports
-  images, audio, fonts and video (normalizing video as `import_video` does, with progress) and shows
-  the frame at any time, drawn by the same renderer as exports, with frame stepping, fit and zoom.
+  images, audio, fonts and video (from the file picker or dropped on the window, normalizing video as
+  `import_video` does, with progress) and shows the frame at any time, drawn by the same renderer as
+  exports, with frame stepping, fit and zoom. It plays the edit at 0.5×, 1× or 2× with the sound
+  mixed as exported, drawing frames at half size while playing. Its timeline shows a lane for each
+  draw level, caption track and sound role; clips move, trim, split, delete, hide and change lanes by
+  dragging, keys and a right-click menu, with snapping to clip edges, the playhead and markers.
   Each change is saved at once as an undoable step. When another program saves the project, the
   editor shows the new version and says what changed. The editor keeps its own settings in
   `%LOCALAPPDATA%\ZeyoCut\editor.json` (`ZEYOCUT_EDITOR_SETTINGS` names another file).

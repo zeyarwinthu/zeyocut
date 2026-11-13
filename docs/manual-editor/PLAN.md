@@ -76,6 +76,26 @@ The plan below was approved with these answers and changes. Where they disagree 
     | One self-contained folder both share | 100.3 MiB (+29.8) | 449 files, 243.1 MiB on disk |
 
     The shared folder is 33.5 MiB smaller zipped, but it is 449 loose files instead of two exes, in the zip and in the `.mcpb`'s `server` folder. Two single-file exes stay, per D6. The release workflow's size check fails above 200 MiB for the server exe, 170 MiB for the editor exe and 160 MiB for the zip and the bundle.
+**What Phase 3 found and did differently:**
+
+- Change 7, measured with the process limited to 4 cores: playback of a 1080p30 H.264 clip with a caption, in frames a second.
+
+    | Scene | Full size | ½ | ¼ |
+    |---|---|---|---|
+    | Plain | 61.3 | 255.4 | 524.8 |
+    | Effects (blur, keyframed brightness, text shadow) | 22.4 | 92.2 | 365.0 |
+
+    Full size keeps up with 30 fps on the plain scene but not with effects, so the render scale went in (`RenderOptions.Scale`; exports stay at 1, with a test). Decoding clips at up to twice the scaled canvas made ½ slower than full size (45.7 fps), so clips now decode at most at the smaller frame's size. Playback draws at ½ by default (Full, ½ and ¼ in the timeline's toolbar, kept in `editor.json`), and a paused frame is always full size. When drawing still falls behind, playback shows every second frame, up to every 4th, and goes back as it catches up. Seek-friendly preview proxies weren't needed for this phase; a seek over uncached footage still takes about 0.2 s.
+- The preview page's frame cache and read-ahead moved into Render as `PreviewFrames`, in a commit of its own with no behavior change. The page and the editor run the same code.
+- Section A says dropping between lanes "is a reorder that renumbers". `ReorderLayerOperation` moves a layer and its children together (they keep their levels relative to it). Dropped between two lanes, it renumbers the layers above only when the new level is already taken, so the undo step touches as few layers as it can. Dropped onto a lane, it takes that lane's level.
+- `TimelineEditor.Limits` says how far a trim and a move can go (a clip's source, children that start before their parent), so a drag stops where the Core operation would refuse instead of failing on release.
+- `EditorDocument.Summary` keeps the Core operation's own message ("trimmed 'title': now 0–4.5s (was 0–4s)") for the status bar.
+- Snapping also takes markers; section A named clip edges and the playhead.
+- The right-click menu has Split, Delete, Hide and Show (Mute and Unmute for sound) through `visible` (D7), and a video's own sound off or on through `muted`.
+- The sound is mixed 0.6 s after the last edit that changes it, not after every edit of a drag. The editor deletes only the mixes it made, since the preview page may be playing another.
+- The time ruler from Phase 2 is now the timeline's ruler.
+- Nothing on the cut list was cut: speeds, drag-and-drop import, the right-click menu and snapping to markers are all in.
+- What section A's lane rule gives in practice: a layer added by a tool without a `zIndex` gets the next free one, so clips added one at a time each get a lane of their own, a staircase. Split clips stay in their lane. Dragging each clip into one lane fixes it by hand; a "pack lanes" command, or the server placing a new clip on its neighbor's level when they don't overlap, would fix it for good. I'd decide that before Phase 4.
 
 ## Summary
 

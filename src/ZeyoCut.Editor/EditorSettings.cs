@@ -9,8 +9,8 @@ namespace ZeyoCut.Editor;
 public sealed record WindowPlacement(double Left, double Top, double Width, double Height, bool Maximized);
 
 // The editor's own settings, in %LOCALAPPDATA%\ZeyoCut\editor.json (or the file ZEYOCUT_EDITOR_SETTINGS
-// names) and never in a project: the recent projects, newest first, and the panel sizes and window
-// placement as you left them.
+// names) and never in a project: the recent projects, newest first, the panel sizes and window
+// placement as you left them, the playback size and whether the timeline snaps.
 public sealed class EditorSettings
 {
     public const int MaxRecent = 10;
@@ -27,6 +27,14 @@ public sealed class EditorSettings
     public double MediaWidth { get; set; } = 280;
 
     public double InspectorWidth { get; set; } = 300;
+
+    public double TimelineHeight { get; set; } = 260;
+
+    // The size frames are drawn at while playing, as a share of the canvas: 1, 0.5 or 0.25. Paused
+    // frames are always drawn at the canvas size.
+    public double PlaybackScale { get; set; } = 0.5;
+
+    public bool Snapping { get; set; } = true;
 
     public WindowPlacement? Window { get; set; }
 

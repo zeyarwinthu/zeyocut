@@ -137,6 +137,8 @@ The [guide](GUIDE.md) shows every tool with an example call and its real respons
 
 `ZeyoCut.Editor.exe` is in the zip next to `ZeyoCut.Mcp.exe`. It needs no MCP client: start it like any program, or give it a project folder, for example `ZeyoCut.Editor.exe C:\Users\you\ZeyoCut\projects\hello`. It finds FFmpeg and the projects folder through the same `appsettings.json` and environment variables as the server. The bundle carries a copy too, but the settings you give the bundle in Claude Desktop reach only the server, so unzip the release to run the editor yourself.
 
+It plays sound with Windows Media Foundation. On an N edition of Windows, install the Media Feature Pack, or playback is silent and the editor says the sound can't be played.
+
 It can stay open while Claude works on the same project: each program saves on top of the other's changes. [The editor](https://github.com/zeyarwinthu/zeyocut#the-editor) in the README says what it can do so far.
 
 ## Folders

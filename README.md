@@ -52,15 +52,23 @@ Then ask for something. ZeyoCut imports files from your Desktop, Documents, Down
 
 ## The editor
 
-`ZeyoCut.Editor.exe`, next to `ZeyoCut.Mcp.exe` in the release zip, opens the same projects in a window, for working on them by hand. It is early: so far it shows a project's media and its frame at any time, and imports media. Moving and trimming clips, playback and export come next.
+`ZeyoCut.Editor.exe`, next to `ZeyoCut.Mcp.exe` in the release zip, opens the same projects in a window, for working on them by hand. It is early: it imports media, plays the edit with its sound, and moves, trims, splits and deletes clips on a timeline. Changing a layer's settings in the inspector, and export, come next.
 
 - **Open a project** from the start page, which lists your projects folder and recent projects, with File → Open project, or from the command line: `ZeyoCut.Editor.exe C:\Users\you\ZeyoCut\projects\my-video`.
 - **Import** images, audio, fonts and video with Media → Import. Video that needs normalizing (variable frame rate, rotation, HDR) is converted first, as `import_video` does, with its progress in the media list. Files you pick yourself can come from any folder; the import folders limit only what the model can read.
-- **The preview** draws the frame at the playhead with the same renderer as exports, from proxies for footage over 2560 px. Click or drag in the time ruler, or step with ←/→ (Shift: a second at a time), Home and End. Fit, 50%, 100% and 200% set the zoom.
+- **Drag files** from File Explorer onto the window to import them. A project folder dropped on the start page opens.
+- **The preview** draws the frame at the playhead with the same renderer as exports, from proxies for footage over 2560 px. Step with ←/→ (Shift: a second at a time), Home and End. Fit, 50%, 100% and 200% set the zoom.
+- **Playback.** Space plays and pauses, at 0.5×, 1× or 2×, with the sound mixed as the export mixes it. After an edit that changes the sound, the mix is made again in the background; until it's ready, playback is silent and says "updating sound…". While playing, frames are drawn at half size (Playback: Full, ½ or ¼), and when drawing can't keep up, every second frame is shown. A paused frame is always full size.
+- **The timeline** has a lane for each draw level (`zIndex`) of video, images and text, the highest on top; a lane for each caption track; and Voice, Music and Effects lanes for sound. A layer with child layers (a logo attached to a clip, a rig) is one clip with a "+N" badge, and its children move, trim, split and delete with it. Click a clip to select it and see it in the inspector.
+    - Drag a clip sideways to move it, or drag its edges to trim it; a video can show more as far as its source goes. Drag a video, picture or text clip up or down onto another lane to change what it's drawn over, or between two lanes to give it a level of its own.
+    - Clips snap to clip edges, the playhead and markers. The Snap button turns it off.
+    - S (or Ctrl+B) splits the selected clip at the playhead, and Delete removes it with its child layers. Right-click a clip for these, for Hide and Show (Mute and Unmute for sound), and to turn a video's own sound off or on.
+    - Click or drag in the ruler to move the playhead; ↑ and ↓ jump to the previous and next clip edge.
+    - Ctrl+wheel or −/+ zooms and Shift+Z fits the whole video. The wheel scrolls the lanes and Shift+wheel scrolls in time.
 - **Every change is saved at once**, as one step that Ctrl+Z undoes and Ctrl+Y redoes. The status bar shows "Saved · revision N"; there's no Save button.
 - **With Claude at the same time.** When the server saves the project, the editor shows the new version and says what changed. The server's next reply lists what the editor changed. See [Saving alongside another program](docs/project-format.md#saving-alongside-another-program).
 
-The editor reads `FfmpegPath` and `ProjectsRoot` from the same `appsettings.json` and environment variables as the server. It keeps its own settings (recent projects, panel sizes, window position) in `%LOCALAPPDATA%\ZeyoCut\editor.json`, or the file `ZEYOCUT_EDITOR_SETTINGS` names, never in the project.
+The editor reads `FfmpegPath` and `ProjectsRoot` from the same `appsettings.json` and environment variables as the server. It keeps its own settings (recent projects, panel sizes, window position, snapping, playback size) in `%LOCALAPPDATA%\ZeyoCut\editor.json`, or the file `ZEYOCUT_EDITOR_SETTINGS` names, never in the project.
 
 ## Privacy
 
@@ -201,7 +209,7 @@ Its `ZeyoCut.Editor.exe` (about 150 MB) goes to `src\ZeyoCut.Editor\bin\Release\
 
 **Do I need Claude?** No. Any MCP client that can run a local (stdio) server works, such as Claude Desktop, Claude Code or VS Code. Use a model that can look at images: `render_frame` and `render_contact_sheet` return pictures, and that's how the model checks its work.
 
-**Is there an editing window?** One is being built: [the editor](#the-editor) already opens a project, shows any frame and imports media. Until it can edit the timeline, the model edits through ZeyoCut's tools. You see the result as frames and contact sheets in the chat, and on a preview page in your browser (`preview_server`) that plays the edit with its sound and follows every change. Every change can be undone.
+**Is there an editing window?** One is being built: [the editor](#the-editor) already plays a project and moves, trims, splits and deletes its clips. Everything else the model edits through ZeyoCut's tools. You see the result as frames and contact sheets in the chat, and on a preview page in your browser (`preview_server`) that plays the edit with its sound and follows every change. Every change can be undone.
 
 **Does it cost anything?** ZeyoCut is free and needs no account. Your MCP client and its AI model may have their own costs.
 

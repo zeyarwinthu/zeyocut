@@ -4,7 +4,7 @@
         xmlns:local="clr-namespace:ZeyoCut.Editor"
         Title="ZeyoCut Editor" Width="1400" Height="860" MinWidth="900" MinHeight="560"
         Background="{StaticResource WindowBrush}" Foreground="{StaticResource TextBrush}"
-        FontFamily="Segoe UI" FontSize="12" UseLayoutRounding="True">
+        FontFamily="Segoe UI" FontSize="12" UseLayoutRounding="True" AllowDrop="True" DragOver="OnDragOver" Drop="OnDrop">
 
   <Window.Resources>
     <BooleanToVisibilityConverter x:Key="Visible" />
@@ -63,6 +63,9 @@
       <MenuItem Header="_Edit">
         <MenuItem x:Name="UndoItem" Header="_Undo" InputGestureText="Ctrl+Z" Click="OnUndo" />
         <MenuItem x:Name="RedoItem" Header="_Redo" InputGestureText="Ctrl+Y" Click="OnRedo" />
+        <Separator />
+        <MenuItem x:Name="SplitItem" Header="_Split at playhead" InputGestureText="S" Click="OnSplit" />
+        <MenuItem x:Name="DeleteItem" Header="_Delete" InputGestureText="Delete" Click="OnDelete" />
       </MenuItem>
       <MenuItem x:Name="MediaMenu" Header="_Media">
         <MenuItem Header="_Import…" InputGestureText="Ctrl+I" Click="OnImport" />
@@ -88,8 +91,9 @@
 
     <Grid x:Name="Workspace" Grid.Row="1" Visibility="Collapsed">
       <Grid.RowDefinitions>
-        <RowDefinition Height="*" />
-        <RowDefinition Height="Auto" />
+        <RowDefinition Height="*" MinHeight="200" />
+        <RowDefinition Height="4" />
+        <RowDefinition x:Name="TimelineRow" Height="260" MinHeight="120" />
       </Grid.RowDefinitions>
       <Grid.ColumnDefinitions>
         <ColumnDefinition x:Name="MediaColumn" Width="280" MinWidth="180" />
@@ -191,12 +195,14 @@
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Left">
               <Button Style="{StaticResource IconButton}" Content="&#xE892;" ToolTip="First frame (Home)" Click="OnFirstFrame" />
               <Button Style="{StaticResource IconButton}" Content="&#xE76B;" ToolTip="Previous frame (Left; Shift+Left: 1 second)" Click="OnPreviousFrame" />
+              <Button x:Name="PlayButton" Style="{StaticResource IconButton}" Content="&#xE768;" FontSize="14" ToolTip="Play (Space)" Click="OnPlay" />
               <Button Style="{StaticResource IconButton}" Content="&#xE76C;" ToolTip="Next frame (Right; Shift+Right: 1 second)" Click="OnNextFrame" />
               <Button Style="{StaticResource IconButton}" Content="&#xE893;" ToolTip="Last frame (End)" Click="OnLastFrame" />
               <TextBlock x:Name="TimecodeText" FontFamily="Consolas" FontSize="14" VerticalAlignment="Center" Margin="12,0,10,0" Text="00:00:00:00" ToolTip="hours:minutes:seconds:frame" />
               <TextBlock x:Name="FrameText" Style="{StaticResource Secondary}" VerticalAlignment="Center" />
             </StackPanel>
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+              <TextBlock x:Name="SoundText" Style="{StaticResource Secondary}" Foreground="{StaticResource WarningBrush}" VerticalAlignment="Center" Margin="0,0,12,0" MaxWidth="260" />
               <TextBlock x:Name="ZoomText" Style="{StaticResource Secondary}" VerticalAlignment="Center" Margin="0,0,8,0" />
               <RadioButton GroupName="Zoom" Style="{StaticResource SegmentButton}" Content="Fit" Tag="fit" IsChecked="True" Checked="OnZoom" ToolTip="As big as the panel allows" />
               <RadioButton GroupName="Zoom" Style="{StaticResource SegmentButton}" Content="50%" Tag="0.5" Checked="OnZoom" />
@@ -231,9 +237,48 @@
         </ScrollViewer>
       </DockPanel>
 
-      <Border Grid.Row="1" Grid.ColumnSpan="5" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0">
-        <local:TimeRuler x:Name="Ruler" Seek="OnSeek" />
-      </Border>
+      <GridSplitter Grid.Row="1" Grid.ColumnSpan="5" Height="4" HorizontalAlignment="Stretch" ResizeDirection="Rows" ResizeBehavior="PreviousAndNext" />
+
+      <DockPanel Grid.Row="2" Grid.ColumnSpan="5" Background="{StaticResource PanelBrush}">
+        <Grid DockPanel.Dock="Top" Background="{StaticResource HeaderBrush}" Height="34">
+          <StackPanel Orientation="Horizontal" Margin="6,0">
+            <TextBlock Text="TIMELINE" Style="{StaticResource PanelTitle}" Margin="6,0,12,0" />
+            <Button x:Name="SplitButton" Style="{StaticResource IconButton}" Content="&#xE8C6;" ToolTip="Split the selected clip at the playhead (S)" Click="OnSplit" />
+            <Button x:Name="DeleteButton" Style="{StaticResource IconButton}" Content="&#xE74D;" ToolTip="Delete the selected clip and its child layers (Delete)" Click="OnDelete" />
+            <ToggleButton x:Name="SnapToggle" Style="{StaticResource ToggleSegment}" Content="Snap" Margin="8,0,0,0" VerticalAlignment="Center"
+                          ToolTip="Snap to clip edges, the playhead and markers" Click="OnSnap" />
+          </StackPanel>
+          <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,0,6,0">
+            <TextBlock Text="Speed" Style="{StaticResource Secondary}" VerticalAlignment="Center" Margin="0,0,4,0" />
+            <RadioButton GroupName="Speed" Style="{StaticResource SegmentButton}" Content="0.5×" Tag="0.5" Checked="OnSpeed" VerticalAlignment="Center" />
+            <RadioButton GroupName="Speed" Style="{StaticResource SegmentButton}" Content="1×" Tag="1" IsChecked="True" Checked="OnSpeed" VerticalAlignment="Center" />
+            <RadioButton GroupName="Speed" Style="{StaticResource SegmentButton}" Content="2×" Tag="2" Checked="OnSpeed" VerticalAlignment="Center" />
+            <TextBlock Text="Playback" Style="{StaticResource Secondary}" VerticalAlignment="Center" Margin="16,0,4,0" />
+            <RadioButton x:Name="FullScale" GroupName="Scale" Style="{StaticResource SegmentButton}" Content="Full" Tag="1" Checked="OnPlaybackScale" VerticalAlignment="Center"
+                         ToolTip="Draw frames at the canvas size while playing" />
+            <RadioButton x:Name="HalfScale" GroupName="Scale" Style="{StaticResource SegmentButton}" Content="½" Tag="0.5" Checked="OnPlaybackScale" VerticalAlignment="Center"
+                         ToolTip="Draw frames at half the canvas size while playing; a paused frame is always full size" />
+            <RadioButton x:Name="QuarterScale" GroupName="Scale" Style="{StaticResource SegmentButton}" Content="¼" Tag="0.25" Checked="OnPlaybackScale" VerticalAlignment="Center"
+                         ToolTip="Draw frames at a quarter of the canvas size while playing; a paused frame is always full size" />
+            <Button Style="{StaticResource IconButton}" Content="&#xE71F;" Margin="16,0,0,0" ToolTip="Zoom out (-)" Click="OnTimelineZoomOut" />
+            <Button Style="{StaticResource IconButton}" Content="&#xE8A3;" ToolTip="Zoom in (=)" Click="OnTimelineZoomIn" />
+            <Button Content="Fit" Padding="10,2" VerticalAlignment="Center" ToolTip="The whole project in view (Shift+Z)" Click="OnTimelineFit" />
+          </StackPanel>
+        </Grid>
+        <Grid>
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="Auto" />
+          </Grid.ColumnDefinitions>
+          <Grid.RowDefinitions>
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+          </Grid.RowDefinitions>
+          <local:TimelineView x:Name="Timeline" Seek="OnSeek" Selected="OnClipSelected" Edit="OnTimelineEdit" ClipMenu="OnClipMenu" ViewChanged="OnTimelineViewChanged" />
+          <ScrollBar x:Name="TimelineVertical" Grid.Column="1" Orientation="Vertical" Scroll="OnTimelineScroll" />
+          <ScrollBar x:Name="TimelineHorizontal" Grid.Row="1" Orientation="Horizontal" Scroll="OnTimelineScroll" />
+        </Grid>
+      </DockPanel>
     </Grid>
 
     <Border Grid.Row="2" Background="{StaticResource HeaderBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0" Padding="10,3">

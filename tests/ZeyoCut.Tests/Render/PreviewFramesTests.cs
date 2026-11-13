@@ -57,8 +57,8 @@ public class PreviewFramesTests
         using var frames = Frames(drawn);
 
         Assert.Null(frames.Cached(source, 4));
-        Assert.Equal("4: 160x90", frames.Frame(source, 4));
-        Assert.Equal("4: 160x90", frames.Frame(source, 4));
+        Assert.Equal("4: 160x90", frames.Frame(source, 4, TestContext.Current.CancellationToken));
+        Assert.Equal("4: 160x90", frames.Frame(source, 4, TestContext.Current.CancellationToken));
         Assert.Equal("4: 160x90", frames.Cached(source, 4));
         Assert.Equal([4], drawn);
         Assert.True(frames.DrawTime > TimeSpan.Zero);
