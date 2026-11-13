@@ -10,21 +10,6 @@ namespace ZeyoCut.Mcp;
 // an error that names the setting to change. Outputs never need this: they go into a project.
 public static class AllowedFolders
 {
-    // The default import folders: the user's Desktop, Documents, Downloads, Music, Pictures and Videos.
-    public static IReadOnlyList<string> DefaultImportFolders()
-    {
-        var profile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        return new[]
-        {
-            Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory),
-            Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
-            Path.Combine(profile, "Downloads"),
-            Environment.GetFolderPath(Environment.SpecialFolder.MyMusic),
-            Environment.GetFolderPath(Environment.SpecialFolder.MyPictures),
-            Environment.GetFolderPath(Environment.SpecialFolder.MyVideos),
-        }.Where(f => !string.IsNullOrEmpty(f)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-    }
-
     // The full path of a file or folder to read, after checking it is in a folder ZeyoCut may read.
     public static string Readable(Settings settings, string path)
     {

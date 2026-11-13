@@ -3,7 +3,7 @@
 using System.Text.Json;
 using ZeyoCut.Core.Editing;
 
-namespace ZeyoCut.Mcp;
+namespace ZeyoCut.Core;
 
 // DescriberProvider names the describe_clip provider; its API key is read from the environment
 // variable DescriberKeyVariable names, never from the settings file. ModelsPath holds the AI models
@@ -13,7 +13,7 @@ namespace ZeyoCut.Mcp;
 // font a text in a language gets when it is given none (my: Myanmar Text and ja: Yu Gothic by default).
 // VideoEncoder is auto (default: the first GPU encoder that works, else libx264), x264, nvenc, qsv or amf.
 // ImportFolders are the folders tools may import from besides the projects folder and the library
-// (default: Desktop, Documents, Downloads, Music, Pictures and Videos); see AllowedFolders.
+// (default: Desktop, Documents, Downloads, Music, Pictures and Videos); see the server's AllowedFolders.
 public sealed record Settings(
     string? FfmpegPath,
     string ProjectsRoot,
@@ -32,7 +32,7 @@ public sealed record Settings(
 {
     public IReadOnlyDictionary<string, string> Fonts => LanguageFonts ?? Languages.DefaultFonts;
 
-    public IReadOnlyList<string> ImportFolderList => ImportFolders is { Count: > 0 } folders ? folders : AllowedFolders.DefaultImportFolders();
+    public IReadOnlyList<string> ImportFolderList => ImportFolders is { Count: > 0 } folders ? folders : DefaultImportFolders();
 
     public const string ProjectsRootVariable = "ZEYOCUT_PROJECTS_DIR";
     public const string LogDirectoryVariable = "ZEYOCUT_LOG_DIR";
@@ -54,6 +54,21 @@ public sealed record Settings(
     public static string DefaultProjectsRoot => Path.Combine(DefaultRoot, "projects");
 
     public static string DefaultLibraryPath => Path.Combine(DefaultRoot, "library");
+
+    // The default import folders: the user's Desktop, Documents, Downloads, Music, Pictures and Videos.
+    public static IReadOnlyList<string> DefaultImportFolders()
+    {
+        var profile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        return new[]
+        {
+            Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory),
+            Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
+            Path.Combine(profile, "Downloads"),
+            Environment.GetFolderPath(Environment.SpecialFolder.MyMusic),
+            Environment.GetFolderPath(Environment.SpecialFolder.MyPictures),
+            Environment.GetFolderPath(Environment.SpecialFolder.MyVideos),
+        }.Where(f => !string.IsNullOrEmpty(f)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+    }
 
     public static Settings Load()
     {

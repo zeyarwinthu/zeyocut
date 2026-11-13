@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Protocol;
+using ZeyoCut.Core;
 using ZeyoCut.Mcp;
 using ZeyoCut.Render.Export;
 
