@@ -32,12 +32,10 @@ public static class VideoTools
         });
 
         var ffmpeg = state.RequireFfmpeg();
-        var probe = VideoProbe.Probe(ffmpeg.Ffprobe, source);
-        var reasons = probe.NormalizeReasons();
+        var (probe, reasons) = VideoImport.Check(ffmpeg, source);
         if (reasons.Count == 0)
         {
-            var info = probe.ToAssetInfo();
-            var asset = session.Mutate($"import_video {Path.GetFileName(source)}", p => AssetImporter.Import(p, session.Directory, source, id, new AssetProbe(video: _ => info), AssetType.Video));
+            var asset = VideoImport.AddAsIs(session, $"import_video {Path.GetFileName(source)}", source, id, probe);
             return $"imported {AssetTools.Describe(asset)} (copied as it is: constant frame rate, upright, 8-bit)" + state.StartProxies(session, [asset.Id]);
         }
 
@@ -49,23 +47,8 @@ public static class VideoTools
             job.Report(0, "transcoding");
             var normalized = VideoNormalizer.Normalize(ffmpeg, source, probe, output, p => job.Report(p * 0.98), ct);
             job.Report(0.99, "registering the asset");
-            try
-            {
-                var info = normalized.ToAssetInfo();
-                var asset = session.Mutate($"import_video {Path.GetFileName(source)}", p =>
-                {
-                    var added = AssetImporter.Import(p, session.Directory, output, id, new AssetProbe(video: _ => info), AssetType.Video);
-                    added.OriginalFile = source;
-                    added.Normalized = string.Join("; ", reasons);
-                    return added;
-                });
-                return $"imported {AssetTools.Describe(asset)}\nnormalized from {source} in {stopwatch.Elapsed.TotalSeconds.ToString("0.0", CultureInfo.InvariantCulture)}s" + state.StartProxies(session, [asset.Id]);
-            }
-            catch
-            {
-                File.Delete(output);
-                throw;
-            }
+            var asset = VideoImport.AddNormalized(session, $"import_video {Path.GetFileName(source)}", output, id, normalized, source, reasons);
+            return $"imported {AssetTools.Describe(asset)}\nnormalized from {source} in {stopwatch.Elapsed.TotalSeconds.ToString("0.0", CultureInfo.InvariantCulture)}s" + state.StartProxies(session, [asset.Id]);
         });
 
         return $"'{Path.GetFileName(source)}' needs normalizing: {string.Join("; ", reasons)}.\n"

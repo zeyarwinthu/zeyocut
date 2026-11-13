@@ -58,8 +58,7 @@ public static class AssetTools
                     continue;
                 }
 
-                var video = VideoProbe.Probe(ffmpeg!.Ffprobe, file);
-                var reasons = video.NormalizeReasons();
+                var (video, reasons) = VideoImport.Check(ffmpeg!, file);
                 if (reasons.Count == 0)
                 {
                     infos[file] = video.ToAssetInfo();
@@ -150,14 +149,8 @@ public static class AssetTools
                 var output = AssetImporter.NewAssetPath(directory, source, ".mp4");
                 try
                 {
-                    var info = VideoNormalizer.Normalize(ffmpeg, source, probe, output, p => job.Report((index + p * 0.98) / videos.Count), ct).ToAssetInfo();
-                    var asset = session.Mutate($"import_folder {Path.GetFileName(source)}", p =>
-                    {
-                        var added = AssetImporter.Import(p, directory, output, null, new AssetProbe(video: _ => info), AssetType.Video);
-                        added.OriginalFile = source;
-                        added.Normalized = string.Join("; ", reasons);
-                        return added;
-                    });
+                    var normalized = VideoNormalizer.Normalize(ffmpeg, source, probe, output, p => job.Report((index + p * 0.98) / videos.Count), ct);
+                    var asset = VideoImport.AddNormalized(session, $"import_folder {Path.GetFileName(source)}", output, null, normalized, source, reasons);
                     done.Add("- " + Describe(asset));
                     added.Add(asset.Id);
                 }
