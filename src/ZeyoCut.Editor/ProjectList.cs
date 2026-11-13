@@ -18,6 +18,15 @@ public static class ProjectList
             ? []
             : Directory.EnumerateDirectories(root).Where(ProjectStore.IsProjectDirectory).Select(Describe).OrderByDescending(e => e.Saved).ToList();
 
+    // The project folder a path names: the folder itself, or the folder of its project.json.
+    public static string FolderOf(string path)
+    {
+        var full = Path.GetFullPath(path.Trim().Trim('"'));
+        return File.Exists(full) && string.Equals(Path.GetFileName(full), ProjectStore.ProjectFileName, StringComparison.OrdinalIgnoreCase)
+            ? Path.GetDirectoryName(full)!
+            : full;
+    }
+
     public static ProjectEntry Describe(string directory)
     {
         var name = Path.GetFileName(Path.TrimEndingDirectorySeparator(directory));

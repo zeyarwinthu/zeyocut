@@ -84,6 +84,43 @@ public class StartTests
     }
 
     [Fact]
+    public void AProjectIsOpenInOneWindowAtATime()
+    {
+        var root = TestFiles.NewFolder("start-claim");
+        var project = Path.Combine(root, "one");
+        var other = Path.Combine(root, "two");
+        Directory.CreateDirectory(project);
+        File.WriteAllText(Path.Combine(project, ProjectStore.ProjectFileName), "{}");
+        Assert.Equal(ProjectClaim.PipeName(project), ProjectClaim.PipeName(project.ToUpperInvariant() + Path.DirectorySeparatorChar));
+        Assert.Equal(project, ProjectList.FolderOf($"\"{Path.Combine(project, ProjectStore.ProjectFileName)}\""));
+        Assert.Equal(project, ProjectList.FolderOf(project));
+        Assert.NotEqual(ProjectClaim.PipeName(project), ProjectClaim.PipeName(other));
+
+        using var shown = new SemaphoreSlim(0);
+        using (var claim = ProjectClaim.TryClaim(project, () => shown.Release()))
+        {
+            Assert.NotNull(claim);
+            Assert.Null(ProjectClaim.TryClaim(project, () => { }));
+            using (var second = ProjectClaim.TryClaim(other, () => { }))
+            {
+                Assert.NotNull(second);
+            }
+
+            // Another editor asks the window that has it to come to the front, as often as it likes.
+            Assert.True(ProjectClaim.ShownElsewhere(project));
+            Assert.True(shown.Wait(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken));
+            Assert.True(ProjectClaim.AskToShow(project, TimeSpan.FromSeconds(2)));
+            Assert.True(shown.Wait(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken));
+        }
+
+        // Closed, the project can be claimed again, and nobody is asked.
+        Assert.False(ProjectClaim.ShownElsewhere(project));
+        Assert.False(ProjectClaim.AskToShow(project, TimeSpan.FromMilliseconds(100)));
+        using var again = ProjectClaim.TryClaim(project, () => { });
+        Assert.NotNull(again);
+    }
+
+    [Fact]
     public void TheSettingsFileCanBeMoved()
     {
         var before = Environment.GetEnvironmentVariable(EditorSettings.PathVariable);

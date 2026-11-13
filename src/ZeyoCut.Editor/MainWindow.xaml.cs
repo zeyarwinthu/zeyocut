@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Globalization;
 using System.Text.Json.Nodes;
 using System.Windows;
@@ -15,6 +16,7 @@ using ZeyoCut.Core;
 using ZeyoCut.Core.Animation;
 using ZeyoCut.Core.Editing;
 using ZeyoCut.Core.Model;
+using ZeyoCut.Core.Serialization;
 using ZeyoCut.Render;
 using ZeyoCut.Render.Export;
 using ZeyoCut.Render.Jobs;
@@ -25,6 +27,9 @@ namespace ZeyoCut.Editor;
 // One asset as the media library lists it.
 public sealed record MediaItem(string Id, string Kind, Brush Badge, string Details, bool Missing);
 
+// An option of the Export view's preset and language choices.
+public sealed record PageChoice(string Group, string Name, bool Selected, bool Usable, string? Tip);
+
 // The editor window: the start page until a project is open, then the media library (left), the
 // preview at the playhead (center), the inspector (right) and the timeline (bottom). Every change
 // goes through the project's EditorDocument, which saves it at once; changes another program saves
@@ -33,6 +38,9 @@ public partial class MainWindow : Window
 {
     // Playback draws every frame while drawing keeps up, else every second, third or fourth.
     private const int MaxStep = 4;
+
+    // What the media library hands the timeline when an asset is dragged onto it.
+    private const string AssetFormat = "ZeyoCut.Asset";
 
     private static readonly Brush VideoBadge = Frozen(0x3E, 0x6F, 0xB0);
     private static readonly Brush ImageBadge = Frozen(0x3E, 0x8F, 0x5A);
@@ -43,12 +51,15 @@ public partial class MainWindow : Window
     private readonly string _settingsPath;
     private readonly EditorSettings _prefs;
     private readonly JobManager _jobs = new();
+    private readonly ExportJobManager _exports;
+    private readonly ExportStart _exportStart;
     private readonly HashSet<string> _running = new(StringComparer.Ordinal);
     private readonly DispatcherTimer _poll;
     private readonly DispatcherTimer _settle;
     private readonly DispatcherTimer _ticker;
     private readonly PlaybackClock _clock = new();
     private EditorDocument? _document;
+    private ProjectClaim? _claim;
     private ProxyJobs? _proxies;
     private MediaImporter? _importer;
     private FramePreview? _preview;
@@ -64,6 +75,8 @@ public partial class MainWindow : Window
     private string? _selectedAsset;
     private string? _selectedLayer;
     private bool _rebuilding;
+    private bool _inspectorStale;
+    private bool _committingField;
     private bool _playing;
     private PreviewSource? _playSource;
     private int _playFrom;
@@ -71,12 +84,30 @@ public partial class MainWindow : Window
     private double _speed = 1;
     private DateTime _prerollUntil;
     private DateTime _nextAdapt;
+    private (Point At, string Asset)? _mediaPressed;
+    private ExportStarted? _export;
+    private ExportState? _exportShown;
+    private string _exportPreset = ExportChoices.ProjectSettings;
+    private string _exportLanguage = ExportChoices.EveryLanguage;
+    private string? _encoderWarning;
 
     public MainWindow(Settings settings, string settingsPath)
     {
         _settings = settings;
         _settingsPath = settingsPath;
         _prefs = EditorSettings.Load(settingsPath);
+        VideoEncoder? encoder = null;
+        try
+        {
+            encoder = VideoEncoders.Parse(settings.VideoEncoder);
+        }
+        catch (ZeyoCutException ex)
+        {
+            _encoderWarning = $"the VideoEncoder setting: {ex.Message}; using auto";
+        }
+
+        _exportStart = new ExportStart(encoder, settings.LibraryPath ?? Settings.DefaultLibraryPath, Ffmpeg);
+        _exports = new ExportJobManager { ChooseEncoder = crf => _exportStart.ChooseEncoder(crf) };
         InitializeComponent();
         RestorePlacement();
         SnapToggle.IsChecked = Timeline.Snapping = _prefs.Snapping;
@@ -105,26 +136,54 @@ public partial class MainWindow : Window
         ShowStartPage();
     }
 
-    // Opens a project folder (or the folder of a project.json) in place of the one open.
+    // Opens a project folder (or the folder of a project.json) in place of the one open. A project
+    // another editor window has open comes to the front there instead.
     public void OpenProject(string path)
     {
         string directory;
         EditorDocument document;
+        ProjectClaim? claim = null;
         try
         {
-            var full = Path.GetFullPath(path.Trim().Trim('"'));
-            directory = File.Exists(full) && string.Equals(Path.GetFileName(full), ProjectStore.ProjectFileName, StringComparison.OrdinalIgnoreCase)
-                ? Path.GetDirectoryName(full)!
-                : full;
+            directory = ProjectList.FolderOf(path);
             if (!ProjectStore.IsProjectDirectory(directory))
             {
                 throw new ZeyoCutException($"there's no project in {directory}: a project folder holds a {ProjectStore.ProjectFileName}");
+            }
+
+            if (_document is not null && ProjectClaim.PipeName(directory) == ProjectClaim.PipeName(_document.Session.Directory))
+            {
+                Message($"{directory} is open");
+                return;
+            }
+
+            claim = Claim(directory);
+            if (claim is null)
+            {
+                var note = $"{directory} is open in another editor window, which is in front now";
+                if (_document is null)
+                {
+                    ShowStartPage(note);
+                }
+                else
+                {
+                    Message(note);
+                }
+
+                return;
+            }
+
+            if (!StopExportFirst($"open {Path.GetFileName(directory)}"))
+            {
+                claim.Dispose();
+                return;
             }
 
             document = EditorDocument.Open(directory);
         }
         catch (Exception ex) when (ex is ZeyoCutException or IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
         {
+            claim?.Dispose();
             if (_document is null)
             {
                 ShowStartPage($"Couldn't open {path}: {ex.Message}");
@@ -138,27 +197,44 @@ public partial class MainWindow : Window
         }
 
         CloseProject();
+        _claim = claim;
         ShowProject(document);
         _prefs.AddRecent(directory);
         SavePrefs();
         UpdateMenus();
     }
 
-    // Space plays and pauses wherever the focus is, before a focused button or list takes it.
+    // The Edit view is showing, with a project open.
+    private bool Editing => _document is not null && EditMode.IsChecked == true;
+
+    // Space plays and pauses wherever the focus is in the Edit view, before a focused button or list
+    // takes it.
     protected override void OnPreviewKeyDown(KeyEventArgs e)
     {
         base.OnPreviewKeyDown(e);
-        if (!e.Handled && e.Key == Key.Space && Keyboard.Modifiers == ModifierKeys.None && _document is not null && e.OriginalSource is not TextBox)
+        if (!e.Handled && e.Key == Key.Space && Keyboard.Modifiers == ModifierKeys.None && Editing && e.OriginalSource is not TextBox)
         {
             TogglePlay();
             e.Handled = true;
         }
     }
 
+    // A click anywhere but the inspector field being typed in saves what was typed there first.
+    protected override void OnPreviewMouseDown(MouseButtonEventArgs e)
+    {
+        base.OnPreviewMouseDown(e);
+        if (Keyboard.FocusedElement is TextBox { Tag: InspectorField } box && e.OriginalSource is Visual target && !box.IsAncestorOf(target))
+        {
+            Keyboard.ClearFocus();
+        }
+    }
+
     protected override void OnKeyDown(KeyEventArgs e)
     {
         base.OnKeyDown(e);
-        if (e.Handled)
+
+        // Typing in a field: only Ctrl shortcuts are the window's.
+        if (e.Handled || (e.OriginalSource is TextBox && (Keyboard.Modifiers & ModifierKeys.Control) == 0))
         {
             return;
         }
@@ -167,20 +243,24 @@ public partial class MainWindow : Window
         var key = e.Key == Key.System ? e.SystemKey : e.Key;
         var control = modifiers == ModifierKeys.Control;
         var plain = modifiers == ModifierKeys.None;
-        var open = _document is not null;
+        var open = Editing;
         if (control && key == Key.O)
         {
             ChooseProject();
+        }
+        else if (control && _document is not null && key is Key.D1 or Key.D2 or Key.D3 or Key.NumPad1 or Key.NumPad2 or Key.NumPad3)
+        {
+            (key is Key.D1 or Key.NumPad1 ? AssistantMode : key is Key.D2 or Key.NumPad2 ? EditMode : ExportMode).IsChecked = true;
         }
         else if (control && key == Key.I && open)
         {
             ChooseMedia();
         }
-        else if (control && key == Key.Z && open)
+        else if (control && key == Key.Z && _document is not null)
         {
             Undo();
         }
-        else if (open && ((control && key == Key.Y) || (modifiers == (ModifierKeys.Control | ModifierKeys.Shift) && key == Key.Z)))
+        else if (_document is not null && ((control && key == Key.Y) || (modifiers == (ModifierKeys.Control | ModifierKeys.Shift) && key == Key.Z)))
         {
             Redo();
         }
@@ -244,6 +324,12 @@ public partial class MainWindow : Window
     protected override void OnClosing(CancelEventArgs e)
     {
         base.OnClosing(e);
+        if (!StopExportFirst("close the window"))
+        {
+            e.Cancel = true;
+            return;
+        }
+
         SavePlacement();
         CloseProject();
         _poll.Stop();
@@ -269,11 +355,44 @@ public partial class MainWindow : Window
 
     private static string Number(double value) => value.ToString("0.###", CultureInfo.InvariantCulture);
 
-    private static string Seconds(double value) => $"{Number(value)} s";
-
     // FFmpeg as the server finds it: the FfmpegPath setting, FFMPEG_PATH, then PATH. Looked for again
     // until it's found.
     private FfmpegPaths Ffmpeg() => _ffmpeg ??= FfmpegLocator.Locate(_settings.FfmpegPath);
+
+    // This window's claim on a project, or null when another window has it open and was asked to
+    // come to the front.
+    private ProjectClaim? Claim(string directory)
+    {
+        for (var attempt = 0; attempt < 2; attempt++)
+        {
+            if (ProjectClaim.TryClaim(directory, () => Dispatcher.InvokeAsync(BringToFront)) is { } claim)
+            {
+                return claim;
+            }
+
+            if (ProjectClaim.AskToShow(directory, TimeSpan.FromSeconds(2)))
+            {
+                return null;
+            }
+        }
+
+        throw new ZeyoCutException("another editor window has it open but doesn't answer; close that window and try again");
+    }
+
+    // Another editor was asked to open this window's project.
+    private void BringToFront()
+    {
+        if (WindowState == WindowState.Minimized)
+        {
+            WindowState = WindowState.Normal;
+        }
+
+        Activate();
+
+        // Windows can keep a window behind the one the user works in; on top for a moment, it shows.
+        Topmost = true;
+        Topmost = false;
+    }
 
     private void ShowProject(EditorDocument document)
     {
@@ -303,8 +422,14 @@ public partial class MainWindow : Window
         _bitmap = null;
         PreviewImage.Source = null;
         SoundText.Text = "";
+        ExportName.Text = ExportChoices.DefaultFileName(directory);
+        _exportPreset = ExportChoices.ProjectSettings;
+        _exportLanguage = ExportChoices.EveryLanguage;
+        ExportStatus.Text = "";
         StartPage.Visibility = Visibility.Collapsed;
-        Workspace.Visibility = Visibility.Visible;
+        ModeBar.Visibility = Visibility.Visible;
+        EditMode.IsChecked = true;
+        ShowMode();
         Message(document.Session.MigratedFrom is { } from
             ? $"Updated project.json from format {from} to {Project.CurrentFormatVersion}; the file as it was is kept as {Path.GetFileName(document.Session.OriginalCopy)}"
             : $"Opened {directory}");
@@ -327,6 +452,10 @@ public partial class MainWindow : Window
         _preview?.Dispose();
         _sound!.Changed -= OnSoundChanged;
         _sound.Dispose();
+        _claim?.Dispose();
+        _claim = null;
+        _export = null;
+        _exportShown = null;
         _document = null;
         _importer = null;
         _proxies = null;
@@ -418,6 +547,7 @@ public partial class MainWindow : Window
         ShowInspector();
         UpdateStatus();
         ApplyZoom();
+        ShowPage();
         _sound!.Update(project, document.Session.Directory);
         if (_playing)
         {
@@ -461,22 +591,41 @@ public partial class MainWindow : Window
         _ => FontBadge,
     };
 
+    // Shows the selected clip's fields, the selected asset or the project. While a field holds text
+    // that hasn't been saved, a change saved by another program waits until it is: the inspector
+    // isn't built again under the user's typing. The field with the keyboard focus keeps it.
     private void ShowInspector()
+    {
+        var typing = TypingField();
+        if (typing is { Dirty: true } && !_committingField)
+        {
+            _inspectorStale = true;
+            return;
+        }
+
+        _inspectorStale = false;
+        var focused = typing?.Field.Label;
+        InspectorList.ItemsSource = InspectorRows();
+        if (focused is not null)
+        {
+            Dispatcher.InvokeAsync(() => FocusField(focused), DispatcherPriority.Loaded);
+        }
+    }
+
+    private List<InspectorField> InspectorRows()
     {
         var document = _document!;
         var project = document.View;
         if (_selectedLayer is { } layerId && project.FindLayer(layerId) is { } layer)
         {
-            InspectorTitle.Text = $"{layer.TypeName.ToUpperInvariant()} LAYER";
-            InspectorList.ItemsSource = LayerRows(project, layer, Timeline.FindClip(layerId));
-            return;
+            InspectorTitle.Text = Timeline.FindClip(layerId)?.Kind == ClipKind.Caption ? "CAPTION" : $"{layer.TypeName.ToUpperInvariant()} LAYER";
+            return InspectorFields.Layer(project, layer, Timeline.FindClip(layerId));
         }
 
         if (_selectedAsset is { } id && project.FindAsset(id) is { } asset)
         {
             InspectorTitle.Text = $"{Kind(asset)} ASSET";
-            InspectorList.ItemsSource = AssetRows(document.Session.Directory, project, asset);
-            return;
+            return Info(AssetRows(document.Session.Directory, project, asset));
         }
 
         InspectorTitle.Text = "PROJECT";
@@ -495,82 +644,94 @@ public partial class MainWindow : Window
             new("Revision", document.Revision.ToString(CultureInfo.InvariantCulture)),
             new("Last saved", File.GetLastWriteTime(file).ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture)),
         ];
-        InspectorList.ItemsSource = rows;
+        return Info(rows);
     }
 
-    // What a layer is, as the project has it. Editing these fields comes with the inspector's next
-    // phase; the timeline edits its timing now.
-    private static List<KeyValuePair<string, string>> LayerRows(Project project, Layer layer, TimelineClip? clip)
+    private static List<InspectorField> Info(IEnumerable<KeyValuePair<string, string>> rows) =>
+        rows.Select(r => new InspectorField(r.Key, FieldKind.Info, r.Value)).ToList();
+
+    // The inspector field the keyboard is in, and whether it holds text not saved yet.
+    private (InspectorField Field, TextBox Box, bool Dirty)? TypingField() =>
+        Keyboard.FocusedElement is TextBox { Tag: InspectorField field } box && InspectorList.IsAncestorOf(box)
+            ? (field, box, box.Text.ReplaceLineEndings("\n") != field.Value.ReplaceLineEndings("\n"))
+            : null;
+
+    private void FocusField(string label)
     {
-        var end = TimelineEditor.ContentEnd(project, layer);
-        var rows = new List<KeyValuePair<string, string>>
+        foreach (var item in InspectorList.Items)
         {
-            new("Id", layer.Id),
-            new("Type", layer.TypeName),
-        };
-        if (!string.IsNullOrEmpty(layer.Name) && layer.Name != layer.Id)
-        {
-            rows.Add(new("Name", layer.Name));
+            if (item is InspectorField field && field.Label == label && InspectorList.ItemContainerGenerator.ContainerFromItem(item) is DependencyObject container
+                && Descendant<TextBox>(container) is { } box)
+            {
+                box.Focus();
+                box.SelectAll();
+                return;
+            }
         }
-
-        rows.Add(new("Start", Seconds(layer.Start)));
-        rows.Add(new("End", Seconds(end) + (layer is ImageLayer or TextLayer && layer.End is null ? " (the project's end)" : "")));
-        rows.Add(new("Length", Seconds(end - layer.Start)));
-        if (layer is VisualLayer visual)
-        {
-            rows.Add(new("Draw level", $"z {visual.ZIndex}"));
-        }
-
-        if (layer.ParentId is { } parent)
-        {
-            rows.Add(new("Parent", parent));
-        }
-
-        if (clip?.Children > 0)
-        {
-            var children = ProjectEditor.Subtree(project, layer.Id).Skip(1).Select(l => l.Id).ToList();
-            rows.Add(new("Child layers", children.Count > 6 ? string.Join(", ", children.Take(6)) + $" and {children.Count - 6} more" : string.Join(", ", children)));
-        }
-
-        rows.Add(layer is AudioLayer ? new("Muted", layer.Visible ? "no" : "yes") : new("Shown", layer.Visible ? "yes" : "no (hidden)"));
-        switch (layer)
-        {
-            case VideoLayer video:
-                rows.Add(new("Asset", video.Asset));
-                rows.Add(new("Plays", $"{Seconds(video.TrimIn)} – {Seconds(video.TrimOut)} of the file"));
-                rows.Add(new("Speed", $"{Number(video.Speed)}×"));
-                rows.Add(new("Sound", video.Muted ? "muted" : $"{EnumNames.ToName(video.Role)}, volume {Number(video.Volume)}"));
-                rows.Add(new("Fades", $"in {Seconds(video.FadeIn)}, out {Seconds(video.FadeOut)}"));
-                break;
-            case AudioLayer audio:
-                rows.Add(new("Asset", audio.Asset));
-                rows.Add(new("Role", EnumNames.ToName(audio.Role)));
-                rows.Add(new("Plays", $"{Seconds(audio.TrimIn)} – {(audio.TrimOut is { } trimOut ? Seconds(trimOut) : "the end")} of the file"));
-                rows.Add(new("Volume", Number(audio.Volume)));
-                rows.Add(new("Fades", $"in {Seconds(audio.FadeIn)}, out {Seconds(audio.FadeOut)}"));
-                break;
-            case TextLayer text:
-                rows.Add(new("Text", text.Text));
-                rows.Add(new("Font", $"{text.FontAsset ?? text.FontFamily}, {Number(text.FontSize)} px{(text.Bold ? ", bold" : "")}"));
-                break;
-            case ImageLayer image when image.Drawings.Count > 0:
-                rows.Add(new("Drawings", string.Join(", ", image.Drawings.Select(d => $"{d.Key}: {d.Value}"))));
-                break;
-        }
-
-        if (layer.Language is { } language)
-        {
-            rows.Add(new("Language", language));
-        }
-
-        foreach (var mark in clip?.Marks ?? [])
-        {
-            rows.Add(new("Followed by", mark));
-        }
-
-        return rows;
     }
 
+    private static T? Descendant<T>(DependencyObject parent) where T : DependencyObject
+    {
+        for (var i = 0; i < VisualTreeHelper.GetChildrenCount(parent); i++)
+        {
+            var child = VisualTreeHelper.GetChild(parent, i);
+            if ((child as T ?? Descendant<T>(child)) is { } found)
+            {
+                return found;
+            }
+        }
+
+        return null;
+    }
+
+    // Saves a field's new value through its edit; false when the value can't be used, which the
+    // status line says. Typed with Enter it stays to be fixed, otherwise the field shows the saved
+    // value again.
+    private bool CommitField(InspectorField field, string text, bool fromEnter = false)
+    {
+        if (_document is null || field.Commit is null)
+        {
+            return true;
+        }
+
+        if (text.ReplaceLineEndings("\n") == field.Value.ReplaceLineEndings("\n"))
+        {
+            if (_inspectorStale)
+            {
+                ShowInspector();
+            }
+
+            return true;
+        }
+
+        EditOperation operation;
+        try
+        {
+            operation = field.Commit(text);
+        }
+        catch (ZeyoCutException ex)
+        {
+            Message(ex.Message);
+            if (!fromEnter)
+            {
+                ShowInspector();
+            }
+
+            return false;
+        }
+
+        _committingField = true;
+        try
+        {
+            Apply(operation);
+        }
+        finally
+        {
+            _committingField = false;
+        }
+
+        return true;
+    }
     private static List<KeyValuePair<string, string>> AssetRows(string directory, Project project, Asset asset)
     {
         var path = ProjectStore.AssetPath(directory, asset);
@@ -675,13 +836,39 @@ public partial class MainWindow : Window
         RecentMenu.IsEnabled = RecentMenu.Items.Count > 0;
     }
 
-    // Split needs a selected clip under the playhead; Delete, a selected clip.
+    // Split needs a selected clip under the playhead; Delete, a selected clip; Pack lanes, lanes
+    // that can be packed. The Edit view's commands need it showing.
     private void UpdateEditButtons()
     {
-        var open = _document is not null;
+        var open = Editing;
         SplitItem.IsEnabled = SplitButton.IsEnabled = open && CanSplit(out _);
         DeleteItem.IsEnabled = DeleteButton.IsEnabled = open && _selectedLayer is not null;
+        PackButton.IsEnabled = open && ProjectEditor.PackedLevels(_document!.View).Count > 0;
+        PackButton.ToolTip = PackButton.IsEnabled || !open
+            ? "Put clips that never show at the same time on shared lanes; every frame stays as it is"
+            : "The lanes are packed: sharing more of them would change what's drawn on top";
     }
+
+    // Adds a clip of an asset and selects it.
+    private void AddClip(AddClipOperation operation)
+    {
+        var before = _document!.View.Layers.Select(l => l.Id).ToHashSet(StringComparer.Ordinal);
+        Apply(operation);
+        if (_document.View.Layers.FirstOrDefault(l => !before.Contains(l.Id)) is { } added)
+        {
+            SelectLayer(added.Id);
+        }
+    }
+
+    // A clip of an asset dropped on the timeline: footage or a still on the visual lane it's dropped
+    // on, or on a level of its own on top anywhere else; sound in the role of the sound lane it's
+    // dropped on, else as music.
+    private static AddClipOperation? ClipFor(Asset asset, double time, TimelineLane? lane) => asset.Type switch
+    {
+        AssetType.Video or AssetType.Image => new AddClipOperation(asset.Type, asset.Id, time, lane is { Kind: LaneKind.Visual } ? lane.ZIndex : null),
+        AssetType.Audio => new AddClipOperation(asset.Type, asset.Id, time, Role: lane is { Kind: LaneKind.Audio, Role: { } role } ? EnumNames.ToName(role) : null),
+        _ => null,
+    };
 
     private void Message(string text)
     {
@@ -971,7 +1158,27 @@ public partial class MainWindow : Window
 
         var jobs = _jobs.All;
         var running = jobs.Where(j => j.State == JobState.Running).ToList();
-        JobsText.Text = string.Join(" · ", running.Select(j => $"{(string.IsNullOrEmpty(j.Stage) ? j.Description : j.Stage)} {j.Percent}%"));
+        var progress = running.Select(j => $"{(string.IsNullOrEmpty(j.Stage) ? j.Description : j.Stage)} {j.Percent}%").ToList();
+        if (_export?.Job is { } export)
+        {
+            if (export.State == ExportState.Running)
+            {
+                progress.Add($"Export {export.Percent.ToString("0", CultureInfo.InvariantCulture)}%");
+            }
+            else if (_exportShown == ExportState.Running)
+            {
+                Message(ExportOutcome(export));
+                ExportFilesChanged();
+            }
+
+            _exportShown = export.State;
+            if (ExportPage.Visibility == Visibility.Visible)
+            {
+                ShowExportState();
+            }
+        }
+
+        JobsText.Text = string.Join(" · ", progress);
         foreach (var item in _importer?.Pending ?? [])
         {
             item.Update();
@@ -1070,6 +1277,9 @@ public partial class MainWindow : Window
     private void ShowStartPage(string? error = null)
     {
         Workspace.Visibility = Visibility.Collapsed;
+        AssistantPage.Visibility = Visibility.Collapsed;
+        ExportPage.Visibility = Visibility.Collapsed;
+        ModeBar.Visibility = Visibility.Collapsed;
         StartPage.Visibility = Visibility.Visible;
         StartError.Text = error ?? "";
         StartError.Visibility = error is null ? Visibility.Collapsed : Visibility.Visible;
@@ -1225,6 +1435,11 @@ public partial class MainWindow : Window
 
     private void OnCloseProject(object sender, RoutedEventArgs e)
     {
+        if (!StopExportFirst("close the project"))
+        {
+            return;
+        }
+
         CloseProject();
         ShowStartPage();
     }
@@ -1313,6 +1528,388 @@ public partial class MainWindow : Window
     private void OnClipSelected(object? sender, string? id) => SelectLayer(id);
 
     private void OnTimelineEdit(object? sender, EditOperation operation) => Apply(operation);
+
+    // Enter saves a field (Shift+Enter starts a new line of text); Escape puts back what it holds.
+    private void OnFieldKey(object sender, KeyEventArgs e)
+    {
+        if (sender is not TextBox { Tag: InspectorField field } box)
+        {
+            return;
+        }
+
+        if (e.Key == Key.Return && Keyboard.Modifiers != ModifierKeys.Shift)
+        {
+            // The inspector is built again with the saved value, and the box loses the focus on the
+            // way: marked as saved, it isn't saved a second time then.
+            e.Handled = true;
+            var text = box.Text;
+            box.Tag = field with { Value = text };
+            if (!CommitField(field, text, fromEnter: true))
+            {
+                box.Tag = field;
+            }
+        }
+        else if (e.Key == Key.Escape)
+        {
+            e.Handled = true;
+            box.Text = field.Value;
+            box.SelectAll();
+        }
+    }
+
+    // Leaving a field saves it, once the focus has moved.
+    private void OnFieldLeft(object sender, KeyboardFocusChangedEventArgs e)
+    {
+        if (sender is TextBox { Tag: InspectorField field } box)
+        {
+            var text = box.Text;
+            Dispatcher.InvokeAsync(() => CommitField(field, text), DispatcherPriority.Input);
+        }
+    }
+
+    private void OnFieldToggled(object sender, RoutedEventArgs e)
+    {
+        if (sender is CheckBox { Tag: InspectorField field } box)
+        {
+            CommitField(field, box.IsChecked == true ? "true" : "false");
+        }
+    }
+
+    private void OnFieldChosen(object sender, RoutedEventArgs e)
+    {
+        if (sender is RadioButton { Tag: FieldChoice choice })
+        {
+            CommitField(choice.Field, choice.Name);
+        }
+    }
+
+    private void OnMediaPressed(object sender, MouseButtonEventArgs e) =>
+        _mediaPressed = e.OriginalSource is DependencyObject source && ItemsControl.ContainerFromElement(MediaList, source) is ListBoxItem { DataContext: MediaItem item }
+            ? (e.GetPosition(MediaList), item.Id)
+            : null;
+
+    // Dragging an asset out of the media library, to drop it on the timeline.
+    private void OnMediaDragged(object sender, MouseEventArgs e)
+    {
+        if (_mediaPressed is not { } pressed || e.LeftButton != MouseButtonState.Pressed)
+        {
+            _mediaPressed = null;
+            return;
+        }
+
+        var moved = e.GetPosition(MediaList) - pressed.At;
+        if (Math.Abs(moved.X) < SystemParameters.MinimumHorizontalDragDistance && Math.Abs(moved.Y) < SystemParameters.MinimumVerticalDragDistance)
+        {
+            return;
+        }
+
+        _mediaPressed = null;
+        e.Handled = true;
+        DragDrop.DoDragDrop(MediaList, new DataObject(AssetFormat, pressed.Asset), DragDropEffects.Copy);
+        Timeline.ClearMediaDrop();
+    }
+
+    private void OnTimelineDragOver(object sender, DragEventArgs e)
+    {
+        if (_document is null || e.Data.GetData(AssetFormat) is not string id || _document.View.FindAsset(id) is not { } asset)
+        {
+            return;
+        }
+
+        var (time, lane) = Timeline.MediaDropAt(e.GetPosition(Timeline));
+        e.Effects = ClipFor(asset, time, lane) is null ? DragDropEffects.None : DragDropEffects.Copy;
+        e.Handled = true;
+    }
+
+    private void OnTimelineDragLeave(object sender, DragEventArgs e) => Timeline.ClearMediaDrop();
+
+    private void OnTimelineDrop(object sender, DragEventArgs e)
+    {
+        if (_document is null || e.Data.GetData(AssetFormat) is not string id || _document.View.FindAsset(id) is not { } asset)
+        {
+            return;
+        }
+
+        e.Handled = true;
+        var (time, lane) = Timeline.MediaDropAt(e.GetPosition(Timeline));
+        Timeline.ClearMediaDrop();
+        if (ClipFor(asset, time, lane) is { } operation)
+        {
+            AddClip(operation);
+        }
+        else
+        {
+            Message($"'{id}' is a {EnumNames.ToName(asset.Type)}: a text's Font file field uses it");
+        }
+    }
+
+    private void OnMediaMenu(object sender, MouseButtonEventArgs e)
+    {
+        if (_document is null || MediaList.SelectedItem is not MediaItem item || _document.View.FindAsset(item.Id) is not { } asset)
+        {
+            return;
+        }
+
+        var menu = new ContextMenu { PlacementTarget = MediaList };
+        var add = new MenuItem { Header = "Add at the playhead" };
+        var operation = ClipFor(asset, FrameMath.TimeOf(_document.View, _frame), null);
+        add.IsEnabled = operation is not null;
+        add.Click += (_, _) => AddClip(operation!);
+        menu.Items.Add(add);
+        menu.IsOpen = true;
+        e.Handled = true;
+    }
+
+    private void OnPackLanes(object sender, RoutedEventArgs e) => Apply(new PackLanesOperation());
+
+    private void OnMode(object sender, RoutedEventArgs e) => ShowMode();
+
+    // Shows the view the mode switch is on. Playback stops outside the Edit view.
+    private void ShowMode()
+    {
+        if (_document is null)
+        {
+            return;
+        }
+
+        var editing = EditMode.IsChecked == true;
+        if (!editing)
+        {
+            Pause();
+        }
+
+        Workspace.Visibility = editing ? Visibility.Visible : Visibility.Collapsed;
+        AssistantPage.Visibility = AssistantMode.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
+        ExportPage.Visibility = ExportMode.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
+        UpdateEditButtons();
+        ShowPage();
+    }
+
+    // Brings the Assistant or Export view up to date when it is the one showing.
+    private void ShowPage()
+    {
+        if (_document is null)
+        {
+            return;
+        }
+
+        if (AssistantMode.IsChecked == true)
+        {
+            ShowAssistant();
+        }
+        else if (ExportMode.IsChecked == true)
+        {
+            ShowExportPage();
+        }
+    }
+
+    // The Assistant view: who saved last and the recent saves, from the backups folder.
+    private void ShowAssistant()
+    {
+        var document = _document!;
+        var saves = ProjectHistory.Saves(document.Session.Directory);
+        AssistantSaves.ItemsSource = saves;
+        AssistantEmpty.Visibility = saves.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        AssistantSaved.Text = saves.Count == 0
+            ? $"Revision {document.Revision}."
+            : $"Revision {document.Revision}, saved {saves[0].Time:yyyy-MM-dd HH:mm:ss} by {(saves[0].ByEditor ? "you" : "Claude")}: {saves[0].Edit}.";
+    }
+
+    // The Export view's choices for the project as it is, keeping the ones made while they fit.
+    private void ShowExportPage()
+    {
+        var project = _document!.View;
+        var presets = ExportChoices.Presets(project);
+        if (presets.FirstOrDefault(p => p.Name == _exportPreset) is not { Usable: true })
+        {
+            _exportPreset = ExportChoices.ProjectSettings;
+        }
+
+        ExportPresets.ItemsSource = presets.Select(p => new PageChoice("ExportPreset", p.Name, p.Name == _exportPreset, p.Usable, p.Tip)).ToList();
+        var languages = ExportChoices.Languages(project);
+        if (!languages.Contains(_exportLanguage))
+        {
+            _exportLanguage = ExportChoices.EveryLanguage;
+        }
+
+        ExportLanguages.ItemsSource = languages.Select(l => new PageChoice("ExportLanguage", l, l == _exportLanguage, true, l == ExportChoices.EveryLanguage
+            ? "Every layer, whatever its language"
+            : $"The layers in {l} and those without a language; clips whose sound is in another language are muted")).ToList();
+        ExportLanguageLabel.Visibility = ExportLanguages.Visibility = languages.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        ShowExportState();
+        ExportFilesChanged();
+    }
+
+    // The export this window started last: progress while it runs, what it made when it's done.
+    private void ShowExportState()
+    {
+        var job = _export?.Job;
+        var running = job is { State: ExportState.Running };
+        ExportButton.IsEnabled = !running;
+        ExportName.IsEnabled = !running;
+        StopExportButton.Visibility = running ? Visibility.Visible : Visibility.Collapsed;
+        ExportProgress.Visibility = running ? Visibility.Visible : Visibility.Collapsed;
+        ShowExportButton.Visibility = job is { State: ExportState.Completed } && File.Exists(job.OutputPath) ? Visibility.Visible : Visibility.Collapsed;
+        if (job is null)
+        {
+            return;
+        }
+
+        ExportProgress.Value = job.Percent;
+        ExportStatus.Foreground = (Brush)FindResource(job.State == ExportState.Failed ? "ErrorBrush" : "TextBrush");
+        ExportStatus.Text = ExportText(job, _export!.Version);
+    }
+
+    private static string ExportText(ExportJob job, LanguageVersion version)
+    {
+        var name = Path.GetFileName(job.OutputPath);
+        var elapsed = (job.FinishedUtc ?? DateTime.UtcNow) - job.StartedUtc;
+        var lines = new List<string>();
+        switch (job.State)
+        {
+            case ExportState.Running:
+                lines.Add(job.FramesDone >= job.TotalFrames
+                    ? $"Finishing the encode of {name}…"
+                    : $"Exporting {name}: {job.Percent.ToString("0.0", CultureInfo.InvariantCulture)}% ({job.FramesDone}/{job.TotalFrames} frames){JobTime.LeftText(job.Percent / 100, elapsed)}");
+                break;
+            case ExportState.Completed:
+                lines.Add($"Saved {ExportSummary.Describe(job.Result!)}");
+                lines.AddRange((job.Result!.Notes ?? []).Select(n => $"Processing: {n}"));
+                lines.AddRange(job.Result.Warnings.Select(w => $"Warning: {w}"));
+                break;
+            case ExportState.Cancelled:
+                lines.Add($"Stopped after {JobTime.Format(elapsed)}; nothing was written to {name}.");
+                break;
+            default:
+                lines.Add($"The export of {name} failed: {job.Error}");
+                break;
+        }
+
+        lines.AddRange(version.Warnings.Select(w => $"Warning: {w}"));
+        return string.Join("\n", lines);
+    }
+
+    // One line for the status bar about an export that has finished.
+    private static string ExportOutcome(ExportJob job) => job.State switch
+    {
+        ExportState.Completed => $"Exported {job.OutputPath} ({ExportSummary.FileSize(job.Result!.Media.FileSize)})",
+        ExportState.Cancelled => $"Stopped the export of {Path.GetFileName(job.OutputPath)}",
+        _ => $"The export of {Path.GetFileName(job.OutputPath)} failed: {job.Error}",
+    };
+
+    private void ExportFilesChanged()
+    {
+        if (_document is null || ExportPage.Visibility != Visibility.Visible)
+        {
+            return;
+        }
+
+        var files = ExportChoices.Files(_document.Session.Directory);
+        ExportFiles.ItemsSource = files;
+        ExportFilesEmpty.Visibility = files.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    // Before something that would end the running export: asks whether to stop it. True when no
+    // export runs or it was stopped.
+    private bool StopExportFirst(string then)
+    {
+        if (_export?.Job is not { State: ExportState.Running } job)
+        {
+            return true;
+        }
+
+        var answer = MessageBox.Show(this, $"{Path.GetFileName(job.OutputPath)} is still exporting ({job.Percent.ToString("0", CultureInfo.InvariantCulture)}%). Stop the export and {then}?",
+            "ZeyoCut Editor", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No);
+        if (answer != MessageBoxResult.Yes)
+        {
+            return false;
+        }
+
+        _exports.Cancel(job.Id);
+        job.Completion.Wait(TimeSpan.FromSeconds(5));
+        return true;
+    }
+
+    private void OnPageChoice(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { Tag: PageChoice choice })
+        {
+            if (choice.Group == "ExportPreset")
+            {
+                _exportPreset = choice.Name;
+            }
+            else
+            {
+                _exportLanguage = choice.Name;
+            }
+        }
+    }
+
+    // Exports the project as it is saved now (with what another program saved last), the way
+    // start_export does, in this window's process.
+    private void OnExport(object sender, RoutedEventArgs e)
+    {
+        TakeOutsideChanges();
+        if (_document is not { } document)
+        {
+            return;
+        }
+
+        var directory = document.Session.Directory;
+        try
+        {
+            var name = ExportStart.FileName(ExportName.Text);
+            ExportName.Text = name;
+            if (File.Exists(Path.Combine(directory, ProjectStore.ExportsFolder, name))
+                && MessageBox.Show(this, $"{name} is in the exports folder already. Replace it?", "ZeyoCut Editor", MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No) != MessageBoxResult.Yes)
+            {
+                return;
+            }
+
+            var preset = ExportChoices.Presets(document.View).First(p => p.Name == _exportPreset).Preset;
+            var language = _exportLanguage == ExportChoices.EveryLanguage ? null : _exportLanguage;
+            _export = _exportStart.Start(_exports, document.Session.Snapshot(), directory, name, null, preset, language, null);
+            _exportShown = ExportState.Running;
+            Message($"Exporting {name}{_export.Version.Note}" + (_encoderWarning is null ? "" : $" ({_encoderWarning})"));
+            ShowExportState();
+        }
+        catch (Exception ex) when (ex is ZeyoCutException or IOException or UnauthorizedAccessException)
+        {
+            ExportStatus.Foreground = (Brush)FindResource("ErrorBrush");
+            ExportStatus.Text = $"Couldn't export: {ex.Message}";
+        }
+    }
+
+    private void OnStopExport(object sender, RoutedEventArgs e)
+    {
+        if (_export?.Job is { State: ExportState.Running } job)
+        {
+            _exports.Cancel(job.Id);
+        }
+    }
+
+    private void OnShowExport(object sender, RoutedEventArgs e)
+    {
+        if (_export?.Job is { } job)
+        {
+            ShowInFolder(job.OutputPath);
+        }
+    }
+
+    private void OnShowExportFile(object sender, RoutedEventArgs e) => ShowInFolder((string)((FrameworkElement)sender).Tag);
+
+    // Opens File Explorer on the file's folder with the file selected.
+    private void ShowInFolder(string path)
+    {
+        try
+        {
+            using var _ = Process.Start(new ProcessStartInfo("explorer.exe", $"/select,\"{path}\"") { UseShellExecute = false });
+        }
+        catch (System.ComponentModel.Win32Exception ex)
+        {
+            Message($"Couldn't open File Explorer: {ex.Message}");
+        }
+    }
 
     private void OnClipMenu(object? sender, TimelineClip clip)
     {

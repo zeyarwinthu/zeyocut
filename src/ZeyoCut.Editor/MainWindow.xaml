@@ -32,6 +32,132 @@
       </Setter>
     </Style>
 
+    <local:ColorSwatch x:Key="Swatch" />
+
+    <Style x:Key="FieldLabel" TargetType="TextBlock">
+      <Setter Property="Foreground" Value="{StaticResource SecondaryTextBrush}" />
+      <Setter Property="Margin" Value="0,0,14,0" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+      <Setter Property="ToolTip" Value="{Binding Tip}" />
+    </Style>
+
+    <local:InspectorTemplates x:Key="InspectorTemplates">
+      <local:InspectorTemplates.Section>
+        <DataTemplate>
+          <TextBlock Text="{Binding Label}" Style="{StaticResource PanelTitle}" Margin="0,14,0,4" TextTrimming="CharacterEllipsis" />
+        </DataTemplate>
+      </local:InspectorTemplates.Section>
+      <local:InspectorTemplates.Info>
+        <DataTemplate>
+          <Grid Margin="0,3">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="Auto" SharedSizeGroup="Key" />
+              <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <TextBlock Text="{Binding Label}" Style="{StaticResource FieldLabel}" VerticalAlignment="Top" />
+            <TextBlock Grid.Column="1" Text="{Binding Value}" TextWrapping="Wrap" />
+          </Grid>
+        </DataTemplate>
+      </local:InspectorTemplates.Info>
+      <local:InspectorTemplates.Number>
+        <DataTemplate>
+          <Grid Margin="0,2">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="Auto" SharedSizeGroup="Key" />
+              <ColumnDefinition Width="*" />
+              <ColumnDefinition Width="22" />
+            </Grid.ColumnDefinitions>
+            <TextBlock Text="{Binding Label}" Style="{StaticResource FieldLabel}" />
+            <TextBox Grid.Column="1" Text="{Binding Value, Mode=OneTime}" Tag="{Binding}" PreviewKeyDown="OnFieldKey" LostKeyboardFocus="OnFieldLeft" />
+            <TextBlock Grid.Column="2" Text="{Binding Unit}" Style="{StaticResource Secondary}" Margin="5,0,0,0" VerticalAlignment="Center" />
+          </Grid>
+        </DataTemplate>
+      </local:InspectorTemplates.Number>
+      <local:InspectorTemplates.Text>
+        <DataTemplate>
+          <Grid Margin="0,2">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="Auto" SharedSizeGroup="Key" />
+              <ColumnDefinition Width="*" />
+              <ColumnDefinition Width="22" />
+            </Grid.ColumnDefinitions>
+            <TextBlock Text="{Binding Label}" Style="{StaticResource FieldLabel}" />
+            <TextBox Grid.Column="1" Text="{Binding Value, Mode=OneTime}" Tag="{Binding}" PreviewKeyDown="OnFieldKey" LostKeyboardFocus="OnFieldLeft" />
+          </Grid>
+        </DataTemplate>
+      </local:InspectorTemplates.Text>
+      <local:InspectorTemplates.Color>
+        <DataTemplate>
+          <Grid Margin="0,2">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="Auto" SharedSizeGroup="Key" />
+              <ColumnDefinition Width="*" />
+              <ColumnDefinition Width="22" />
+            </Grid.ColumnDefinitions>
+            <TextBlock Text="{Binding Label}" Style="{StaticResource FieldLabel}" />
+            <TextBox Grid.Column="1" Text="{Binding Value, Mode=OneTime}" Tag="{Binding}" PreviewKeyDown="OnFieldKey" LostKeyboardFocus="OnFieldLeft" />
+            <Border Grid.Column="2" Width="16" Height="16" CornerRadius="3" Margin="5,0,0,0" BorderBrush="{StaticResource ScrollThumbHoverBrush}" BorderThickness="1"
+                    Background="{Binding Value, Converter={StaticResource Swatch}}" HorizontalAlignment="Left" />
+          </Grid>
+        </DataTemplate>
+      </local:InspectorTemplates.Color>
+      <local:InspectorTemplates.LongText>
+        <DataTemplate>
+          <StackPanel Margin="0,2">
+            <TextBlock Text="{Binding Label}" Style="{StaticResource FieldLabel}" Margin="0,0,0,4" />
+            <TextBox Text="{Binding Value, Mode=OneTime}" Tag="{Binding}" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="52" MaxHeight="160"
+                     VerticalScrollBarVisibility="Auto" ToolTip="{Binding Tip}" PreviewKeyDown="OnFieldKey" LostKeyboardFocus="OnFieldLeft" />
+          </StackPanel>
+        </DataTemplate>
+      </local:InspectorTemplates.LongText>
+      <local:InspectorTemplates.Toggle>
+        <DataTemplate>
+          <Grid Margin="0,4">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="Auto" SharedSizeGroup="Key" />
+              <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <TextBlock Text="{Binding Label}" Style="{StaticResource FieldLabel}" />
+            <CheckBox Grid.Column="1" IsChecked="{Binding IsOn, Mode=OneTime}" Tag="{Binding}" Click="OnFieldToggled" />
+          </Grid>
+        </DataTemplate>
+      </local:InspectorTemplates.Toggle>
+      <local:InspectorTemplates.Choice>
+        <DataTemplate>
+          <Grid Margin="0,2">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="Auto" SharedSizeGroup="Key" />
+              <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <TextBlock Text="{Binding Label}" Style="{StaticResource FieldLabel}" />
+            <ItemsControl Grid.Column="1" ItemsSource="{Binding Options}" Focusable="False">
+              <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                  <WrapPanel />
+                </ItemsPanelTemplate>
+              </ItemsControl.ItemsPanel>
+              <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                  <RadioButton Style="{StaticResource SegmentButton}" Content="{Binding Name}" GroupName="{Binding Group}" IsChecked="{Binding Selected, Mode=OneTime}"
+                               Tag="{Binding}" Click="OnFieldChosen" />
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </Grid>
+        </DataTemplate>
+      </local:InspectorTemplates.Choice>
+    </local:InspectorTemplates>
+
+    <DataTemplate x:Key="ChoiceTemplate">
+      <RadioButton x:Name="Choice" Style="{StaticResource SegmentButton}" Content="{Binding Name}" GroupName="{Binding Group}" IsChecked="{Binding Selected, Mode=OneTime}"
+                   IsEnabled="{Binding Usable}" ToolTip="{Binding Tip}" ToolTipService.ShowOnDisabled="True" Tag="{Binding}" Click="OnPageChoice" />
+      <DataTemplate.Triggers>
+        <DataTrigger Binding="{Binding Usable}" Value="False">
+          <Setter TargetName="Choice" Property="Opacity" Value="0.45" />
+        </DataTrigger>
+      </DataTemplate.Triggers>
+    </DataTemplate>
+
     <DataTemplate x:Key="ProjectTemplate">
       <Button Style="{StaticResource ListButton}" Click="OnOpenListed" Tag="{Binding Directory}">
         <StackPanel>
@@ -51,6 +177,13 @@
       <RowDefinition Height="*" />
       <RowDefinition Height="Auto" />
     </Grid.RowDefinitions>
+
+    <StackPanel x:Name="ModeBar" HorizontalAlignment="Center" VerticalAlignment="Center" Orientation="Horizontal" Panel.ZIndex="1" Visibility="Collapsed">
+      <RadioButton x:Name="AssistantMode" GroupName="Mode" Style="{StaticResource SegmentButton}" Content="Assistant" Checked="OnMode"
+                   ToolTip="What Claude and you saved last, and how to work with Claude (Ctrl+1)" />
+      <RadioButton x:Name="EditMode" GroupName="Mode" Style="{StaticResource SegmentButton}" Content="Edit" IsChecked="True" Checked="OnMode" ToolTip="The timeline, preview and inspector (Ctrl+2)" />
+      <RadioButton x:Name="ExportMode" GroupName="Mode" Style="{StaticResource SegmentButton}" Content="Export" Checked="OnMode" ToolTip="Render the project to an MP4 (Ctrl+3)" />
+    </StackPanel>
 
     <Menu>
       <MenuItem Header="_File">
@@ -86,6 +219,102 @@
         <TextBlock x:Name="ProjectsTitle" Style="{StaticResource PanelTitle}" Margin="0,28,0,6" TextTrimming="CharacterEllipsis" />
         <ItemsControl x:Name="ProjectsList" ItemTemplate="{StaticResource ProjectTemplate}" Focusable="False" />
         <TextBlock x:Name="ProjectsEmpty" Style="{StaticResource Secondary}" FontSize="12" TextWrapping="Wrap" TextTrimming="None" Margin="12,4,0,0" Visibility="Collapsed" />
+      </StackPanel>
+    </ScrollViewer>
+
+    <ScrollViewer x:Name="AssistantPage" Grid.Row="1" VerticalScrollBarVisibility="Auto" Focusable="False" Visibility="Collapsed">
+      <StackPanel Width="720" Margin="32,40,32,32" HorizontalAlignment="Center">
+        <TextBlock Text="Assistant" FontSize="22" FontWeight="SemiBold" />
+        <TextBlock x:Name="AssistantSaved" FontSize="13" TextWrapping="Wrap" Margin="0,10,0,0" />
+        <Border Background="{StaticResource PanelBrush}" CornerRadius="4" Padding="14,10" Margin="0,16,0,0">
+          <TextBlock Foreground="{StaticResource SecondaryTextBrush}" FontSize="12" TextWrapping="Wrap"
+                     Text="Ask Claude in your chat to change this project, for example &#x201C;add Japanese captions&#x201D; or &#x201C;cut the long pauses&#x201D;. Each change you make here is saved as you make it, so Claude works on top of it on its next step; what Claude changes shows here within a second. Undo here takes back only your own changes." />
+        </Border>
+        <TextBlock Text="RECENT SAVES" Style="{StaticResource PanelTitle}" Margin="0,28,0,6" />
+        <ItemsControl x:Name="AssistantSaves" Focusable="False">
+          <ItemsControl.ItemTemplate>
+            <DataTemplate>
+              <Grid Margin="0,4">
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="150" />
+                  <ColumnDefinition Width="70" />
+                  <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Text="{Binding Time, StringFormat='{}{0:yyyy-MM-dd HH:mm:ss}'}" Style="{StaticResource Secondary}" VerticalAlignment="Center" />
+                <Border x:Name="WhoBadge" Grid.Column="1" CornerRadius="3" Padding="6,1" HorizontalAlignment="Left" Background="#6A4FB0">
+                  <TextBlock Text="{Binding Who}" FontSize="11" Foreground="#FFFFFF" />
+                </Border>
+                <TextBlock Grid.Column="2" Text="{Binding Edit}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" ToolTip="{Binding Edit}" />
+              </Grid>
+              <DataTemplate.Triggers>
+                <DataTrigger Binding="{Binding ByEditor}" Value="True">
+                  <Setter TargetName="WhoBadge" Property="Background" Value="#2D6A9F" />
+                </DataTrigger>
+              </DataTemplate.Triggers>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+        <TextBlock x:Name="AssistantEmpty" Style="{StaticResource Secondary}" FontSize="12" TextWrapping="Wrap" TextTrimming="None" Visibility="Collapsed"
+                   Text="Nothing saved yet since the project was made." />
+      </StackPanel>
+    </ScrollViewer>
+
+    <ScrollViewer x:Name="ExportPage" Grid.Row="1" VerticalScrollBarVisibility="Auto" Focusable="False" Visibility="Collapsed">
+      <StackPanel Width="720" Margin="32,40,32,32" HorizontalAlignment="Center">
+        <TextBlock Text="Export" FontSize="22" FontWeight="SemiBold" />
+        <TextBlock Style="{StaticResource Secondary}" FontSize="12" TextWrapping="Wrap" TextTrimming="None" Margin="0,6,0,18"
+                   Text="Renders the project as it is saved now to an MP4 in its exports folder, as Claude's start_export does. Edits made while it runs aren't in it." />
+        <Grid Grid.IsSharedSizeScope="True">
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="110" />
+            <ColumnDefinition Width="*" />
+          </Grid.ColumnDefinitions>
+          <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+          </Grid.RowDefinitions>
+          <TextBlock Text="File name" Foreground="{StaticResource SecondaryTextBrush}" VerticalAlignment="Center" />
+          <TextBox x:Name="ExportName" Grid.Column="1" Width="360" HorizontalAlignment="Left" ToolTip="Saved in the project's exports folder" />
+          <TextBlock Grid.Row="1" Text="Preset" Foreground="{StaticResource SecondaryTextBrush}" VerticalAlignment="Center" Margin="0,12,0,0" />
+          <ItemsControl x:Name="ExportPresets" Grid.Row="1" Grid.Column="1" Margin="0,12,0,0" Focusable="False" ItemTemplate="{StaticResource ChoiceTemplate}">
+            <ItemsControl.ItemsPanel>
+              <ItemsPanelTemplate>
+                <WrapPanel />
+              </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+          </ItemsControl>
+          <TextBlock x:Name="ExportLanguageLabel" Grid.Row="2" Text="Language" Foreground="{StaticResource SecondaryTextBrush}" VerticalAlignment="Center" Margin="0,12,0,0" />
+          <ItemsControl x:Name="ExportLanguages" Grid.Row="2" Grid.Column="1" Margin="0,12,0,0" Focusable="False" ItemTemplate="{StaticResource ChoiceTemplate}">
+            <ItemsControl.ItemsPanel>
+              <ItemsPanelTemplate>
+                <WrapPanel />
+              </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+          </ItemsControl>
+        </Grid>
+        <StackPanel Orientation="Horizontal" Margin="0,20,0,0">
+          <Button x:Name="ExportButton" Style="{StaticResource AccentButton}" Content="Export" Click="OnExport" />
+          <Button x:Name="StopExportButton" Content="Stop" Margin="8,0,0,0" Click="OnStopExport" Visibility="Collapsed" />
+          <Button x:Name="ShowExportButton" Content="Show in folder" Margin="8,0,0,0" Click="OnShowExport" Visibility="Collapsed" />
+        </StackPanel>
+        <ProgressBar x:Name="ExportProgress" Height="6" Maximum="100" Margin="0,16,0,0" Visibility="Collapsed" />
+        <TextBlock x:Name="ExportStatus" TextWrapping="Wrap" Margin="0,8,0,0" />
+        <TextBlock Text="IN THE EXPORTS FOLDER" Style="{StaticResource PanelTitle}" Margin="0,28,0,6" />
+        <ItemsControl x:Name="ExportFiles" Focusable="False">
+          <ItemsControl.ItemTemplate>
+            <DataTemplate>
+              <Button Style="{StaticResource ListButton}" Click="OnShowExportFile" Tag="{Binding Path}" ToolTip="Show it in its folder">
+                <StackPanel>
+                  <TextBlock Text="{Binding Name}" FontSize="13" TextTrimming="CharacterEllipsis" />
+                  <TextBlock Text="{Binding Details}" Style="{StaticResource Secondary}" Margin="0,2,0,0" />
+                </StackPanel>
+              </Button>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+        <TextBlock x:Name="ExportFilesEmpty" Style="{StaticResource Secondary}" FontSize="12" TextWrapping="Wrap" TextTrimming="None" Visibility="Collapsed"
+                   Text="No exports yet." />
       </StackPanel>
     </ScrollViewer>
 
@@ -142,7 +371,8 @@
           </ItemsControl.ItemTemplate>
         </ItemsControl>
         <Grid>
-          <ListBox x:Name="MediaList" SelectionChanged="OnMediaSelected" Padding="0,4">
+          <ListBox x:Name="MediaList" SelectionChanged="OnMediaSelected" Padding="0,4" PreviewMouseLeftButtonDown="OnMediaPressed" PreviewMouseMove="OnMediaDragged"
+                   MouseRightButtonUp="OnMediaMenu" ToolTip="Drag onto the timeline to add it there; right-click to add it at the playhead">
             <ListBox.ItemTemplate>
               <DataTemplate>
                 <Grid>
@@ -220,20 +450,8 @@
           <TextBlock x:Name="InspectorTitle" Text="PROJECT" Style="{StaticResource PanelTitle}" Margin="12,0" />
         </Grid>
         <ScrollViewer VerticalScrollBarVisibility="Auto" Focusable="False">
-          <ItemsControl x:Name="InspectorList" Margin="12,8" Grid.IsSharedSizeScope="True" Focusable="False">
-            <ItemsControl.ItemTemplate>
-              <DataTemplate>
-                <Grid Margin="0,3">
-                  <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto" SharedSizeGroup="Key" />
-                    <ColumnDefinition Width="*" />
-                  </Grid.ColumnDefinitions>
-                  <TextBlock Text="{Binding Key}" Foreground="{StaticResource SecondaryTextBrush}" Margin="0,0,14,0" />
-                  <TextBlock Grid.Column="1" Text="{Binding Value}" TextWrapping="Wrap" />
-                </Grid>
-              </DataTemplate>
-            </ItemsControl.ItemTemplate>
-          </ItemsControl>
+          <ItemsControl x:Name="InspectorList" Margin="12,0,12,8" Grid.IsSharedSizeScope="True" Focusable="False" KeyboardNavigation.TabNavigation="Cycle"
+                        ItemTemplateSelector="{StaticResource InspectorTemplates}" />
         </ScrollViewer>
       </DockPanel>
 
@@ -247,6 +465,8 @@
             <Button x:Name="DeleteButton" Style="{StaticResource IconButton}" Content="&#xE74D;" ToolTip="Delete the selected clip and its child layers (Delete)" Click="OnDelete" />
             <ToggleButton x:Name="SnapToggle" Style="{StaticResource ToggleSegment}" Content="Snap" Margin="8,0,0,0" VerticalAlignment="Center"
                           ToolTip="Snap to clip edges, the playhead and markers" Click="OnSnap" />
+            <Button x:Name="PackButton" Content="Pack lanes" Padding="10,2" Margin="8,0,0,0" VerticalAlignment="Center" Click="OnPackLanes"
+                    ToolTipService.ShowOnDisabled="True" />
           </StackPanel>
           <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,0,6,0">
             <TextBlock Text="Speed" Style="{StaticResource Secondary}" VerticalAlignment="Center" Margin="0,0,4,0" />
@@ -274,7 +494,8 @@
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
           </Grid.RowDefinitions>
-          <local:TimelineView x:Name="Timeline" Seek="OnSeek" Selected="OnClipSelected" Edit="OnTimelineEdit" ClipMenu="OnClipMenu" ViewChanged="OnTimelineViewChanged" />
+          <local:TimelineView x:Name="Timeline" Seek="OnSeek" Selected="OnClipSelected" Edit="OnTimelineEdit" ClipMenu="OnClipMenu" ViewChanged="OnTimelineViewChanged"
+                              AllowDrop="True" DragOver="OnTimelineDragOver" DragLeave="OnTimelineDragLeave" Drop="OnTimelineDrop" />
           <ScrollBar x:Name="TimelineVertical" Grid.Column="1" Orientation="Vertical" Scroll="OnTimelineScroll" />
           <ScrollBar x:Name="TimelineHorizontal" Grid.Row="1" Orientation="Horizontal" Scroll="OnTimelineScroll" />
         </Grid>

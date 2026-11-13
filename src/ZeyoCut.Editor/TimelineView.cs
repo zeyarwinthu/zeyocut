@@ -61,6 +61,7 @@ public sealed class TimelineView : FrameworkElement
     private Drag? _drag;
     private bool _scrubbing;
     private string? _hovered;
+    private (double Time, int? Lane)? _mediaDrop;
 
     public TimelineView()
     {
@@ -186,6 +187,32 @@ public sealed class TimelineView : FrameworkElement
     }
 
     public TimelineClip? FindClip(string? id) => id is null ? null : _lanes.SelectMany(l => l.Clips).FirstOrDefault(c => c.LayerId == id);
+
+    // Where media dropped at a point goes: the frame under it, and the lane under it if there is one.
+    // The place is marked until ClearMediaDrop.
+    public (double Time, TimelineLane? Lane) MediaDropAt(Point point)
+    {
+        var time = Math.Max(0, Math.Round(Scale.TimeAt(point.X - HeaderWidth) * _fps) / _fps);
+        var at = point.Y - RulerHeight + _scrollY;
+        int? lane = null;
+        for (var i = 0; i < _lanes.Count && point.Y >= RulerHeight; i++)
+        {
+            if (at >= _laneTops[i] && at < _laneTops[i + 1])
+            {
+                lane = i;
+            }
+        }
+
+        _mediaDrop = (time, lane);
+        DrawOverlay();
+        return (time, lane is { } index ? _lanes[index] : null);
+    }
+
+    public void ClearMediaDrop()
+    {
+        _mediaDrop = null;
+        DrawOverlay();
+    }
 
     public void CancelDrag()
     {
@@ -770,6 +797,24 @@ public sealed class TimelineView : FrameworkElement
     private void DrawOverlay()
     {
         using var dc = _overlay.RenderOpen();
+        if (_mediaDrop is { } drop)
+        {
+            // The lane the media goes in, or a line across all of them for a level of its own.
+            var accent = Resource("AccentBrush", Brushes.SteelBlue);
+            var at = Math.Round(HeaderWidth + Scale.XOf(drop.Time)) + 0.5;
+            var (top, bottom) = drop.Lane is { } lane
+                ? (RulerHeight + _laneTops[lane] - _scrollY, RulerHeight + _laneTops[lane + 1] - _scrollY)
+                : (RulerHeight, ActualHeight);
+            if (drop.Lane is not null)
+            {
+                var band = new SolidColorBrush(Color.FromArgb(0x30, 0x4C, 0x8D, 0xFF));
+                band.Freeze();
+                dc.DrawRectangle(band, null, new Rect(HeaderWidth, top, Math.Max(0, ActualWidth - HeaderWidth), Math.Max(0, bottom - top)));
+            }
+
+            dc.DrawLine(new Pen(accent, 2), new Point(at, top), new Point(at, bottom));
+        }
+
         var x = Math.Round(HeaderWidth + Scale.XOf(_playhead / (double)_fps)) + 0.5;
         if (x < HeaderWidth || x > ActualWidth)
         {

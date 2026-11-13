@@ -1,6 +1,6 @@
 # ZeyoCut
 
-**A video and animation editor that an AI model drives.** ZeyoCut is an [MCP](https://modelcontextprotocol.io) server for Windows. You tell Claude, or another MCP client, what you want. The model builds the project through ZeyoCut's tools, looks at rendered frames to check its work, and exports the MP4. A window for fine-tuning the same project by hand, [the editor](#the-editor), is in early development.
+**A video and animation editor that an AI model drives.** ZeyoCut is an [MCP](https://modelcontextprotocol.io) server for Windows. You tell Claude, or another MCP client, what you want. The model builds the project through ZeyoCut's tools, looks at rendered frames to check its work, and exports the MP4. A window for fine-tuning the same project by hand, [the editor](#the-editor), opens it while the model keeps working on it.
 
 [Website](https://cut.zeyoapp.com) · [Install](docs/install.md) · [Guide](docs/GUIDE.md) · [Tool reference](docs/TOOLS.md) · [Examples](examples/README.md)
 
@@ -52,11 +52,13 @@ Then ask for something. ZeyoCut imports files from your Desktop, Documents, Down
 
 ## The editor
 
-`ZeyoCut.Editor.exe`, next to `ZeyoCut.Mcp.exe` in the release zip, opens the same projects in a window, for working on them by hand. It is early: it imports media, plays the edit with its sound, and moves, trims, splits and deletes clips on a timeline. Changing a layer's settings in the inspector, and export, come next.
+`ZeyoCut.Editor.exe`, next to `ZeyoCut.Mcp.exe` in the release zip, opens the same projects in a window, for working on them by hand. It imports media, plays the edit with its sound, edits clips on a timeline and in an inspector, and exports. Moving, sizing and turning things in the picture, and effects, come later; ask the model for those.
 
-- **Open a project** from the start page, which lists your projects folder and recent projects, with File → Open project, or from the command line: `ZeyoCut.Editor.exe C:\Users\you\ZeyoCut\projects\my-video`.
+- **Open a project** from the start page, which lists your projects folder and recent projects, with File → Open project, from the command line (`ZeyoCut.Editor.exe C:\Users\you\ZeyoCut\projects\my-video`), or by asking the model to open it in the editor (`open_in_editor`). A project is open in one window at a time: opening it again brings that window to the front.
+- **Three views,** switched at the top or with Ctrl+1, Ctrl+2 and Ctrl+3: Assistant, Edit and Export.
 - **Import** images, audio, fonts and video with Media → Import. Video that needs normalizing (variable frame rate, rotation, HDR) is converted first, as `import_video` does, with its progress in the media list. Files you pick yourself can come from any folder; the import folders limit only what the model can read.
 - **Drag files** from File Explorer onto the window to import them. A project folder dropped on the start page opens.
+- **Put media on the timeline** by dragging it from the media list onto a lane, or right-click it → Add at the playhead. A video or picture dropped on a picture lane is drawn at that lane's level, and anywhere else on a level of its own on top. Sound takes the role of the sound lane it's dropped on, else music.
 - **The preview** draws the frame at the playhead with the same renderer as exports, from proxies for footage over 2560 px. Step with ←/→ (Shift: a second at a time), Home and End. Fit, 50%, 100% and 200% set the zoom.
 - **Playback.** Space plays and pauses, at 0.5×, 1× or 2×, with the sound mixed as the export mixes it. After an edit that changes the sound, the mix is made again in the background; until it's ready, playback is silent and says "updating sound…". While playing, frames are drawn at half size (Playback: Full, ½ or ¼), and when drawing can't keep up, every second frame is shown. A paused frame is always full size.
 - **The timeline** has a lane for each draw level (`zIndex`) of video, images and text, the highest on top; a lane for each caption track; and Voice, Music and Effects lanes for sound. A layer with child layers (a logo attached to a clip, a rig) is one clip with a "+N" badge, and its children move, trim, split and delete with it. Click a clip to select it and see it in the inspector.
@@ -65,10 +67,16 @@ Then ask for something. ZeyoCut imports files from your Desktop, Documents, Down
     - S (or Ctrl+B) splits the selected clip at the playhead, and Delete removes it with its child layers. Right-click a clip for these, for Hide and Show (Mute and Unmute for sound), and to turn a video's own sound off or on.
     - Click or drag in the ruler to move the playhead; ↑ and ↓ jump to the previous and next clip edge.
     - Ctrl+wheel or −/+ zooms and Shift+Z fits the whole video. The wheel scrolls the lanes and Shift+wheel scrolls in time.
+    - **Pack lanes** puts layers that never show at the same time on shared levels, so clips the model added one at a time stop taking a lane each. Every frame looks as before. When it can't save a lane, the button is off.
+- **The inspector** shows the selected clip and changes it. Start, End and Length move and trim it; Draw level is its `zIndex`; Shown hides it (Muted for sound). A video has Sound on, and sound has its role, volume and fades. A text has its text and its style: font (an installed family, or a font file imported into the project), size, bold, color, outline, alignment, maximum width, line height and a box behind it. A caption's text is its own, and its style is the whole track's: a change applies to every caption in the track, as one undo step.
+    - Enter saves a field, and so does clicking or tabbing away; Escape puts it back. In a text, Shift+Enter starts a new line.
+    - Numbers take a point or a comma, with or without their unit: `2,5`, `2.5 s` and `40px` all work. A value the project can't take is refused with the reason, and the field shows what's saved.
+- **Export** (Ctrl+3) renders the project as it's saved to an MP4 in its `exports` folder, as the model's `start_export` does, in the editor's own process: the project's settings or a preset of the same shape, and one language's version when layers are tagged with languages. It shows the progress, Stop ends it, and Show in folder opens File Explorer on the file. Replacing a file asks first, and closing the window or the project while an export runs asks whether to stop it. The files already in the `exports` folder are listed below; click one to show it.
+- **The Assistant view** (Ctrl+1) shows the revision, who saved it last, and the 20 most recent saves, each marked You or Claude, with a reminder of how to work with the model on the same project.
 - **Every change is saved at once**, as one step that Ctrl+Z undoes and Ctrl+Y redoes. The status bar shows "Saved · revision N"; there's no Save button.
 - **With Claude at the same time.** When the server saves the project, the editor shows the new version and says what changed. The server's next reply lists what the editor changed. See [Saving alongside another program](docs/project-format.md#saving-alongside-another-program).
 
-The editor reads `FfmpegPath` and `ProjectsRoot` from the same `appsettings.json` and environment variables as the server. It keeps its own settings (recent projects, panel sizes, window position, snapping, playback size) in `%LOCALAPPDATA%\ZeyoCut\editor.json`, or the file `ZEYOCUT_EDITOR_SETTINGS` names, never in the project.
+The editor reads `FfmpegPath`, `ProjectsRoot`, `LibraryPath` and `VideoEncoder` from the same `appsettings.json` and environment variables as the server. It keeps its own settings (recent projects, panel sizes, window position, snapping, playback size) in `%LOCALAPPDATA%\ZeyoCut\editor.json`, or the file `ZEYOCUT_EDITOR_SETTINGS` names, never in the project.
 
 ## Privacy
 
@@ -106,7 +114,7 @@ What you make with ZeyoCut is yours. The MIT license covers ZeyoCut's code, not 
 ```json
 {
   "ZeyoCut": {
-    "FfmpegPath": "", "ProjectsRoot": "", "LogDirectory": "", "JobsDirectory": "", "WhisperPath": "", "WhisperModel": "", "LibraryPath": "", "ModelsPath": "", "AiDevice": "", "VideoEncoder": "",
+    "FfmpegPath": "", "ProjectsRoot": "", "LogDirectory": "", "JobsDirectory": "", "WhisperPath": "", "WhisperModel": "", "LibraryPath": "", "ModelsPath": "", "AiDevice": "", "VideoEncoder": "", "EditorPath": "",
     "ClipDescriber": { "Provider": "", "ApiKeyVariable": "" },
     "LanguageFonts": { "my": "Myanmar Text", "ja": "Yu Gothic" }
   },
@@ -127,6 +135,7 @@ What you make with ZeyoCut is yours. The MIT license covers ZeyoCut's code, not 
 | `ModelsPath` | `ZEYOCUT_MODELS_DIR` | `models` in the library folder: the AI models for background removal and for face and plate detection, downloaded on first use (see [AI models](#ai-models)) |
 | `AiDevice` | `ZEYOCUT_AI_DEVICE` | `auto`: a model runs on DirectML only where the `system_check` tool measured that it works and takes at most 80% of the CPU's time, otherwise on the CPU (also before `system_check` has run). `cpu` always uses the CPU; `gpu` uses DirectML and falls back to the CPU when DirectML can't start. On an Intel Arc 140T, DirectML was no faster for the video model, took twice as long for face detection, hung or failed on the image model and hung on the plate model, so `auto` uses the CPU for all four |
 | `VideoEncoder` | `ZEYOCUT_VIDEO_ENCODER` | `auto`: the first GPU encoder that works (NVIDIA NVENC, Intel Quick Sync, AMD AMF, tried in that order once per computer and FFmpeg, results in the library's `encoders.json`), else libx264. `x264`, `nvenc`, `qsv` or `amf` names one; a GPU encoder that doesn't work falls back to libx264. Lossless exports (`crf` 0) always use libx264 |
+| `EditorPath` | `ZEYOCUT_EDITOR_PATH` | `ZeyoCut.Editor.exe` next to `ZeyoCut.Mcp.exe`: the editor `open_in_editor` starts |
 | `ClipDescriber:Provider` | `ZEYOCUT_DESCRIBER_PROVIDER` | none, so `describe_clip` is off |
 | `ClipDescriber:ApiKeyVariable` | | `ZEYOCUT_DESCRIBER_API_KEY`: the name of the environment variable that holds the describer's API key |
 | `LanguageFonts` | | `my`: Myanmar Text, `ja`: Yu Gothic. The font a text in a language gets when it is given none, by language tag. Entries here add languages or change these two; a tag with no entry uses a shorter tag's (`zh-Hant-TW`, then `zh-Hant`, then `zh`) |
@@ -209,7 +218,9 @@ Its `ZeyoCut.Editor.exe` (about 150 MB) goes to `src\ZeyoCut.Editor\bin\Release\
 
 **Do I need Claude?** No. Any MCP client that can run a local (stdio) server works, such as Claude Desktop, Claude Code or VS Code. Use a model that can look at images: `render_frame` and `render_contact_sheet` return pictures, and that's how the model checks its work.
 
-**Is there an editing window?** One is being built: [the editor](#the-editor) already plays a project and moves, trims, splits and deletes its clips. Everything else the model edits through ZeyoCut's tools. You see the result as frames and contact sheets in the chat, and on a preview page in your browser (`preview_server`) that plays the edit with its sound and follows every change. Every change can be undone.
+**Is there an editing window?** Yes: [the editor](#the-editor) opens the project the model is working on, for trimming and moving clips, fixing captions, changing volumes and exporting by hand. Ask the model to open it, or start `ZeyoCut.Editor.exe`. Everything else the model edits through ZeyoCut's tools. You also see the result as frames and contact sheets in the chat, and on a preview page in your browser (`preview_server`) that plays the edit with its sound and follows every change. Every change can be undone.
+
+**Can I edit while Claude works?** Yes. The editor saves each change as you make it. The model's next tool call starts with a note of what you changed and builds on it, and what the model changes shows in the editor within a second. Undo on either side takes back only its own changes.
 
 **Does it cost anything?** ZeyoCut is free and needs no account. Your MCP client and its AI model may have their own costs.
 

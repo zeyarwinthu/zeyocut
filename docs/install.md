@@ -119,7 +119,7 @@ Any client that runs local (stdio) MCP servers can use ZeyoCut. The command is t
 Two things to know:
 
 - Tools such as `render_frame` and `contact_sheet` return PNG images so the model can check its work. With a client that doesn't pass images to the model, everything still works, but the model edits without seeing the result.
-- ZeyoCut has 91 tools. Some clients limit how many tools they turn on at once.
+- ZeyoCut has 92 tools. Some clients limit how many tools they turn on at once.
 
 ## 4. First run
 
@@ -138,6 +138,8 @@ The [guide](GUIDE.md) shows every tool with an example call and its real respons
 `ZeyoCut.Editor.exe` is in the zip next to `ZeyoCut.Mcp.exe`. It needs no MCP client: start it like any program, or give it a project folder, for example `ZeyoCut.Editor.exe C:\Users\you\ZeyoCut\projects\hello`. It finds FFmpeg and the projects folder through the same `appsettings.json` and environment variables as the server. The bundle carries a copy too, but the settings you give the bundle in Claude Desktop reach only the server, so unzip the release to run the editor yourself.
 
 It plays sound with Windows Media Foundation. On an N edition of Windows, install the Media Feature Pack, or playback is silent and the editor says the sound can't be played.
+
+Claude can open it for you: ask it to open the project in the editor (`open_in_editor`). The server starts the `ZeyoCut.Editor.exe` in its own folder, which in the bundle is the bundle's copy, and passes on its settings. If the editor is somewhere else, set `EditorPath` in `appsettings.json` or `ZEYOCUT_EDITOR_PATH` to it.
 
 It can stay open while Claude works on the same project: each program saves on top of the other's changes. [The editor](https://github.com/zeyarwinthu/zeyocut#the-editor) in the README says what it can do so far.
 

@@ -20,8 +20,21 @@ when they open.
   draw level, caption track and sound role; clips move, trim, split, delete, hide and change lanes by
   dragging, keys and a right-click menu, with snapping to clip edges, the playhead and markers.
   Each change is saved at once as an undoable step. When another program saves the project, the
-  editor shows the new version and says what changed. The editor keeps its own settings in
+  editor shows the new version and says what changed. Media goes onto the timeline by dragging it
+  onto a lane or at the playhead, and Pack lanes puts layers that never show together on shared
+  levels without changing a frame. The inspector edits the selected clip: start, end, length, draw
+  level, shown or muted, a video's sound, role, volume and fades, and a text's or caption's text and
+  style (font, font file, size, bold, color, outline, alignment, width, line height, box); a
+  caption's style applies to its whole track. The Export view renders the project as `start_export`
+  does, with presets, language versions, progress, stop and show in folder, and lists the exports
+  folder. The Assistant view shows the revision and the 20 most recent saves, yours and Claude's. A
+  project is open in one editor window at a time. The editor keeps its own settings in
   `%LOCALAPPDATA%\ZeyoCut\editor.json` (`ZEYOCUT_EDITOR_SETTINGS` names another file).
+- **`open_in_editor`:** opens a project (by default the open one) in the editor on the user's
+  computer, so they can fine-tune it while Claude keeps working; a project already open in the editor
+  comes to the front. The editor is `ZeyoCut.Editor.exe` next to the server, or the one the new
+  `EditorPath` setting (`ZEYOCUT_EDITOR_PATH`) names. It runs on its own, with none of the server's
+  handles, so it stays open when the server stops.
 - **Two programs on one project:** the server, a second server or the ZeyoCut editor can
   have a project open at once without overwriting each other. A save holds `project.lock`, checks
   `project.json` by its SHA-256 and makes the edit on top of another program's version. Before each

@@ -97,6 +97,20 @@ The plan below was approved with these answers and changes. Where they disagree 
 - Nothing on the cut list was cut: speeds, drag-and-drop import, the right-click menu and snapping to markers are all in.
 - What section A's lane rule gives in practice: a layer added by a tool without a `zIndex` gets the next free one, so clips added one at a time each get a lane of their own, a staircase. Split clips stay in their lane. Dragging each clip into one lane fixes it by hand; a "pack lanes" command, or the server placing a new clip on its neighbor's level when they don't overlap, would fix it for good. I'd decide that before Phase 4.
 
+**What Phase 4 found and did differently:**
+
+- My recommendations from the Phase 3 report were taken as accepted when you said "continue": a Pack lanes command (option b; the server's tools are unchanged), and adding media to the timeline and an editable inspector folded into this phase.
+- Pack lanes (`PackLanesOperation`) packs top-level layers lane by lane: the layers sharing a level move together, so text that shares a lane keeps sharing it. Child layers, which have no lanes, settle in between. It can't always reach the fewest lanes, for example when a dropped clip or a child layer is drawn between two layers that could otherwise share a level; then it changes nothing, rather than move layers for no lane saved, and the button is off with a tooltip that says why. The tests check that every frame draws as before.
+- Media goes onto the timeline by dragging it onto a lane or with Add at the playhead (`AddClipOperation`, the same layers `add_video_layer`, `add_image_layer` and `add_audio_layer` make). A font is not a clip; the Font file field uses it.
+- The inspector's style fields for text came forward from 5b, for every text layer, not only captions: font, font file, size, bold, color, outline, alignment, max width, line height and box. Position and dragging in the preview stay in 5b, and a video's speed stays shown only.
+- A caption's style applies to its whole track, as one undo step (`UpdateLayersOperation`, named `update_layer captions_en`), and its text and timing are its own.
+- Choice fields (role, alignment, font file, the export presets and languages) are segment buttons, not drop-down lists.
+- One window per project uses only a named pipe per project folder, for the current user; there's no lock file to go stale. A second editor asks the first to come to the front; Windows lets it, since the asking editor gives it the right to (`AllowSetForegroundWindow`), and the window also goes on top for a moment, as Windows can otherwise keep it behind.
+- `open_in_editor` starts the editor without the server's handles (a test shows that .NET's `Process.Start` passes them on, which would keep the client waiting on the editor after the server ended), outside the client's job object where allowed. The new `EditorPath` setting (`ZEYOCUT_EDITOR_PATH`) names an editor elsewhere.
+- The export start (`ExportStart`) moved into Render, as planned for this phase, in a commit of its own.
+- The editor side of sync needed no rebase bar or conflict review (change 1). The Assistant view shows the revision, who saved last, and the recent saves from `backups\`.
+- The cut list: nothing was cut. The Assistant view, speeds, drag-and-drop, the right-click menus and marker snapping are all in.
+
 ## Summary
 
 What I found:

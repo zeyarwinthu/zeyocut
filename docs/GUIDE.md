@@ -1,6 +1,6 @@
 # ZeyoCut tool guide
 
-The `zeyocut` server has 91 tools, plus [`describe_clip`](#optional-describe_clip) when a clip describer is configured, and 4 [workflow prompts](#workflow-prompts). Every example below was run against the real server; paths are shortened to `C:\Users\you\...` and `C:\videos\...`.
+The `zeyocut` server has 92 tools, plus [`describe_clip`](#optional-describe_clip) when a clip describer is configured, and 4 [workflow prompts](#workflow-prompts). Every example below was run against the real server; paths are shortened to `C:\Users\you\...` and `C:\videos\...`.
 
 ## Conventions
 
@@ -24,7 +24,7 @@ The `zeyocut` server has 91 tools, plus [`describe_clip`](#optional-describe_cli
 
 Contents:
 
-- [Project](#project): `create_project`, `open_project`, `update_project`, `get_project`, `list_projects`, `undo`, `redo`, `restore_backup`
+- [Project](#project): `create_project`, `open_project`, `update_project`, `get_project`, `list_projects`, `open_in_editor`, `undo`, `redo`, `restore_backup`
 - [Assets](#assets): `import_asset`, `import_folder`, `list_assets`
 - [Layers](#layers): `add_image_layer`, `add_text_layer`, `add_audio_layer`, `update_layer`, `remove_layer`, `duplicate_layer`, `list_layers`
 - [Animation](#animation): `set_keyframes`, `remove_keyframes`, `clear_keyframes`
@@ -264,6 +264,32 @@ Lists the projects under the projects root. It takes no parameters.
 ```text
 projects root: C:\Users\you\ZeyoCut\projects
 - tora-test: "tora-test" 1280x720 @ 30 fps, 3s, 6 layer(s), modified 2026-11-02 01:29  [open]
+```
+
+### `open_in_editor`
+
+Opens a project in ZeyoCut's editor window on the user's computer, so they can fine-tune it by hand: move and trim clips on a timeline, fix caption text, change volumes, export. The editor saves each change to `project.json` as it is made. The next tool call's reply starts with a note of what the user changed (see [`undo` / `redo`](#undo--redo)), edits made with the tools go on top of theirs, and the editor shows them within a second. A project that is already open in the editor comes to the front instead of opening twice.
+
+The editor is `ZeyoCut.Editor.exe` next to the server, or the one the `EditorPath` setting (`ZEYOCUT_EDITOR_PATH`) names. It gets the server's settings, and it runs on its own: it stays open when the server stops.
+
+| Parameter | Type | Notes |
+|---|---|---|
+| `project` | string | A name from `list_projects`, or an absolute folder path. Default: the open project |
+
+```json
+{}
+```
+```text
+opened C:\Users\you\ZeyoCut\projects\timeline-demo in the editor (C:\Tools\ZeyoCut\ZeyoCut.Editor.exe, process 33540); the user can now edit it by hand while you keep working on it
+```
+
+A project that doesn't exist:
+
+```json
+{ "project": "street" }
+```
+```text
+An error occurred invoking 'open_in_editor': no project found at 'C:\Users\you\ZeyoCut\projects\street'; projects: empty-short, street-demo, timeline-demo
 ```
 
 ### `undo` / `redo`

@@ -133,6 +133,23 @@ public static class ProjectTools
         return WithWarnings(text, problems.Select(p => "project.json problem: " + p));
     });
 
+    [McpServerTool(Name = "open_in_editor")]
+    [Description("Open a project in ZeyoCut's editor window on this computer, so the user can fine-tune it by hand: move and trim clips on a timeline, fix caption text, change volumes, export. Default: the open project. The editor saves each change to project.json as it is made; your next tool call starts with a note of what the user changed, your edits are made on top of theirs, and the editor shows yours within a second. A project already open in the editor comes to the front instead of opening twice.")]
+    public static string OpenInEditor(
+        EditorState state,
+        [Description("Project name from list_projects, or an absolute path to a project folder inside the projects root. Default: the open project.")] string? project = null) => Guard(() =>
+    {
+        var directory = string.IsNullOrWhiteSpace(project) ? state.Session.Directory : state.ResolveProjectDirectory(project);
+        if (!ProjectStore.IsProjectDirectory(directory))
+        {
+            throw new ZeyoCutException($"no project found at '{directory}'; projects: {Ids.List(FindProjects(state).Select(p => p.Name))}");
+        }
+
+        var editor = EditorLauncher.Find(state.Settings);
+        var process = EditorLauncher.Start(editor, [directory]);
+        return $"opened {directory} in the editor ({editor}, process {process}); the user can now edit it by hand while you keep working on it";
+    });
+
     [McpServerTool(Name = "get_project")]
     [Description("Return the full project model (project.json) of the open project.")]
     public static string GetProject(EditorState state) => Guard(() => ProjectJson.Serialize(state.Session.Snapshot()));

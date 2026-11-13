@@ -14,6 +14,7 @@ namespace ZeyoCut.Core;
 // VideoEncoder is auto (default: the first GPU encoder that works, else libx264), x264, nvenc, qsv or amf.
 // ImportFolders are the folders tools may import from besides the projects folder and the library
 // (default: Desktop, Documents, Downloads, Music, Pictures and Videos); see the server's AllowedFolders.
+// EditorPath is the editor open_in_editor starts (default: ZeyoCut.Editor.exe next to the server).
 public sealed record Settings(
     string? FfmpegPath,
     string ProjectsRoot,
@@ -28,7 +29,8 @@ public sealed record Settings(
     string? JobsDirectory = null,
     IReadOnlyDictionary<string, string>? LanguageFonts = null,
     string? VideoEncoder = null,
-    IReadOnlyList<string>? ImportFolders = null)
+    IReadOnlyList<string>? ImportFolders = null,
+    string? EditorPath = null)
 {
     public IReadOnlyDictionary<string, string> Fonts => LanguageFonts ?? Languages.DefaultFonts;
 
@@ -47,6 +49,7 @@ public sealed record Settings(
     public const string AiDeviceVariable = "ZEYOCUT_AI_DEVICE";
     public const string VideoEncoderVariable = "ZEYOCUT_VIDEO_ENCODER";
     public const string ImportFoldersVariable = "ZEYOCUT_IMPORT_DIRS";
+    public const string EditorPathVariable = "ZEYOCUT_EDITOR_PATH";
 
     // Projects and the library share one folder in the user's profile: %USERPROFILE%\ZeyoCut.
     public static string DefaultRoot => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "ZeyoCut");
@@ -84,6 +87,7 @@ public sealed record Settings(
         string? models = null;
         string? device = null;
         string? encoder = null;
+        string? editor = null;
         List<string>? imports = null;
         var fonts = new Dictionary<string, string>(Languages.DefaultFonts, StringComparer.Ordinal);
 
@@ -109,6 +113,7 @@ public sealed record Settings(
                     models = Read(section, "ModelsPath");
                     device = Read(section, "AiDevice");
                     encoder = Read(section, "VideoEncoder");
+                    editor = Read(section, "EditorPath");
                     if (section.TryGetProperty("ImportFolders", out var importFolders))
                     {
                         imports = importFolders.ValueKind switch
@@ -161,13 +166,15 @@ public sealed record Settings(
         models = Env(ModelsPathVariable) ?? models ?? Path.Combine(library, "models");
         device = Env(AiDeviceVariable) ?? device;
         encoder = Env(VideoEncoderVariable) ?? encoder;
+        editor = Env(EditorPathVariable) ?? editor;
         imports = Env(ImportFoldersVariable) is { } importVariable ? [.. importVariable.Split(';')] : imports;
         var importList = imports?.Select(f => f.Trim().Trim('"')).Where(f => f.Length > 0)
             .Select(f => Path.GetFullPath(Environment.ExpandEnvironmentVariables(f))).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
 
         return new Settings(ffmpeg, Path.GetFullPath(Environment.ExpandEnvironmentVariables(projects)), Path.GetFullPath(Environment.ExpandEnvironmentVariables(logs)), whisper, whisperModel,
             library, describer, describerKey?.Trim() ?? DefaultDescriberKeyVariable, Path.GetFullPath(Environment.ExpandEnvironmentVariables(models)), device,
-            Path.GetFullPath(Environment.ExpandEnvironmentVariables(jobs)), fonts, encoder, importList is { Count: > 0 } ? importList : null);
+            Path.GetFullPath(Environment.ExpandEnvironmentVariables(jobs)), fonts, encoder, importList is { Count: > 0 } ? importList : null,
+            editor is null ? null : Path.GetFullPath(Environment.ExpandEnvironmentVariables(editor.Trim().Trim('"'))));
     }
 
     private static string? Read(JsonElement section, string name) =>

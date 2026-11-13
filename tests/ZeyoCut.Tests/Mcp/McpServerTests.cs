@@ -37,6 +37,7 @@ public class McpServerTests
         "apply_redaction", "tracks_to_keyframes", "redaction_report",
         "detect_and_track",
         "prerender_layers", "export_otio", "export_fcpxml",
+        "open_in_editor",
     ];
 
     [Fact]
