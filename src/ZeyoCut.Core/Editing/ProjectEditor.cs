@@ -663,10 +663,10 @@ public static class ProjectEditor
     }
 
     // New draw levels that put layers which never show at the same time on one level, so the
-    // timeline needs as few lanes as the drawing allows. Each layer goes just above every layer
-    // drawn under it that shows at some of the same time, so every frame is drawn as before. A
-    // subject cutout shows while its sources do, and a layer without an end counts as never ending.
-    // Returns only the layers whose level changes.
+    // timeline needs few lanes. Each layer stays above every layer drawn under it that shows at some
+    // of the same time, so every frame is drawn as before. A subject cutout shows while its sources
+    // do, and a layer without an end counts as never ending. Returns only the layers whose level
+    // changes, and none when the top-level layers would need as many levels as they use now.
     public static Dictionary<string, int> PackedLevels(Project project)
     {
         var drawn = new List<(Layer Layer, int Index, double Start, double End)>();
@@ -684,18 +684,52 @@ public static class ProjectEditor
         }
 
         drawn.Sort((a, b) => a.Layer.ZIndex != b.Layer.ZIndex ? a.Layer.ZIndex.CompareTo(b.Layer.ZIndex) : a.Index.CompareTo(b.Index));
-        var levels = new int[drawn.Count];
-        var changed = new Dictionary<string, int>(StringComparer.Ordinal);
+        bool Overlap(int a, int b) => drawn[a].Start < drawn[b].End && drawn[b].Start < drawn[a].End;
+        bool TopLevel(int i) => drawn[i].Layer.ParentId is null;
+
+        // First each layer goes just above the layers under it that show with it, a top-level layer
+        // onto an even level: the levels child layers (which have no lanes) need between them then
+        // don't keep top-level layers apart.
+        var first = new int[drawn.Count];
         for (var i = 0; i < drawn.Count; i++)
         {
             for (var j = 0; j < i; j++)
             {
-                if (drawn[j].Start < drawn[i].End && drawn[i].Start < drawn[j].End)
+                if (Overlap(i, j))
                 {
-                    levels[i] = Math.Max(levels[i], levels[j] + 1);
+                    first[i] = Math.Max(first[i], first[j] + 1);
                 }
             }
 
+            if (TopLevel(i) && first[i] % 2 == 1)
+            {
+                first[i]++;
+            }
+        }
+
+        // Then, from the bottom up, each level is made as low as it goes, the top-level layers that
+        // share one moving together. Layers on one level never show together, and every layer under
+        // one that shows with it is on a lower level, which is done by then.
+        var levels = new int[drawn.Count];
+        var units = Enumerable.Range(0, drawn.Count).GroupBy(i => TopLevel(i) ? (first[i], -1) : (first[i], i)).OrderBy(u => u.Key.Item1);
+        foreach (var unit in units)
+        {
+            var level = unit.Max(i => Enumerable.Range(0, drawn.Count).Where(j => first[j] < first[i] && Overlap(i, j)).Select(j => levels[j] + 1).DefaultIfEmpty(0).Max());
+            foreach (var i in unit)
+            {
+                levels[i] = level;
+            }
+        }
+
+        var changed = new Dictionary<string, int>(StringComparer.Ordinal);
+        int Used(Func<int, int> level) => Enumerable.Range(0, drawn.Count).Where(TopLevel).Select(level).Distinct().Count();
+        if (Used(i => levels[i]) >= Used(i => drawn[i].Layer.ZIndex))
+        {
+            return changed;
+        }
+
+        for (var i = 0; i < drawn.Count; i++)
+        {
             if (levels[i] != drawn[i].Layer.ZIndex)
             {
                 changed[drawn[i].Layer.Id] = levels[i];

@@ -220,14 +220,15 @@ public class EditOperationTests
         Assert.StartsWith("the lanes are already packed", Assert.Throws<ZeyoCutException>(() => ProjectEditor.PackLanes(project)).Message);
 
         // Clips added one at a time, each on a level of its own, share one. Text stays above
-        // everything it shows with: the outro shows with the label, so it goes above it.
+        // everything it shows with: the outro shows with the label, so it goes above it, and the
+        // title, which shows with neither, shares the outro's level rather than take a lane of its own.
         project = TestProjects.Footage();
         project.Duration = 12;
         ProjectEditor.AddVideoLayer(project, new VideoLayerOptions { Asset = "clip", Id = "clip_3", Start = 8, TrimIn = 0, TrimOut = 4 });
         ProjectEditor.AddTextLayer(project, new TextLayerOptions { Id = "outro", Text = "Bye", Start = 3, End = 12 });
         before = DrawOrders(project);
         new PackLanesOperation().Apply(project);
-        Assert.Equal([0, 0, 0, 1, 1, 2], new[] { "clip_1", "clip_2", "clip_3", "label", "title", "outro" }.Select(id => project.FindLayer(id)!.ZIndex));
+        Assert.Equal([0, 0, 0, 1, 2, 2], new[] { "clip_1", "clip_2", "clip_3", "label", "title", "outro" }.Select(id => project.FindLayer(id)!.ZIndex));
         Assert.Equal(before, DrawOrders(project));
 
         // A cutout shows while its source does, so it stays above it. A layer without an end shows
@@ -239,6 +240,14 @@ public class EditOperationTests
         new PackLanesOperation().Apply(project);
         Assert.Equal([0, 0, 1, 2, 3, 3], new[] { "clip_1", "clip_2", "cut", "late", "label", "title" }.Select(id => project.FindLayer(id)!.ZIndex));
         Assert.Equal(before, DrawOrders(project));
+
+        // Packing that saves no level changes nothing. A text at level 0 shows with clip_2, and the
+        // outro with clip_2's label, so the title could only trade the outro's level for clip_2's.
+        project = TestProjects.Footage();
+        project.Duration = 12;
+        ProjectEditor.AddTextLayer(project, new TextLayerOptions { Id = "late", Text = "Late", Start = 5, End = 12, ZIndex = 0 });
+        ProjectEditor.AddTextLayer(project, new TextLayerOptions { Id = "outro", Text = "Bye", Start = 4, End = 8, ZIndex = 10 });
+        Assert.Empty(ProjectEditor.PackedLevels(project));
     }
 
     [Fact]
