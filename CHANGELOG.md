@@ -12,27 +12,30 @@ when they open.
 
 - **The ZeyoCut editor (early):** `ZeyoCut.Editor.exe`, a window for working on a project by hand,
   in the release zip and the bundle. So far it opens a project (from a start page with the projects
-  folder and recent projects, File → Open, or a folder on the command line), lists its media, imports
-  images, audio, fonts and video (from the file picker or dropped on the window, normalizing video as
-  `import_video` does, with progress) and shows the frame at any time, drawn by the same renderer as
-  exports, with frame stepping, fit and zoom. It plays the edit at 0.5×, 1× or 2× with the sound
-  mixed as exported, drawing frames at half size while playing. Its timeline shows a lane for each
-  draw level, caption track and sound role; clips move, trim, split, delete, hide and change lanes by
-  dragging, keys and a right-click menu, with snapping to clip edges, the playhead and markers.
-  Each change is saved at once as an undoable step. When another program saves the project, the
-  editor shows the new version and says what changed. Media goes onto the timeline by dragging it
-  onto a lane or at the playhead, and Pack lanes puts layers that never show together on shared
-  levels without changing a frame. The inspector edits the selected clip: start, end, length, draw
-  level, shown or muted, a video's sound, role, volume and fades, and a text's or caption's text and
-  style (font, font file, size, bold, color, outline, alignment, width, line height, box); a
-  caption's style applies to its whole track. Transform fields place a video, picture or text: X, Y,
-  scale, rotation and opacity, each its static value or, when the model animated it, a keyframe at
-  the playhead (marked with a diamond); a caption's position moves its whole track. A video's crop is
-  set by its sides, keeping what's left of the picture in place. The Export view renders the project
-  as `start_export` does, with presets, language versions, progress, stop and show in folder, and lists the exports
-  folder. The Assistant view shows the revision and the 20 most recent saves, yours and Claude's. A
-  project is open in one editor window at a time. The editor keeps its own settings in
-  `%LOCALAPPDATA%\ZeyoCut\editor.json` (`ZEYOCUT_EDITOR_SETTINGS` names another file).
+  folder and recent projects, File → Open, or a folder on the command line), lists its media,
+  imports images, audio, fonts and video (from the file picker or dropped on the window, normalizing
+  video as `import_video` does, with progress) and shows the frame at any time, drawn by the same
+  renderer as exports, with frame stepping, fit and zoom. It plays the edit at 0.5×, 1× or 2× with
+  the sound mixed as exported, drawing frames at half size while playing. Its timeline shows a lane
+  for each draw level, caption track and sound role; clips move, trim, split, delete, hide and
+  change lanes by dragging, keys and a right-click menu, with snapping to clip edges, the playhead
+  and markers. Each change is saved at once as an undoable step. When another program saves the
+  project, the editor shows the new version and says what changed. Media goes onto the timeline by
+  dragging it onto a lane or at the playhead, and Pack lanes puts layers that never show together on
+  shared levels without changing a frame. The inspector edits the selected clip: start, end, length,
+  draw level, shown or muted, a video's sound, role, volume and fades, and a text's or caption's
+  text and style (font, font file, size, bold, color, outline, alignment, width, line height, box);
+  a caption's style applies to its whole track. Transform fields place a video, picture or text: X,
+  Y, scale, rotation and opacity, each its static value or, when the model animated it, a keyframe
+  at the playhead (marked with a diamond); a caption's position moves its whole track. A video's
+  crop is set by its sides, keeping what's left of the picture in place. A click in the preview
+  selects the layer drawn on top there, a child layer too, and dragging moves it, redrawn as it goes
+  and saved on release; Shift keeps it on one axis and Escape puts it back. The Export view renders
+  the project as `start_export` does, with presets, language versions, progress, stop and show in
+  folder, and lists the exports folder. The Assistant view shows the revision and the 20 most recent
+  saves, yours and Claude's. A project is open in one editor window at a time. The editor keeps its
+  own settings in `%LOCALAPPDATA%\ZeyoCut\editor.json` (`ZEYOCUT_EDITOR_SETTINGS` names another
+  file).
 - **`open_in_editor`:** opens a project (by default the open one) in the editor on the user's
   computer, so they can fine-tune it while Claude keeps working; a project already open in the editor
   comes to the front. The editor is `ZeyoCut.Editor.exe` next to the server, or the one the new

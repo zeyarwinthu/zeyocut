@@ -411,7 +411,14 @@
         <ScrollViewer x:Name="PreviewScroller" Background="{StaticResource PreviewBrush}" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto"
                       Focusable="False" SizeChanged="OnPreviewSizeChanged">
           <Grid MinWidth="{Binding ViewportWidth, ElementName=PreviewScroller}" MinHeight="{Binding ViewportHeight, ElementName=PreviewScroller}">
-            <Image x:Name="PreviewImage" Stretch="Fill" HorizontalAlignment="Center" VerticalAlignment="Center" RenderOptions.BitmapScalingMode="HighQuality" />
+            <Image x:Name="PreviewImage" Stretch="Fill" HorizontalAlignment="Center" VerticalAlignment="Center" RenderOptions.BitmapScalingMode="HighQuality"
+                   MouseLeftButtonDown="OnPreviewMouseDown" MouseMove="OnPreviewMouseMove" MouseLeftButtonUp="OnPreviewMouseUp"
+                   LostMouseCapture="OnPreviewLostCapture" SizeChanged="OnPreviewImageSized" />
+            <Canvas Width="{Binding ActualWidth, ElementName=PreviewImage}" Height="{Binding ActualHeight, ElementName=PreviewImage}"
+                    HorizontalAlignment="Center" VerticalAlignment="Center" IsHitTestVisible="False" ClipToBounds="False">
+              <Polygon x:Name="SelectionOutline" Stroke="{StaticResource AccentBrush}" StrokeThickness="1.5" Visibility="Collapsed" />
+              <Ellipse x:Name="SelectionAnchor" Width="7" Height="7" Stroke="{StaticResource AccentBrush}" StrokeThickness="1.5" Visibility="Collapsed" />
+            </Canvas>
           </Grid>
         </ScrollViewer>
         <TextBlock x:Name="PreviewMessage" Foreground="{StaticResource ErrorBrush}" TextWrapping="Wrap" MaxWidth="520" Margin="24"

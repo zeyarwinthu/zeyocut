@@ -79,6 +79,17 @@ public partial class MainWindow : Window
 
     // The inspector shows animated values at the playhead, so it's built again when the playhead moves.
     private bool _inspectorKeyed;
+
+    // The layer boxes of the frame shown, for picking a layer in the preview; a drag of one under way,
+    // where the mouse went down and is now (in screen pixels), and whether its frame is being drawn.
+    private IReadOnlyList<LayerOutline> _outlines = [];
+    private PreviewDrag? _drag;
+    private Point _dragFrom;
+    private Point _dragAt;
+    private Point _dragDrawn;
+    private bool _dragMoved;
+    private bool _dragDrawing;
+    private string? _dragRefused;
     private bool _committingField;
     private bool _playing;
     private PreviewSource? _playSource;
@@ -304,6 +315,10 @@ public partial class MainWindow : Window
         else if (open && plain && key == Key.Escape && Timeline.Dragging)
         {
             Timeline.CancelDrag();
+        }
+        else if (open && plain && key == Key.Escape && _drag is not null)
+        {
+            CancelPreviewDrag();
         }
         else if (open && plain && key == Key.Escape && (_selectedLayer is not null || MediaList.SelectedItem is not null))
         {
@@ -532,12 +547,12 @@ public partial class MainWindow : Window
 
         var lanes = TimelineLayout.Lanes(project);
         Timeline.Show(project, lanes, _frames);
-        if (_selectedLayer is not null && Timeline.FindClip(_selectedLayer) is null)
+        if (_selectedLayer is not null && ClipOf(_selectedLayer) is null)
         {
             _selectedLayer = null;
         }
 
-        Timeline.Selection = _selectedLayer;
+        Timeline.Selection = ClipOf(_selectedLayer);
 
         _rebuilding = true;
         var items = project.Assets.Select(a => Item(document.Session.Directory, a)).ToList();
@@ -934,16 +949,24 @@ public partial class MainWindow : Window
     {
         _drawingSince = null;
         PreviewBusy.Visibility = Visibility.Collapsed;
+        _dragDrawing = false;
         if (frame.Pixels is null)
         {
             PreviewMessage.Text = $"Frame {frame.Frame} can't be drawn:\n{frame.Error}";
             PreviewMessage.Visibility = Visibility.Visible;
             PreviewImage.Visibility = Visibility.Hidden;
             RenderText.Text = "";
+            _outlines = [];
+            ShowSelection();
             return;
         }
 
         ShowPixels(frame);
+        if (_drag is not null && _dragMoved && _dragAt != _dragDrawn)
+        {
+            DrawDrag();
+        }
+
         RenderText.Text = frame.Cached ? "frame from cache" : $"frame drawn in {frame.Took.TotalMilliseconds:0} ms";
         if (frame.Warnings.Count > 0)
         {
@@ -962,6 +985,223 @@ public partial class MainWindow : Window
         _bitmap.WritePixels(new Int32Rect(0, 0, frame.Width, frame.Height), frame.Pixels, frame.Width * 4, 0);
         PreviewImage.Visibility = Visibility.Visible;
         PreviewMessage.Visibility = Visibility.Collapsed;
+        _outlines = frame.Outlines;
+        ShowSelection();
+    }
+
+    // The timeline clip that holds a layer: its own, or the one of the layer it's attached to.
+    private string? ClipOf(string? layerId)
+    {
+        var project = _document?.View;
+        for (var depth = 0; layerId is not null && depth <= (project?.Layers.Count ?? 0); depth++)
+        {
+            if (Timeline.FindClip(layerId) is not null)
+            {
+                return layerId;
+            }
+
+            layerId = project?.FindLayer(layerId)?.ParentId;
+        }
+
+        return null;
+    }
+
+    // The selected layer's box and anchor over the preview, when the frame shown has it.
+    private void ShowSelection()
+    {
+        var outline = _document is not null && _selectedLayer is { } id ? _outlines.FirstOrDefault(o => o.LayerId == id) : null;
+        if (outline is null || PreviewImage.Visibility != Visibility.Visible || PreviewImage.ActualWidth <= 0)
+        {
+            SelectionOutline.Visibility = SelectionAnchor.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        var scale = PreviewImage.ActualWidth / _document!.View.Width;
+        SelectionOutline.Points = new PointCollection(outline.Corners.Select(c => new Point(c.X * scale, c.Y * scale)));
+        Canvas.SetLeft(SelectionAnchor, outline.Anchor.X * scale - SelectionAnchor.Width / 2);
+        Canvas.SetTop(SelectionAnchor, outline.Anchor.Y * scale - SelectionAnchor.Height / 2);
+        SelectionOutline.Visibility = SelectionAnchor.Visibility = Visibility.Visible;
+    }
+
+    private void OnPreviewImageSized(object sender, SizeChangedEventArgs e) => ShowSelection();
+
+    // A point on the preview in canvas pixels.
+    private (double X, double Y) CanvasPoint(Point point)
+    {
+        var scale = _document!.View.Width / Math.Max(1, PreviewImage.ActualWidth);
+        return (point.X * scale, point.Y * scale);
+    }
+
+    // A click in the preview selects the layer drawn on top there (a child layer too), and dragging
+    // it moves it.
+    private void OnPreviewMouseDown(object sender, MouseButtonEventArgs e)
+    {
+        if (!Editing || _drag is not null)
+        {
+            return;
+        }
+
+        if (_playing)
+        {
+            Pause();
+        }
+
+        var project = _document!.View;
+        var (x, y) = CanvasPoint(e.GetPosition(PreviewImage));
+        var hit = LayerOutlines.Hit(_outlines, x, y);
+        SelectLayer(hit?.LayerId);
+        _dragRefused = null;
+        if (hit is null)
+        {
+            return;
+        }
+
+        try
+        {
+            _drag = PreviewDrag.Start(project, hit, FrameMath.TimeOf(project, _frame));
+        }
+        catch (ZeyoCutException ex)
+        {
+            _dragRefused = ex.Message;
+        }
+
+        _dragFrom = _dragAt = e.GetPosition(PreviewImage);
+        _dragMoved = false;
+        PreviewImage.CaptureMouse();
+        e.Handled = true;
+    }
+
+    private void OnPreviewMouseMove(object sender, MouseEventArgs e)
+    {
+        if (!PreviewImage.IsMouseCaptured)
+        {
+            var (x, y) = Editing ? CanvasPoint(e.GetPosition(PreviewImage)) : (-1, -1);
+            PreviewImage.Cursor = Editing && LayerOutlines.Hit(_outlines, x, y) is not null ? Cursors.SizeAll : null;
+            return;
+        }
+
+        _dragAt = e.GetPosition(PreviewImage);
+        if (!_dragMoved && Math.Abs(_dragAt.X - _dragFrom.X) < SystemParameters.MinimumHorizontalDragDistance
+            && Math.Abs(_dragAt.Y - _dragFrom.Y) < SystemParameters.MinimumVerticalDragDistance)
+        {
+            return;
+        }
+
+        if (_drag is null)
+        {
+            if (_dragRefused is { } why)
+            {
+                Message(why);
+                _dragRefused = null;
+            }
+
+            return;
+        }
+
+        _dragMoved = true;
+        if (!_dragDrawing)
+        {
+            DrawDrag();
+        }
+    }
+
+    private void OnPreviewMouseUp(object sender, MouseButtonEventArgs e)
+    {
+        if (!PreviewImage.IsMouseCaptured)
+        {
+            return;
+        }
+
+        var drag = _drag;
+        var moved = _dragMoved;
+        _dragAt = e.GetPosition(PreviewImage);
+        var (dx, dy) = DragTravel();
+        _drag = null;
+        _dragMoved = false;
+        PreviewImage.ReleaseMouseCapture();
+        if (drag is null || !moved)
+        {
+            return;
+        }
+
+        EditOperation? edit;
+        try
+        {
+            edit = drag.Move(dx, dy, (Keyboard.Modifiers & ModifierKeys.Shift) != 0);
+        }
+        catch (ZeyoCutException ex)
+        {
+            Message(ex.Message);
+            RequestFrame();
+            return;
+        }
+
+        if (edit is null)
+        {
+            Message("");
+            RequestFrame();
+            return;
+        }
+
+        Apply(edit);
+    }
+
+    private void OnPreviewLostCapture(object sender, MouseEventArgs e) => CancelPreviewDrag();
+
+    // Escape, or the mouse taken by another window: the layer goes back to where it was.
+    private void CancelPreviewDrag()
+    {
+        if (_drag is null)
+        {
+            return;
+        }
+
+        var moved = _dragMoved;
+        _drag = null;
+        _dragMoved = false;
+        PreviewImage.ReleaseMouseCapture();
+        if (moved)
+        {
+            Message("");
+            RequestFrame();
+        }
+    }
+
+    // The mouse's travel since it went down, in canvas pixels.
+    private (double X, double Y) DragTravel()
+    {
+        var scale = _document!.View.Width / Math.Max(1, PreviewImage.ActualWidth);
+        return ((_dragAt.X - _dragFrom.X) * scale, (_dragAt.Y - _dragFrom.Y) * scale);
+    }
+
+    // Draws the frame with the layer where the mouse has taken it, on a copy of the project; nothing
+    // is saved until the mouse is let go. One such frame is drawn at a time, the newest place next.
+    private void DrawDrag()
+    {
+        if (_drag is null || _preview is null)
+        {
+            return;
+        }
+
+        var (dx, dy) = DragTravel();
+        var oneAxis = (Keyboard.Modifiers & ModifierKeys.Shift) != 0;
+        var moved = ProjectJson.Clone(_document!.View);
+        try
+        {
+            _drag.Move(dx, dy, oneAxis)?.Apply(moved);
+        }
+        catch (ZeyoCutException ex)
+        {
+            Message(ex.Message);
+            CancelPreviewDrag();
+            return;
+        }
+
+        Message(_drag.Describe(dx, dy, oneAxis));
+        _dragDrawn = _dragAt;
+        _dragDrawing = true;
+        _preview.Request(_preview.Source(moved, 1), _frame);
+        _drawingSince ??= DateTime.UtcNow;
     }
 
     private void TogglePlay()
@@ -1234,7 +1474,8 @@ public partial class MainWindow : Window
     private void SelectLayer(string? id)
     {
         _selectedLayer = id;
-        Timeline.Selection = id;
+        Timeline.Selection = ClipOf(id);
+        ShowSelection();
         if (id is not null)
         {
             _selectedAsset = null;
@@ -1259,6 +1500,12 @@ public partial class MainWindow : Window
         if (_selectedLayer is null)
         {
             Message("Select a clip in the timeline to split it at the playhead");
+            return;
+        }
+
+        if (Timeline.FindClip(_selectedLayer) is null && ClipOf(_selectedLayer) is { } holder)
+        {
+            Message($"'{_selectedLayer}' is attached to '{holder}': select that clip to split it with its child layers");
             return;
         }
 

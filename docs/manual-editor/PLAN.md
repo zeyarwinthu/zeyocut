@@ -120,6 +120,14 @@ The plan below was approved with these answers and changes. Where they disagree 
 - Crop is Left, Top, Right and Bottom in the file's pixels (`CropLayerOperation`, history name `crop_layer`; it has no MCP tool of its own, as `pack_lanes` has none). The model's crop moves the picture, since what's left is drawn from the layer's corner; the editor instead moves the anchor, the mask and the direct child layers by the cut, so what's left stays where it was and still turns around the same point. A crop with `cropX` or `cropY` keyframes is shown, not edited.
 - A caption's position moves its whole track by the same amount (`ShiftLayersOperation`, named `update_layer captions_en`), keyframes and motion path included, as its style applies to the whole track. Scale, rotation and opacity aren't offered for captions.
 
+**What Phase 5b found and did differently:**
+
+- The text fields of 5b came forward to Phase 4, and text position came with 5a's Transform fields, so 5b is picking and dragging in the preview.
+- Picking uses the boxes the renderer already knows: `LayerOutlines` in Render (the bounds `DebugOverlay` drew, now shared) comes with each frame the preview draws, so the boxes always match the pixels shown. A click takes the topmost box; fully transparent and hidden layers aren't picked. Text is picked by its layout box, not its ink.
+- Child layers can be selected from the preview, which the timeline can't do: the timeline highlights the clip that holds the layer, the inspector shows the child, and Delete removes the child with its own children. Split says to select the clip.
+- A drag works in the parent's pixels (the outline carries the parent's matrix), so children of turned or scaled layers follow the mouse. Positions are saved to a hundredth of a pixel. A layer scaled to 0 can't be dragged.
+- The live redraw applies the edit to a copy of the project for each frame drawn, one at a time, so a slow frame doesn't queue more. Nothing is saved until release, so the history gets one step per drag.
+
 ## Summary
 
 What I found:
@@ -613,6 +621,18 @@ Each phase ends with all tests passing, a commit on `feature/manual-editor`, and
 - 5a: video position, scale, rotation, opacity, crop.
 - 5b: text font, size, color, background, alignment, position, and dragging in the preview.
 - 5c: effects: blur, face blur settings, adjustments. Effect duration needs engine work or a keyframe UI (disagreement 6); I'll bring you a short design for it before 5c.
+
+**5c design (proposed 2026-11-14, waiting for your answer).** Effect duration is the open question. Two ways:
+
+- **A. A keyframe UI (my recommendation).** No format change, no MCP change. An effect lasts as long as its layer, as now, and a time-limited one is keyframes (blur 0 → 8 → 0), as `add_transition` already writes them. Phase 5a's rule covers changing an animated value; what's missing is starting and ending the animation by hand:
+    1. An **Effects** section in the inspector for video, pictures and text: Blur (x, y), Shadow (color, x, y, blur, opacity), Outline (color, width), Tint (color, amount), each switched on and off as `set_effect` adds and removes it (`EffectEditor.SetEffect`), and Brightness, Contrast and Saturation for video and pictures.
+    2. A **◆ button** by each animatable number (the Transform fields too): it adds a keyframe at the playhead with the value shown, which starts animating that value, or, when there's a keyframe at the playhead, removes it (`KeyframeEditor.RemoveKeyframes`). With the last keyframe gone, the value holds that last value, statically.
+    3. **Keyframe marks** on the selected clip in the timeline, one tick per time any of its values has a keyframe; a click moves the playhead there. Alt+← and Alt+→ jump to the previous and next one.
+    4. **Face blur settings** in the inspector of a clip a redaction follows (today a "Followed by" row): style, strength, padding, feather, hold frames and color, through `update_layer` on the redaction (its own fields). They aren't animated.
+    - Blurring 2–4 s is then: playhead at 2 s, Blur on, ◆ with 0; at 2.5 s type 8; at 3.5 s ◆ (8); at 4 s type 0. Four steps. A "from here to there" shortcut that writes those keyframes could come later if it's still too many.
+- **B. Engine work.** A `start` and `end` (in the layer's time) on each effect, read by the renderer, and new optional `start`/`end` parameters on `set_effect`. Simpler to use for "blur this part", but it's a project format change (format 8), a renderer change, a change to an MCP tool's parameters, and two ways to time an effect (fields and keyframes) for Claude and for check_project to reason about.
+
+Either way the effect values follow 5a's rule: a value with keyframes shows its value at the playhead and a change adds a keyframe there.
 
 **Phase 6: autosave, recovery, polish, docs.**
 

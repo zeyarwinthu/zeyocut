@@ -3,14 +3,17 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using SkiaSharp;
+using ZeyoCut.Core.Animation;
 using ZeyoCut.Core.Model;
 using ZeyoCut.Render;
 using ZeyoCut.Render.Export;
 
 namespace ZeyoCut.Editor;
 
-// A rendered frame as the preview shows it: BGRA pixels (premultiplied), or why it couldn't be drawn.
-public sealed record PreviewFrame(int Frame, int Width, int Height, byte[]? Pixels, IReadOnlyList<string> Warnings, string? Error, TimeSpan Took, bool Cached);
+// A rendered frame as the preview shows it: BGRA pixels (premultiplied), or why it couldn't be drawn,
+// and the boxes of the layers it shows, on the canvas, for picking one with the mouse.
+public sealed record PreviewFrame(int Frame, int Width, int Height, byte[]? Pixels, IReadOnlyList<string> Warnings, string? Error, TimeSpan Took, bool Cached,
+    IReadOnlyList<LayerOutline> Outlines);
 
 // The preview's frames, through the preview page's PreviewFrames with the renderer exports use
 // (footage over 2560 px from its proxy). A paused frame is drawn at the canvas size on a worker
@@ -104,7 +107,7 @@ public sealed class FramePreview : IDisposable
         {
             // Anything a frame can't be drawn for (a missing file, no FFmpeg, a damaged clip) is shown
             // in its place; the next frame is tried again.
-            return new PreviewFrame(frame, 0, 0, null, [], ex.Message, stopwatch.Elapsed, false);
+            return new PreviewFrame(frame, 0, 0, null, [], ex.Message, stopwatch.Elapsed, false, []);
         }
     }
 
@@ -126,7 +129,8 @@ public sealed class FramePreview : IDisposable
         var scale = source.Width >= source.Project.Width ? 1 : source.Width / (double)source.Project.Width;
         using var image = renderer.RenderImage(source.Project, frame, new RenderOptions(Proxies: true, Scale: scale));
         var pixels = Pixels(image);
-        return (new PreviewFrame(frame, image.Width, image.Height, pixels, renderer.TakeWarnings(), null, Stopwatch.GetElapsedTime(started), false), pixels.Length);
+        var outlines = LayerOutlines.At(renderer, source.Project, FrameMath.TimeOf(source.Project, frame));
+        return (new PreviewFrame(frame, image.Width, image.Height, pixels, renderer.TakeWarnings(), null, Stopwatch.GetElapsedTime(started), false, outlines), pixels.Length);
     }
 
     private void Run()
