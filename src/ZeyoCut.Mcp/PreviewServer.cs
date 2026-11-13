@@ -22,10 +22,10 @@ namespace ZeyoCut.Mcp;
 // frames with the mix as exported. It listens on 127.0.0.1 at a random port under a random token;
 // only GET and HEAD under the token and addressed to 127.0.0.1:<port> are answered, and nothing
 // allows other origins, so other sites in the browser can't read it. Nothing on it changes the
-// project: the page asks for the state every second and redraws when it changes. Frames are kept
-// in memory by their FrameKeys key, so an edit only redraws the frames it changes, and while the
-// page plays the frames ahead are drawn in the background. The mix is made in the background into
-// cache\preview\mix-<key>.m4a.
+// project: the page asks for the state every second and redraws when it changes. Frames come from
+// PreviewFrames, which keeps them by their FrameKeys key, so an edit only redraws the frames it
+// changes, and draws the frames ahead in the background while the page plays. The mix is made in the
+// background into cache\preview\mix-<key>.m4a.
 public sealed class PreviewServer : IDisposable
 {
     // The longest side of a preview frame, and about how many frames a second playback shows.
@@ -33,7 +33,6 @@ public sealed class PreviewServer : IDisposable
     public const int PlaybackFps = 15;
     public const long FrameBudget = 192L * 1024 * 1024;
     private const int JpegQuality = 80;
-    private const double AheadSeconds = 5;
 
     private static readonly string PageSecurity =
         $"default-src 'none'; script-src '{Sha256(PreviewPage.Script)}'; style-src '{Sha256(PreviewPage.Style)}'; img-src 'self' blob: data:; media-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
@@ -42,22 +41,17 @@ public sealed class PreviewServer : IDisposable
 
     private readonly EditorState _state;
     private readonly object _gate = new();
-    private readonly object _renderGate = new();
     private readonly object _viewGate = new();
     private readonly object _audioGate = new();
     private readonly Dictionary<string, View> _views = new(StringComparer.Ordinal);
     private readonly Dictionary<string, AudioWork> _audio = new(StringComparer.Ordinal);
     private readonly SortedSet<string> _warnings = new(StringComparer.Ordinal);
-    private readonly AutoResetEvent _wake = new(false);
     private HttpListener? _listener;
     private CancellationTokenSource? _stop;
     private string? _url;
     private string? _host;
     private string? _root;
-    private PreviewCache _frames = new(FrameBudget);
-    private FrameRenderer? _renderer;
-    private int _lastFrame = -1;
-    private volatile Ahead? _ahead;
+    private volatile PreviewFrames<byte[]>? _frames;
 
     public PreviewServer(EditorState state)
     {
@@ -121,11 +115,10 @@ public sealed class PreviewServer : IDisposable
             _listener = listener;
             _root = $"/{token}/";
             _url = $"http://{_host}{_root}";
-            _frames = new PreviewCache(FrameBudget);
+            _frames = new PreviewFrames<byte[]>(() => _state.RequireFfmpeg().Ffmpeg, FrameBudget, Draw);
             _stop = new CancellationTokenSource();
             var stop = _stop.Token;
             _ = Task.Run(() => Serve(listener, stop), CancellationToken.None);
-            new Thread(() => ReadAhead(stop)) { IsBackground = true, Name = "preview read-ahead" }.Start();
             url = _url;
             return true;
         }
@@ -137,9 +130,10 @@ public sealed class PreviewServer : IDisposable
         HttpListener? listener;
         CancellationTokenSource? stop;
         string? url;
+        PreviewFrames<byte[]>? frames;
         lock (_gate)
         {
-            (listener, stop, url) = (_listener, _stop, _url);
+            (listener, stop, url, frames) = (_listener, _stop, _url, _frames);
             (_listener, _stop, _url, _host, _root) = (null, null, null, null, null);
         }
 
@@ -149,7 +143,6 @@ public sealed class PreviewServer : IDisposable
         }
 
         stop!.Cancel();
-        _wake.Set();
         try
         {
             listener!.Close();
@@ -168,15 +161,7 @@ public sealed class PreviewServer : IDisposable
             _audio.Clear();
         }
 
-        lock (_renderGate)
-        {
-            _renderer?.Dispose();
-            _renderer = null;
-            _lastFrame = -1;
-            _ahead = null;
-            _frames.Dispose();
-        }
-
+        frames?.Dispose();
         lock (_viewGate)
         {
             _views.Clear();
@@ -404,7 +389,7 @@ public sealed class PreviewServer : IDisposable
             ["fps"] = project.Fps,
             ["frames"] = FrameMath.FrameCount(project),
             ["duration"] = FrameMath.RenderedDuration(project),
-            ["preview"] = new JsonObject { ["width"] = view.Width, ["height"] = view.Height, ["step"] = view.Step },
+            ["preview"] = new JsonObject { ["width"] = view.Source.Width, ["height"] = view.Source.Height, ["step"] = view.Source.Step },
             ["languages"] = new JsonArray([.. view.Languages.Select(l => JsonValue.Create(l))]),
             ["language"] = view.Language,
             ["layers"] = Layers(project),
@@ -511,7 +496,8 @@ public sealed class PreviewServer : IDisposable
             var used = Languages.Used(project);
             Languages.Choose(project, language, export: false);
             var (width, height, step) = Shape(project);
-            var view = new View(revision, language, session.Directory, json, project, used, new FrameKeys(project, session.Directory), width, height, step, PreviewAudio.Key(project, session.Directory));
+            var source = new PreviewSource(project, session.Directory, new FrameKeys(project, session.Directory), width, height, step);
+            var view = new View(revision, language, session.Directory, json, project, used, source, PreviewAudio.Key(project, session.Directory));
             _views[name] = view;
             return view;
         }
@@ -533,107 +519,34 @@ public sealed class PreviewServer : IDisposable
         }
 
         frame = Math.Min(frame, FrameMath.FrameCount(view.Project) - 1);
-        var jpeg = Frame(view, frame, stop);
+        var frames = _frames ?? throw new OperationCanceledException();
+        var jpeg = frames.Frame(view.Source, frame, stop);
         if (request.QueryString["play"] == "1")
         {
-            _ahead = new Ahead(view, frame);
-            _wake.Set();
+            frames.Play(view.Source, frame);
         }
 
         Send(response, 200, "image/jpeg", jpeg, head);
     }
 
-    private byte[] Frame(View view, int frame, CancellationToken stop)
+    // A frame at the page's size, as a JPEG.
+    private (byte[] Frame, long Bytes) Draw(FrameRenderer renderer, PreviewSource source, int frame)
     {
-        lock (_renderGate)
+        using var full = renderer.RenderImage(source.Project, frame, new RenderOptions(Proxies: true));
+        using var small = Png.Scale(full, source.Width, source.Height);
+        using var data = small.Encode(SKEncodedImageFormat.Jpeg, JpegQuality)
+            ?? throw new ZeyoCutException("could not encode a preview frame");
+        var jpeg = data.ToArray();
+        var warnings = renderer.TakeWarnings();
+        if (warnings.Count > 0)
         {
-            stop.ThrowIfCancellationRequested();
-            var key = Key(view, frame);
-            if (_frames.Get<byte[]>(key) is { } cached)
+            lock (_viewGate)
             {
-                return cached;
+                _warnings.UnionWith(warnings);
             }
-
-            if (_renderer is null || !string.Equals(_renderer.ProjectDirectory, Path.GetFullPath(view.Directory), StringComparison.OrdinalIgnoreCase))
-            {
-                _renderer?.Dispose();
-                _renderer = new FrameRenderer(view.Directory, () => _state.RequireFfmpeg().Ffmpeg, streamVideo: true);
-                _lastFrame = -1;
-            }
-
-            // Each clip keeps one decoder going forward; a jump of more than a second ahead starts
-            // new ones there instead of decoding every frame in between.
-            if (_lastFrame >= 0 && frame > _lastFrame + view.Project.Fps)
-            {
-                _renderer.Video.CloseReaders();
-            }
-
-            _lastFrame = frame;
-            using var full = _renderer.RenderImage(view.Project, frame, new RenderOptions(Proxies: true));
-            using var small = Png.Scale(full, view.Width, view.Height);
-            using var data = small.Encode(SKEncodedImageFormat.Jpeg, JpegQuality)
-                ?? throw new ZeyoCutException("could not encode a preview frame");
-            var jpeg = data.ToArray();
-            var warnings = _renderer.TakeWarnings();
-            if (warnings.Count > 0)
-            {
-                lock (_viewGate)
-                {
-                    _warnings.UnionWith(warnings);
-                }
-            }
-
-            return _frames.Add(key, jpeg, jpeg.Length);
         }
-    }
 
-    private static string Key(View view, int frame) =>
-        Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes($"{view.Keys.Of(frame)}|{view.Width}x{view.Height}")));
-
-    // While the page plays, draws the frames up to AheadSeconds past the one it showed last, one
-    // playback step apart.
-    private void ReadAhead(CancellationToken stop)
-    {
-        View? view = null;
-        var next = 0;
-        while (!stop.IsCancellationRequested)
-        {
-            var ahead = _ahead;
-            if (ahead is null)
-            {
-                WaitHandle.WaitAny([_wake, stop.WaitHandle]);
-                continue;
-            }
-
-            var step = ahead.View.Step;
-            var last = Math.Min(FrameMath.FrameCount(ahead.View.Project) - 1, ahead.From + (int)(AheadSeconds * ahead.View.Project.Fps));
-            if (!ReferenceEquals(view, ahead.View) || next <= ahead.From || next > last + step)
-            {
-                view = ahead.View;
-                next = (ahead.From / step + 1) * step;
-            }
-
-            if (next > last)
-            {
-                WaitHandle.WaitAny([_wake, stop.WaitHandle]);
-                continue;
-            }
-
-            try
-            {
-                Frame(view, next, stop);
-            }
-            catch (OperationCanceledException)
-            {
-                return;
-            }
-            catch (Exception)
-            {
-                _ahead = null;
-            }
-
-            next += step;
-        }
+        return (jpeg, jpeg.Length);
     }
 
     private JsonObject Audio(View view)
@@ -794,7 +707,7 @@ public sealed class PreviewServer : IDisposable
 
     private static string Sha256(string text) => "sha256-" + Convert.ToBase64String(SHA256.HashData(Encoding.UTF8.GetBytes(text)));
 
-    // The project at one revision in one language, and the keys of its frames.
+    // The project at one revision in one language, and its frames at the page's size.
     private sealed record View(
         string Revision,
         string? Language,
@@ -802,13 +715,8 @@ public sealed class PreviewServer : IDisposable
         string Json,
         Project Project,
         IReadOnlyList<string> Languages,
-        FrameKeys Keys,
-        int Width,
-        int Height,
-        int Step,
+        PreviewSource Source,
         string? AudioKey);
-
-    private sealed record Ahead(View View, int From);
 
     private sealed class AudioWork(string key, string directory, string path)
     {
