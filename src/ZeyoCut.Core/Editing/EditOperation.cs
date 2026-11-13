@@ -79,6 +79,25 @@ public sealed record UpdateLayerOperation(string LayerId, JsonObject Changes) : 
     }
 }
 
+// The same fields of several layers in one step, such as the style of every caption in a track.
+public sealed record UpdateLayersOperation(string Name, IReadOnlyList<string> LayerIds, JsonObject Changes) : EditOperation
+{
+    public override string Label => Name;
+
+    public override IReadOnlyList<string> Layers => LayerIds;
+
+    public override string Apply(Project project)
+    {
+        if (LayerIds.Count == 0)
+        {
+            throw new ZeyoCutException("there are no layers to change");
+        }
+
+        var warnings = LayerIds.SelectMany(id => ProjectEditor.UpdateLayer(project, id, (JsonObject)Changes.DeepClone())).Distinct().ToList();
+        return $"updated {LayerIds.Count} layer(s): {string.Join(", ", Changes.Select(c => c.Key))}" + string.Concat(warnings.Select(w => $"; {w}"));
+    }
+}
+
 // Draw order: a layer's zIndex (higher draws on top); the timeline's lanes follow it. Its children
 // move with it. With Insert, it gets levels of its own from ZIndex up (see ProjectEditor.Reorder).
 public sealed record ReorderLayerOperation(string LayerId, int ZIndex, bool Insert = false) : EditOperation
@@ -88,6 +107,63 @@ public sealed record ReorderLayerOperation(string LayerId, int ZIndex, bool Inse
     public override IReadOnlyList<string> Layers => [LayerId];
 
     public override string Apply(Project project) => ProjectEditor.Reorder(project, LayerId, ZIndex, Insert);
+}
+
+// Puts layers that never show at the same time on shared draw levels (ProjectEditor.PackLanes).
+public sealed record PackLanesOperation : EditOperation
+{
+    public override string Label => "pack_lanes";
+
+    public override IReadOnlyList<string> Layers => [];
+
+    public override string Apply(Project project) => ProjectEditor.PackLanes(project);
+}
+
+// A clip of an asset starting at Start, as add_video_layer, add_image_layer and add_audio_layer add
+// one: footage fitted to the canvas, a still image for StillLength seconds (made smaller to fit the
+// canvas when it's bigger), or sound with Role (music by default). Footage and stills go on draw
+// level ZIndex, or on a level of their own on top when it's null. Footage and stills that run past
+// the end make the project longer, as add_video_layer does; sound doesn't.
+public sealed record AddClipOperation(AssetType Type, string AssetId, double Start, int? ZIndex = null, string? Role = null) : EditOperation
+{
+    public const double StillLength = 5;
+
+    public override string Label => $"add_{EnumNames.ToName(Type)}_layer {AssetId}";
+
+    public override IReadOnlyList<string> Layers => [];
+
+    public override string Apply(Project project)
+    {
+        Layer layer;
+        switch (Type)
+        {
+            case AssetType.Video:
+                layer = ProjectEditor.AddVideoLayer(project, new VideoLayerOptions { Asset = AssetId, Start = Start, ZIndex = ZIndex });
+                break;
+            case AssetType.Image:
+                var asset = project.FindAsset(AssetId);
+                var fit = asset is { Width: > 0, Height: > 0 } ? Math.Min(1, Math.Min(project.Width / (double)asset.Width.Value, project.Height / (double)asset.Height.Value)) : 1;
+                layer = ProjectEditor.AddImageLayer(project, new ImageLayerOptions
+                {
+                    Drawings = new Dictionary<string, string> { ["normal"] = AssetId },
+                    Start = Start,
+                    End = Start + StillLength,
+                    ScaleX = fit,
+                    ScaleY = fit,
+                    ZIndex = ZIndex,
+                });
+                ProjectEditor.ExtendToFit(project, Start + StillLength);
+                break;
+            case AssetType.Audio:
+                layer = ProjectEditor.AddAudioLayer(project, new AudioLayerOptions { Asset = AssetId, Start = Start, Role = Role });
+                break;
+            default:
+                throw new ZeyoCutException($"'{AssetId}' is a {EnumNames.ToName(Type)}: only video, images and sound go on the timeline");
+        }
+
+        var level = layer is VisualLayer visual ? $" on draw level {visual.ZIndex}" : layer is AudioLayer audio ? $" as {EnumNames.ToName(audio.Role)}" : "";
+        return $"added {layer.TypeName} layer '{layer.Id}' at {Num(Start)}s{level}";
+    }
 }
 
 // A file AssetImporter.Prepare copied into the project, added as an asset, as import_asset and

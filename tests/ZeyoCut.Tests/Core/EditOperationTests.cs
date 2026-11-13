@@ -2,6 +2,7 @@
 
 using System.Text.Json.Nodes;
 using ZeyoCut.Core;
+using ZeyoCut.Core.Animation;
 using ZeyoCut.Core.Editing;
 using ZeyoCut.Core.Model;
 using ZeyoCut.Core.Serialization;
@@ -13,6 +14,12 @@ namespace ZeyoCut.Tests.Core;
 public class EditOperationTests
 {
     private static T Layer<T>(Project project, string id) where T : Layer => Assert.IsType<T>(project.FindLayer(id));
+
+    // The layers drawn every quarter second, bottom first.
+    private static List<string> DrawOrders(Project project) =>
+        Enumerable.Range(0, (int)(project.Duration * 4))
+            .Select(i => string.Join(" ", SceneEvaluator.Evaluate(project, i / 4.0).Where(e => e.Shown).Select(e => e.Layer.Id)))
+            .ToList();
 
     [Fact]
     public void TrimmingInCutsTheLayerAndItsChildrenAndKeepsTheFades()
@@ -195,6 +202,83 @@ public class EditOperationTests
             new ReorderLayerOperation("clip_2", 0, Insert: true).Apply(project));
         Assert.Equal([0, 4, 5, 15], new[] { "clip_2", "label", "clip_1", "title" }.Select(id => project.FindLayer(id)!.ZIndex));
         Assert.Throws<ZeyoCutException>(() => new ReorderLayerOperation("music", 2).Apply(project));
+    }
+
+    [Fact]
+    public void PackingPutsLayersThatNeverShowTogetherOnOneLevel()
+    {
+        // clip_1 shows 0–4 s at z=0, clip_2 4–8 s at 1 with its label at 5, the title 0–3 s at 10.
+        var project = TestProjects.Footage();
+        var before = DrawOrders(project);
+        Assert.Equal(new Dictionary<string, int> { ["clip_2"] = 0, ["label"] = 1, ["title"] = 1 }, ProjectEditor.PackedLevels(project));
+        Assert.Equal(
+            "packed the top-level layers from 3 draw level(s) onto 2; 3 layer(s) changed level, and every frame is drawn as before",
+            new PackLanesOperation().Apply(project));
+        Assert.Equal([0, 0, 1, 1], new[] { "clip_1", "clip_2", "label", "title" }.Select(id => project.FindLayer(id)!.ZIndex));
+        Assert.Equal(before, DrawOrders(project));
+        Assert.Empty(ProjectEditor.PackedLevels(project));
+        Assert.StartsWith("the lanes are already packed", Assert.Throws<ZeyoCutException>(() => ProjectEditor.PackLanes(project)).Message);
+
+        // Clips added one at a time, each on a level of its own, share one. Text stays above
+        // everything it shows with: the outro shows with the label, so it goes above it.
+        project = TestProjects.Footage();
+        project.Duration = 12;
+        ProjectEditor.AddVideoLayer(project, new VideoLayerOptions { Asset = "clip", Id = "clip_3", Start = 8, TrimIn = 0, TrimOut = 4 });
+        ProjectEditor.AddTextLayer(project, new TextLayerOptions { Id = "outro", Text = "Bye", Start = 3, End = 12 });
+        before = DrawOrders(project);
+        new PackLanesOperation().Apply(project);
+        Assert.Equal([0, 0, 0, 1, 1, 2], new[] { "clip_1", "clip_2", "clip_3", "label", "title", "outro" }.Select(id => project.FindLayer(id)!.ZIndex));
+        Assert.Equal(before, DrawOrders(project));
+
+        // A cutout shows while its source does, so it stays above it. A layer without an end shows
+        // from its start on, so it stays above everything under it from then on.
+        project = TestProjects.Footage();
+        project.Layers.Add(new CutoutLayer { Id = "cut", Sources = ["clip_2"], ZIndex = 3 });
+        ProjectEditor.AddTextLayer(project, new TextLayerOptions { Id = "late", Text = "Late", Start = 2, ZIndex = 4 });
+        before = DrawOrders(project);
+        new PackLanesOperation().Apply(project);
+        Assert.Equal([0, 0, 1, 2, 3, 3], new[] { "clip_1", "clip_2", "cut", "late", "label", "title" }.Select(id => project.FindLayer(id)!.ZIndex));
+        Assert.Equal(before, DrawOrders(project));
+    }
+
+    [Fact]
+    public void AddingAClipPutsItOnALevelOrOnTopAndSoundInItsRole()
+    {
+        var project = TestProjects.Footage();
+        project.Assets.Add(new Asset { Id = "photo", Type = AssetType.Image, File = "assets/photo.png", Width = 3200, Height = 1800 });
+        project.Assets.Add(new Asset { Id = "font", Type = AssetType.Font, File = "assets/font.ttf" });
+
+        var video = new AddClipOperation(AssetType.Video, "clip", 6, ZIndex: 0);
+        Assert.Equal(("add_video_layer clip", 0), (video.Label, video.Layers.Count));
+        Assert.Equal("added video layer 'clip' at 6s on draw level 0", video.Apply(project));
+        Assert.Equal((6.0, 16.0, 0), (project.FindLayer("clip")!.Start, Layer<VideoLayer>(project, "clip").TimelineEnd, Layer<VideoLayer>(project, "clip").ZIndex));
+        Assert.Equal(16, project.Duration);
+
+        // A still lasts 5 s and is made smaller to fit the canvas; with no level, it goes on top.
+        Assert.Equal("added image layer 'photo' at 14s on draw level 11", new AddClipOperation(AssetType.Image, "photo", 14).Apply(project));
+        var photo = Layer<ImageLayer>(project, "photo");
+        Assert.Equal((14.0, 19.0, 0.2, "photo"), (photo.Start, photo.End!.Value, photo.ScaleX.Value, photo.Drawings["normal"]));
+        Assert.Equal(19, project.Duration);
+
+        // Sound doesn't make the project longer.
+        Assert.Equal("added audio layer 'music_2' at 1s as voice", new AddClipOperation(AssetType.Audio, "music", 1, Role: "voice").Apply(project));
+        Assert.Equal((AudioRole.Voice, 19.0), (Layer<AudioLayer>(project, "music_2").Role, project.Duration));
+
+        Assert.Equal("'font' is a font: only video, images and sound go on the timeline", Assert.Throws<ZeyoCutException>(() => new AddClipOperation(AssetType.Font, "font", 0).Apply(project)).Message);
+        Assert.Throws<ZeyoCutException>(() => new AddClipOperation(AssetType.Video, "photo", 0).Apply(project));
+    }
+
+    [Fact]
+    public void OneChangeCanStyleEveryCaptionInATrack()
+    {
+        var project = TestProjects.Footage();
+        TestProjects.AddCaptions(project);
+        var cues = project.Layers.Where(l => l.ParentId == "captions_en").Select(l => l.Id).ToList();
+        var style = new UpdateLayersOperation("update_layer captions_en", cues, new JsonObject { ["fontSize"] = 30, ["color"] = "#FFEE00" });
+        Assert.Equal(("update_layer captions_en", cues), (style.Label, style.Layers));
+        Assert.Equal("updated 2 layer(s): fontSize, color", style.Apply(project));
+        Assert.All(cues, id => Assert.Equal((30.0, "#FFEE00"), (Layer<TextLayer>(project, id).FontSize, Layer<TextLayer>(project, id).Color)));
+        Assert.Equal("there are no layers to change", Assert.Throws<ZeyoCutException>(() => new UpdateLayersOperation("none", [], new JsonObject { ["fontSize"] = 1 }).Apply(project)).Message);
     }
 
     [Fact]

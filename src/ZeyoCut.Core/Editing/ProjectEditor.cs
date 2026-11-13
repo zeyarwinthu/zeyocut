@@ -662,6 +662,70 @@ public static class ProjectEditor
         return $"'{layerId}' now draws at z={layer.ZIndex}{children}{room}";
     }
 
+    // New draw levels that put layers which never show at the same time on one level, so the
+    // timeline needs as few lanes as the drawing allows. Each layer goes just above every layer
+    // drawn under it that shows at some of the same time, so every frame is drawn as before. A
+    // subject cutout shows while its sources do, and a layer without an end counts as never ending.
+    // Returns only the layers whose level changes.
+    public static Dictionary<string, int> PackedLevels(Project project)
+    {
+        var drawn = new List<(Layer Layer, int Index, double Start, double End)>();
+        for (var i = 0; i < project.Layers.Count; i++)
+        {
+            switch (project.Layers[i])
+            {
+                case VisualLayer visual:
+                    drawn.Add((visual, i, visual.Start, Until(visual)));
+                    break;
+                case CutoutLayer cutout when cutout.Sources.Select(project.FindLayer).OfType<VisualLayer>().ToList() is { Count: > 0 } sources:
+                    drawn.Add((cutout, i, sources.Min(s => s.Start), sources.Max(Until)));
+                    break;
+            }
+        }
+
+        drawn.Sort((a, b) => a.Layer.ZIndex != b.Layer.ZIndex ? a.Layer.ZIndex.CompareTo(b.Layer.ZIndex) : a.Index.CompareTo(b.Index));
+        var levels = new int[drawn.Count];
+        var changed = new Dictionary<string, int>(StringComparer.Ordinal);
+        for (var i = 0; i < drawn.Count; i++)
+        {
+            for (var j = 0; j < i; j++)
+            {
+                if (drawn[j].Start < drawn[i].End && drawn[i].Start < drawn[j].End)
+                {
+                    levels[i] = Math.Max(levels[i], levels[j] + 1);
+                }
+            }
+
+            if (levels[i] != drawn[i].Layer.ZIndex)
+            {
+                changed[drawn[i].Layer.Id] = levels[i];
+            }
+        }
+
+        return changed;
+
+        static double Until(Layer layer) => layer is VideoLayer video ? video.TimelineEnd : layer.End ?? double.PositiveInfinity;
+    }
+
+    // Moves layers onto the levels PackedLevels gives.
+    public static string PackLanes(Project project)
+    {
+        var levels = PackedLevels(project);
+        if (levels.Count == 0)
+        {
+            throw new ZeyoCutException("the lanes are already packed: no two of them can share a draw level without changing what's drawn on top");
+        }
+
+        int Used() => project.Layers.Where(l => l is VisualLayer or CutoutLayer && l.ParentId is null).Select(l => l.ZIndex).Distinct().Count();
+        var before = Used();
+        foreach (var (id, level) in levels)
+        {
+            project.FindLayer(id)!.ZIndex = level;
+        }
+
+        return $"packed the top-level layers from {before} draw level(s) onto {Used()}; {levels.Count} layer(s) changed level, and every frame is drawn as before";
+    }
+
     public static List<Layer> Subtree(Project project, string rootId)
     {
         var included = new HashSet<string>(StringComparer.Ordinal) { rootId };
