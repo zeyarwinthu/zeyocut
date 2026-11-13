@@ -76,6 +76,9 @@ public partial class MainWindow : Window
     private string? _selectedLayer;
     private bool _rebuilding;
     private bool _inspectorStale;
+
+    // The inspector shows animated values at the playhead, so it's built again when the playhead moves.
+    private bool _inspectorKeyed;
     private bool _committingField;
     private bool _playing;
     private PreviewSource? _playSource;
@@ -605,7 +608,9 @@ public partial class MainWindow : Window
 
         _inspectorStale = false;
         var focused = typing?.Field.Label;
-        InspectorList.ItemsSource = InspectorRows();
+        var rows = InspectorRows();
+        _inspectorKeyed = rows.Any(f => f.Keyed);
+        InspectorList.ItemsSource = rows;
         if (focused is not null)
         {
             Dispatcher.InvokeAsync(() => FocusField(focused), DispatcherPriority.Loaded);
@@ -619,7 +624,7 @@ public partial class MainWindow : Window
         if (_selectedLayer is { } layerId && project.FindLayer(layerId) is { } layer)
         {
             InspectorTitle.Text = Timeline.FindClip(layerId)?.Kind == ClipKind.Caption ? "CAPTION" : $"{layer.TypeName.ToUpperInvariant()} LAYER";
-            return InspectorFields.Layer(project, layer, Timeline.FindClip(layerId));
+            return InspectorFields.Layer(project, layer, Timeline.FindClip(layerId), FrameMath.TimeOf(project, _frame));
         }
 
         if (_selectedAsset is { } id && project.FindAsset(id) is { } asset)
@@ -893,6 +898,10 @@ public partial class MainWindow : Window
 
         RequestFrame();
         UpdateEditButtons();
+        if (_inspectorKeyed)
+        {
+            ShowInspector();
+        }
     }
 
     // The frame at the playhead, at the canvas size.
@@ -1018,6 +1027,10 @@ public partial class MainWindow : Window
         RenderText.Text = "";
         RequestFrame();
         UpdateEditButtons();
+        if (_inspectorKeyed)
+        {
+            ShowInspector();
+        }
     }
 
     // Each screen refresh while playing: where the clock (following the sound) is, and the frame

@@ -23,16 +23,24 @@ public class InspectorTests
         return project;
     }
 
-    private static List<InspectorField> Fields(Project project, string id) =>
-        InspectorFields.Layer(project, project.FindLayer(id)!, TimelineLayout.Lanes(project).SelectMany(l => l.Clips).FirstOrDefault(c => c.LayerId == id));
+    // The fields with the playhead at time.
+    private static List<InspectorField> Fields(Project project, string id, double time = 0) =>
+        InspectorFields.Layer(project, project.FindLayer(id)!, TimelineLayout.Lanes(project).SelectMany(l => l.Clips).FirstOrDefault(c => c.LayerId == id), time);
 
-    private static InspectorField Field(Project project, string id, string label) => Fields(project, id).Single(f => f.Label == label && f.Kind != FieldKind.Section);
+    private static InspectorField Field(Project project, string id, string label, double time = 0) =>
+        Fields(project, id, time).Single(f => f.Label == label && f.Kind != FieldKind.Section);
+
+    // The labels of a section's rows.
+    private static List<string> Section(Project project, string id, string title) =>
+        Fields(project, id).SkipWhile(f => f.Label != title).Skip(1).TakeWhile(f => f.Kind != FieldKind.Section).Select(f => f.Label).ToList();
 
     // Types text into a field and makes the edit it gives, as pressing Enter does.
-    private static string Commit(Project project, string id, string label, string text) => Field(project, id, label).Commit!(text).Apply(project);
+    private static string Commit(Project project, string id, string label, string text, double time = 0) => Field(project, id, label, time).Commit!(text).Apply(project);
 
-    private static string Error(Project project, string id, string label, string text) =>
-        Assert.Throws<ZeyoCutException>(() => Commit(project, id, label, text)).Message;
+    private static string Error(Project project, string id, string label, string text, double time = 0) =>
+        Assert.Throws<ZeyoCutException>(() => Commit(project, id, label, text, time)).Message;
+
+    private static T Layer<T>(Project project, string id) where T : Layer => Assert.IsType<T>(project.FindLayer(id));
 
     [Fact]
     public void AClipsFieldsAreItsTimingLevelAndSound()
@@ -40,7 +48,8 @@ public class InspectorTests
         var project = Footage();
         var fields = Fields(project, "clip");
         Assert.Equal(
-            ["Clip", "Id", "Start", "End", "Length", "Draw level", "Shown", "Child layers", "Video", "Asset", "Plays", "Speed", "Sound", "Sound on", "Role", "Volume", "Fade in", "Fade out"],
+            ["Clip", "Id", "Start", "End", "Length", "Draw level", "Shown", "Child layers", "Transform", "X", "Y", "Scale X", "Scale Y", "Rotation", "Opacity",
+                "Video", "Asset", "Plays", "Speed", "Crop", "Left", "Top", "Right", "Bottom", "Sound", "Sound on", "Role", "Volume", "Fade in", "Fade out"],
             fields.Select(f => f.Label));
         Assert.Equal(["0", "4", "4", "0", "true", "label", "4 – 8 s of the file", "1×", "true", "voice", "1"],
             new[] { "Start", "End", "Length", "Draw level", "Shown", "Child layers", "Plays", "Speed", "Sound on", "Role", "Volume" }.Select(l => fields.Single(f => f.Label == l).Value));
@@ -89,6 +98,8 @@ public class InspectorTests
         Assert.Equal(40, InspectorFields.Parse("40px", "Size"));
         Assert.Equal(0.25, InspectorFields.Parse(".25×", "Volume"));
         Assert.Equal(3, InspectorFields.Parse("3x", "Volume"));
+        Assert.Equal(50, InspectorFields.Parse("50 %", "Scale X"));
+        Assert.Equal(-15, InspectorFields.Parse("-15°", "Rotation"));
         Assert.Equal(1000, InspectorFields.Parse("1e3", "Size"));
         Assert.Throws<ZeyoCutException>(() => InspectorFields.Parse("1.5 min", "Start"));
         Assert.Throws<ZeyoCutException>(() => InspectorFields.Parse("", "Start"));
@@ -175,4 +186,81 @@ public class InspectorTests
         Assert.All(cues, id => Assert.Equal(40, ((TextLayer)project.FindLayer(id)!).FontSize));
         Assert.Equal(["Hi", "World"], cues.Select(id => ((TextLayer)project.FindLayer(id)!).Text));
     }
+
+    [Fact]
+    public void TransformFieldsSetAValueOrAKeyframeAtThePlayhead()
+    {
+        var project = Footage();
+        Assert.Equal(["X", "Y", "Scale X", "Scale Y", "Rotation", "Opacity"], Section(project, "title", "Transform"));
+        Assert.Equal(["320", "180", "100", "100", "0", "100"], new[] { "X", "Y", "Scale X", "Scale Y", "Rotation", "Opacity" }.Select(l => Field(project, "title", l).Value));
+        Assert.Equal(["px", "px", "%", "%", "°", "%"], new[] { "X", "Y", "Scale X", "Scale Y", "Rotation", "Opacity" }.Select(l => Field(project, "title", l).Unit));
+        Assert.Equal("Where the layer's anchor is on the canvas, in pixels from its top-left corner", Field(project, "title", "X").Tip);
+        Assert.Equal("Where the layer's anchor is in its parent 'clip', in the parent's own pixels", Field(project, "label", "X").Tip);
+
+        Assert.Equal("update_layer title", Field(project, "title", "X").Commit!("100").Label);
+        Commit(project, "title", "X", "100");
+        Commit(project, "title", "Scale X", "50 %");
+        Commit(project, "title", "Rotation", "15°");
+        Commit(project, "title", "Opacity", "40");
+        var title = Layer<TextLayer>(project, "title");
+        Assert.Equal((100.0, 0.5, 15.0, 0.4), (title.X.Value, title.ScaleX.Value, title.Rotation.Value, title.Opacity.Value));
+        Assert.Equal("Opacity can't be more than 100 (got 150)", Error(project, "title", "Opacity", "150"));
+
+        // Animated, a field shows the value at the playhead with a diamond, and a change there adds a
+        // keyframe; where the layer isn't, it can't.
+        KeyframeEditor.SetKeyframes(project, [new KeyframeEntry("title", "y", 0, Json(0)), new KeyframeEntry("title", "y", 2, Json(200))]);
+        var y = Field(project, "title", "Y", time: 1);
+        Assert.Equal(("100", true, " ◆"), (y.Value, y.Keyed, y.Mark));
+        Assert.StartsWith(InspectorField.KeyedTip, y.Tip);
+        Assert.False(Field(project, "title", "X", time: 1).Keyed);
+        Assert.Equal("set_keyframes title", y.Commit!("150").Label);
+        Commit(project, "title", "Y", "150", time: 1);
+        Assert.Equal([(0.0, 0.0), (1, 150), (2, 200)], Layer<TextLayer>(project, "title").Y.Keyframes.Select(k => (k.Time, k.Value)));
+        Assert.Equal("'title' animates y with keyframes, and a change adds one at the playhead; move the playhead into 0–3s, where the layer is",
+            Error(project, "title", "Y", "10", time: 5));
+
+        // On a motion path, the path places it.
+        Layer<TextLayer>(project, "title").MotionPath = new MotionPath { Points = [new PathPoint { X = 0, Y = 0 }, new PathPoint { X = 10, Y = 10 }] };
+        Assert.Equal(["Position", "Scale X", "Scale Y", "Rotation", "Opacity"], Section(project, "title", "Transform"));
+        Assert.Equal(FieldKind.Info, Field(project, "title", "Position").Kind);
+    }
+
+    [Fact]
+    public void CropFieldsCutTheSidesOffTheVideo()
+    {
+        var project = Footage();
+        Assert.Equal(["0", "0", "0", "0"], new[] { "Left", "Top", "Right", "Bottom" }.Select(l => Field(project, "clip", l).Value));
+        Assert.Equal("crop_layer clip", Field(project, "clip", "Left").Commit!("100").Label);
+        Commit(project, "clip", "Left", "100");
+        Commit(project, "clip", "Bottom", "60");
+        var clip = Layer<VideoLayer>(project, "clip");
+        Assert.Equal((100.0, 0.0, 540.0, 300.0), (clip.CropX.Value, clip.CropY.Value, clip.CropWidth!.Value, clip.CropHeight!.Value));
+        Assert.Equal(["100", "0", "0", "60"], new[] { "Left", "Top", "Right", "Bottom" }.Select(l => Field(project, "clip", l).Value));
+        Assert.Equal("that leaves 0×300 px of the 640×360 source; at least 1 px each way must stay", Error(project, "clip", "Right", "540"));
+        Assert.Equal("Left can't be less than 0 (got -5)", Error(project, "clip", "Left", "-5"));
+
+        // A moving crop is changed with keyframes.
+        KeyframeEditor.SetKeyframes(project, [new KeyframeEntry("clip", "cropX", 1, Json(10))]);
+        Assert.Equal(["Crop"], Section(project, "clip", "Crop"));
+        Assert.Equal(FieldKind.Info, Field(project, "clip", "Crop").Kind);
+    }
+
+    [Fact]
+    public void ACaptionsPositionMovesTheWholeTrack()
+    {
+        var project = Footage();
+        var cues = project.Layers.Where(l => l.ParentId == "captions_en").Select(l => l.Id).ToList();
+        var title = "Position of all 2 caption(s) in the track";
+        Assert.Equal(["X", "Y"], Section(project, cues[0], title));
+        Assert.DoesNotContain(Fields(project, cues[0]), f => f.Label == "Transform");
+        var before = cues.Select(id => Layer<TextLayer>(project, id).Y.Value).ToList();
+        var y = InspectorFields.Parse(Field(project, cues[0], "Y").Value, "Y");
+
+        var move = Field(project, cues[0], "Y").Commit!((y - 40).ToString(System.Globalization.CultureInfo.InvariantCulture));
+        Assert.Equal("update_layer captions_en", move.Label);
+        Assert.Equal("moved 2 layer(s) by 0, -40 px", move.Apply(project));
+        Assert.Equal(before.Select(b => b - 40), cues.Select(id => Layer<TextLayer>(project, id).Y.Value));
+    }
+
+    private static System.Text.Json.JsonElement Json(double value) => System.Text.Json.JsonSerializer.SerializeToElement(value);
 }

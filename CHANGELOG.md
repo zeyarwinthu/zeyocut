@@ -25,8 +25,11 @@ when they open.
   levels without changing a frame. The inspector edits the selected clip: start, end, length, draw
   level, shown or muted, a video's sound, role, volume and fades, and a text's or caption's text and
   style (font, font file, size, bold, color, outline, alignment, width, line height, box); a
-  caption's style applies to its whole track. The Export view renders the project as `start_export`
-  does, with presets, language versions, progress, stop and show in folder, and lists the exports
+  caption's style applies to its whole track. Transform fields place a video, picture or text: X, Y,
+  scale, rotation and opacity, each its static value or, when the model animated it, a keyframe at
+  the playhead (marked with a diamond); a caption's position moves its whole track. A video's crop is
+  set by its sides, keeping what's left of the picture in place. The Export view renders the project
+  as `start_export` does, with presets, language versions, progress, stop and show in folder, and lists the exports
   folder. The Assistant view shows the revision and the 20 most recent saves, yours and Claude's. A
   project is open in one editor window at a time. The editor keeps its own settings in
   `%LOCALAPPDATA%\ZeyoCut\editor.json` (`ZEYOCUT_EDITOR_SETTINGS` names another file).

@@ -4,6 +4,7 @@ using System.Globalization;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using ZeyoCut.Core;
+using ZeyoCut.Core.Animation;
 using ZeyoCut.Core.Editing;
 using ZeyoCut.Core.Model;
 
@@ -24,11 +25,16 @@ public enum FieldKind
 // One row of the inspector. A field with Commit can be changed there: Commit turns what was typed or
 // chosen into the edit that makes the change (the Core operation a timeline drag or an MCP tool
 // makes), or throws a ZeyoCutException that says what's wrong with it. A toggle's value is true or
-// false, a choice's one of Choices. Unit is shown after a number; Tip explains the field.
+// false, a choice's one of Choices. Unit is shown after a number; Tip explains the field. A Keyed
+// field is animated: it shows the value at the playhead, marked with a diamond.
 public sealed record InspectorField(string Label, FieldKind Kind, string Value, Func<string, EditOperation>? Commit = null,
-    IReadOnlyList<string>? Choices = null, string Unit = "", string? Tip = null)
+    IReadOnlyList<string>? Choices = null, string Unit = "", string? Tip = null, bool Keyed = false)
 {
+    public const string KeyedTip = "Animated: this is its value at the playhead, and a change adds a keyframe there";
+
     public bool Editable => Commit is not null;
+
+    public string Mark => Keyed ? " ◆" : "";
 
     public bool IsOn => Value == "true";
 
@@ -41,15 +47,16 @@ public sealed record FieldChoice(InspectorField Field, string Name, bool Selecte
     public string Group => "inspector:" + Field.Label;
 }
 
-// What the inspector shows for a clip, and how each of its fields is changed. Timing moves and trims
-// the clip as the timeline does; the rest are the layer's fields, as update_layer sets them. A
-// caption's text and timing are its own, and its style is the whole track's: a style change is made
-// to every caption in the track at once, as one undo step.
+// What the inspector shows for a clip at the playhead's time, and how each of its fields is changed.
+// Timing moves and trims the clip as the timeline does; the rest are the layer's fields, as
+// update_layer sets them, or a keyframe at the playhead for an animated one (PlacementEditor.Set). A
+// caption's text and timing are its own, and its style and position the whole track's: a change to
+// them is made to every caption in the track at once, as one undo step.
 public static partial class InspectorFields
 {
     public const string NoFontFile = "(none)";
 
-    public static List<InspectorField> Layer(Project project, Layer layer, TimelineClip? clip)
+    public static List<InspectorField> Layer(Project project, Layer layer, TimelineClip? clip, double time)
     {
         var id = layer.Id;
         var end = TimelineEditor.ContentEnd(project, layer);
@@ -106,6 +113,19 @@ public static partial class InspectorFields
             fields.Add(Info("Followed by", mark));
         }
 
+        if (group is not null && layer is VisualLayer cue)
+        {
+            var (x, y) = (Interpolator.Evaluate(cue.X, time), Interpolator.Evaluate(cue.Y, time));
+            const string shifts = "Moves every caption in the track by the same amount";
+            fields.Add(Section($"Position of all {cues.Count} caption(s) in the track"));
+            fields.Add(Number("X", x, "px", text => new ShiftLayersOperation($"update_layer {group.Id}", cues, Parse(text, "X") - x, 0), shifts));
+            fields.Add(Number("Y", y, "px", text => new ShiftLayersOperation($"update_layer {group.Id}", cues, 0, Parse(text, "Y") - y), shifts));
+        }
+        else if (layer is VisualLayer placed)
+        {
+            AddTransform(fields, project, placed, time);
+        }
+
         switch (layer)
         {
             case VideoLayer video:
@@ -113,6 +133,7 @@ public static partial class InspectorFields
                 fields.Add(Info("Asset", video.Asset));
                 fields.Add(Info("Plays", $"{Num(video.TrimIn)} – {Num(video.TrimOut)} s of the file"));
                 fields.Add(Info("Speed", $"{Num(video.Speed)}×"));
+                AddCrop(fields, project, video);
                 fields.Add(Section("Sound"));
                 if (project.FindAsset(video.Asset)?.HasAudio == false)
                 {
@@ -181,6 +202,53 @@ public static partial class InspectorFields
 
     public static string Num(double value) => value.ToString("0.###", CultureInfo.InvariantCulture);
 
+    // Where the layer is, its size, turn and opacity. A child's x and y are in its parent's pixels.
+    private static void AddTransform(List<InspectorField> fields, Project project, VisualLayer layer, double time)
+    {
+        EditOperation Set(string property, double value) =>
+            PlacementEditor.Set(project, layer.Id, new Dictionary<string, double> { [property] = value }, time);
+
+        InspectorField Animated(string label, AnimatedValue value, double factor, string unit, Func<string, EditOperation> commit, string tip) =>
+            value.Keyframes.Count > 0
+                ? new(label, FieldKind.Number, Num(Interpolator.Evaluate(value, time) * factor), commit, Unit: unit, Tip: $"{InspectorField.KeyedTip}. {tip}", Keyed: true)
+                : new(label, FieldKind.Number, Num(value.Value * factor), commit, Unit: unit, Tip: tip);
+
+        fields.Add(Section("Transform"));
+        var where = layer.ParentId is { } parent ? $"in its parent '{parent}', in the parent's own pixels" : "on the canvas, in pixels from its top-left corner";
+        if (PlacementEditor.PositionLocked(layer) is { } locked)
+        {
+            fields.Add(new InspectorField("Position", FieldKind.Info, "follows a motion path", Tip: locked));
+        }
+        else
+        {
+            fields.Add(Animated("X", layer.X, 1, "px", text => Set("x", Parse(text, "X")), $"Where the layer's anchor is {where}"));
+            fields.Add(Animated("Y", layer.Y, 1, "px", text => Set("y", Parse(text, "Y")), $"Where the layer's anchor is {where}"));
+        }
+
+        fields.Add(Animated("Scale X", layer.ScaleX, 100, "%", text => Set("scaleX", Parse(text, "Scale X") / 100), "100 is its own size; a negative scale flips it"));
+        fields.Add(Animated("Scale Y", layer.ScaleY, 100, "%", text => Set("scaleY", Parse(text, "Scale Y") / 100), "100 is its own size; a negative scale flips it"));
+        fields.Add(Animated("Rotation", layer.Rotation, 1, "°", text => Set("rotation", Parse(text, "Rotation")), "Degrees clockwise around the anchor"));
+        fields.Add(Animated("Opacity", layer.Opacity, 100, "%", text => Set("opacity", Parse(text, "Opacity", min: 0, max: 100) / 100), "100 is solid, 0 is invisible"));
+    }
+
+    // The sides of the picture the video's crop cuts off, in the file's pixels.
+    private static void AddCrop(List<InspectorField> fields, Project project, VideoLayer video)
+    {
+        fields.Add(Section("Crop"));
+        if (PlacementEditor.CropLocked(project, video) is { } locked)
+        {
+            fields.Add(Info("Crop", locked));
+            return;
+        }
+
+        var sides = PlacementEditor.Sides(video, project.FindAsset(video.Asset)!);
+        const string tip = "Pixels of the file cut off this side; the rest of the picture stays where it is";
+        fields.Add(Number("Left", sides.Left, "px", text => new CropLayerOperation(video.Id, sides with { Left = Parse(text, "Left", min: 0) }), tip));
+        fields.Add(Number("Top", sides.Top, "px", text => new CropLayerOperation(video.Id, sides with { Top = Parse(text, "Top", min: 0) }), tip));
+        fields.Add(Number("Right", sides.Right, "px", text => new CropLayerOperation(video.Id, sides with { Right = Parse(text, "Right", min: 0) }), tip));
+        fields.Add(Number("Bottom", sides.Bottom, "px", text => new CropLayerOperation(video.Id, sides with { Bottom = Parse(text, "Bottom", min: 0) }), tip));
+    }
+
     private static void AddSound(List<InspectorField> fields, string id, AudioRole role, double volume, double fadeIn, double fadeOut)
     {
         fields.Add(new InspectorField("Role", FieldKind.Choice, EnumNames.ToName(role), value => Update(id, "role", value), EnumNames.All<AudioRole>().ToList(),
@@ -238,6 +306,6 @@ public static partial class InspectorFields
     private static InspectorField Toggle(string label, bool on, Func<bool, EditOperation> commit) =>
         new(label, FieldKind.Toggle, on ? "true" : "false", value => commit(value == "true"));
 
-    [GeneratedRegex(@"^\s*([-+]?(?:\d+(?:[.,]\d*)?|[.,]\d+)(?:[eE][-+]?\d+)?)\s*(?:s|px|×|x)?\s*$", RegexOptions.IgnoreCase)]
+    [GeneratedRegex(@"^\s*([-+]?(?:\d+(?:[.,]\d*)?|[.,]\d+)(?:[eE][-+]?\d+)?)\s*(?:s|px|×|x|%|°)?\s*$", RegexOptions.IgnoreCase)]
     private static partial Regex NumberPattern();
 }

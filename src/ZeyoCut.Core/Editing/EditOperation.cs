@@ -98,6 +98,45 @@ public sealed record UpdateLayersOperation(string Name, IReadOnlyList<string> La
     }
 }
 
+// Keyframes, as set_keyframes adds them: each replaces a keyframe at the same time of its property.
+public sealed record SetKeyframesOperation(IReadOnlyList<KeyframeEntry> Entries) : EditOperation
+{
+    public override string Label => $"set_keyframes {string.Join(" ", Layers)}";
+
+    public override IReadOnlyList<string> Layers => Entries.Select(e => e.LayerId).Distinct(StringComparer.Ordinal).ToList();
+
+    public override string Apply(Project project)
+    {
+        var change = KeyframeEditor.SetKeyframes(project, Entries);
+        var targets = Entries.Select(e => $"{e.LayerId}.{e.Property}").Distinct().ToList();
+        return $"set {change.Added + change.Replaced} keyframe(s) at {Num(Entries[0].Time)}s on {string.Join(", ", targets)}" + string.Concat(change.Warnings.Select(w => $"; {w}"));
+    }
+}
+
+// Layers moved by X, Y pixels at every moment (PlacementEditor.Shift), such as every caption of a
+// track when one of them is dragged.
+public sealed record ShiftLayersOperation(string Name, IReadOnlyList<string> LayerIds, double X, double Y) : EditOperation
+{
+    public override string Label => Name;
+
+    public override IReadOnlyList<string> Layers => LayerIds;
+
+    public override string Apply(Project project) =>
+        $"moved {PlacementEditor.Shift(project, LayerIds, X, Y)} layer(s) by {Signed(X)}, {Signed(Y)} px";
+
+    private static string Signed(double value) => (value > 0 ? "+" : "") + Num(value);
+}
+
+// A video's crop by its sides, keeping what remains of the picture in place (PlacementEditor.Crop).
+public sealed record CropLayerOperation(string LayerId, CropSides Sides) : EditOperation
+{
+    public override string Label => $"crop_layer {LayerId}";
+
+    public override IReadOnlyList<string> Layers => [LayerId];
+
+    public override string Apply(Project project) => PlacementEditor.Crop(project, LayerId, Sides);
+}
+
 // Draw order: a layer's zIndex (higher draws on top); the timeline's lanes follow it. Its children
 // move with it. With Insert, it gets levels of its own from ZIndex up (see ProjectEditor.Reorder).
 public sealed record ReorderLayerOperation(string LayerId, int ZIndex, bool Insert = false) : EditOperation

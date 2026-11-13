@@ -111,6 +111,15 @@ The plan below was approved with these answers and changes. Where they disagree 
 - The editor side of sync needed no rebase bar or conflict review (change 1). The Assistant view shows the revision, who saved last, and the recent saves from `backups\`.
 - The cut list: nothing was cut. The Assistant view, speeds, drag-and-drop, the right-click menus and marker snapping are all in.
 
+**What Phase 5a found and did differently:**
+
+- "Go Phase 5" was read as: build 5a and 5b, commit each, and bring the 5c design before building it.
+- The rule for animated values, which the plan left to Phase 5: a field shows the value at the playhead, marked ◆, and a change adds or replaces a keyframe there (`PlacementEditor.Set`, then `KeyframeEditor.SetKeyframes`). The new keyframe takes the easing of the keyframe it replaces, else of the one before it, else linear, so the motion keeps its feel. With the playhead outside the layer the change is refused, rather than add a keyframe where the layer isn't. A value without keyframes changes as `update_layer` changes it. The inspector is built again when the playhead moves while it shows an animated value.
+- x and y of a layer on a motion path are not editable (Position: follows a motion path). `update_layer` and `set_keyframes` would take the path off with a warning; the editor shouldn't do that silently.
+- Units: scale and opacity are shown in percent, rotation in degrees. Numbers can be typed with `%` and `°`.
+- Crop is Left, Top, Right and Bottom in the file's pixels (`CropLayerOperation`, history name `crop_layer`; it has no MCP tool of its own, as `pack_lanes` has none). The model's crop moves the picture, since what's left is drawn from the layer's corner; the editor instead moves the anchor, the mask and the direct child layers by the cut, so what's left stays where it was and still turns around the same point. A crop with `cropX` or `cropY` keyframes is shown, not edited.
+- A caption's position moves its whole track by the same amount (`ShiftLayersOperation`, named `update_layer captions_en`), keyframes and motion path included, as its style applies to the whole track. Scale, rotation and opacity aren't offered for captions.
+
 ## Summary
 
 What I found:
