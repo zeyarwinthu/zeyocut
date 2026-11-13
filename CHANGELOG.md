@@ -10,7 +10,15 @@ when they open.
 
 ### Added
 
-- **Two programs on one project:** the server, a second server or (later) the ZeyoCut editor can
+- **The ZeyoCut editor (early):** `ZeyoCut.Editor.exe`, a window for working on a project by hand,
+  in the release zip and the bundle. So far it opens a project (from a start page with the projects
+  folder and recent projects, File → Open, or a folder on the command line), lists its media, imports
+  images, audio, fonts and video (normalizing video as `import_video` does, with progress) and shows
+  the frame at any time, drawn by the same renderer as exports, with frame stepping, fit and zoom.
+  Each change is saved at once as an undoable step. When another program saves the project, the
+  editor shows the new version and says what changed. The editor keeps its own settings in
+  `%LOCALAPPDATA%\ZeyoCut\editor.json` (`ZEYOCUT_EDITOR_SETTINGS` names another file).
+- **Two programs on one project:** the server, a second server or the ZeyoCut editor can
   have a project open at once without overwriting each other. A save holds `project.lock`, checks
   `project.json` by its SHA-256 and makes the edit on top of another program's version. Before each
   tool call the server takes a newer `project.json`, and the reply starts with a note listing what
@@ -33,6 +41,7 @@ when they open.
 - `import_asset`, `import_video` and `import_folder` copy files into the project before the save
   takes `project.lock`, so another program's saves don't wait for a big copy (they give up after
   5 s). A file is copied under a temporary name and renamed when complete.
+- The release zip and the bundle are about 63 MB larger, with the editor's exe.
 
 ### Fixed
 

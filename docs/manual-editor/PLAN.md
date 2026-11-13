@@ -58,6 +58,25 @@ The plan below was approved with these answers and changes. Where they disagree 
 - Backups are grouped by label: the last 20 `editor ...` saves and the last 20 others.
 - The 1a undo barrier is gone. A refusal names the items and the other program's edits, from the backups it kept.
 
+**What Phase 2 found and did differently:**
+
+- The D9 moves are three commits with no behavior change: `Settings` into Core, the video import steps (`VideoImport`) into Render, and starting proxy jobs (`ProxyJobs`) into Render. Moving the export start waits for Phase 4, the first phase that uses it.
+- One behavior change came with them, in a commit of its own: `import_asset`, `import_video` and `import_folder` copy files into the project before the save takes `project.lock`. Before, the copy happened under the lock, so a big file made the other program's saves give up after 5 s (R11). A file is copied under a temporary name and renamed when complete.
+- Item 3's Save is gone (change 1). The editor takes every outside save, since it never has anything unsaved.
+- The mode switch waits for Phase 4: with no Assistant or Export view yet, its buttons would be dead. The bottom region is a time ruler (click or drag to seek, with the markers) until the Phase 3 timeline replaces it.
+- Edit → Undo and Redo (Ctrl+Z, Ctrl+Y) are in already, since imports are edits.
+- `ZEYOCUT_EDITOR_SETTINGS` names another file for `editor.json`, as `ZEYOCUT_JOBS_DIR` does for the jobs folder. The tests and the screenshot runs use it, so they never touch the real settings.
+- The editor's jobs (normalizing, proxies) live in its own in-memory `JobManager`. Normalizing runs one video at a time.
+- Packaging (D6), measured with the Release publish:
+
+    | Layout | Release zip | Exes |
+    |---|---|---|
+    | Server only (before) | 70.5 MiB | `ZeyoCut.Mcp.exe` 174.6 MiB |
+    | Two single-file exes (chosen) | 133.8 MiB (+63.3) | plus `ZeyoCut.Editor.exe` 151.0 MiB |
+    | One self-contained folder both share | 100.3 MiB (+29.8) | 449 files, 243.1 MiB on disk |
+
+    The shared folder is 33.5 MiB smaller zipped, but it is 449 loose files instead of two exes, in the zip and in the `.mcpb`'s `server` folder. Two single-file exes stay, per D6. The release workflow's size check fails above 200 MiB for the server exe, 170 MiB for the editor exe and 160 MiB for the zip and the bundle.
+
 ## Summary
 
 What I found:

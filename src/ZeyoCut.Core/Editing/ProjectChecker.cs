@@ -147,7 +147,8 @@ public static class ProjectChecker
         }
     }
 
-    private static IEnumerable<string> Users(Project project, string assetId) =>
+    // The layers that show or play an asset: as its clip, sound, drawing, font or mask.
+    public static IEnumerable<string> Users(Project project, string assetId) =>
         project.Layers.Where(l => l switch
         {
             ImageLayer image => image.Drawings.Values.Contains(assetId),

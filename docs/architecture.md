@@ -1,15 +1,17 @@
 # Architecture
 
-ZeyoCut is a .NET 10 console app for Windows. It speaks the Model Context Protocol on stdio through the official [ModelContextProtocol C# SDK](https://github.com/modelcontextprotocol/csharp-sdk), draws with [SkiaSharp](https://github.com/mono/SkiaSharp), shapes text with [HarfBuzz](https://harfbuzz.github.io/), runs AI models with [ONNX Runtime](https://onnxruntime.ai/), tracks objects with [OpenCV](https://opencv.org/) (through OpenCvSharp4), and reads and writes video with the FFmpeg the user installs.
+ZeyoCut is a .NET 10 console app for Windows. It speaks the Model Context Protocol on stdio through the official [ModelContextProtocol C# SDK](https://github.com/modelcontextprotocol/csharp-sdk), draws with [SkiaSharp](https://github.com/mono/SkiaSharp), shapes text with [HarfBuzz](https://harfbuzz.github.io/), runs AI models with [ONNX Runtime](https://onnxruntime.ai/), tracks objects with [OpenCV](https://opencv.org/) (through OpenCvSharp4), and reads and writes video with the FFmpeg the user installs. A WPF app, the editor (`ZeyoCut.Editor.exe`), opens the same projects for editing by hand.
 
 ## Solution layout
 
 | Project | Contents |
 |---|---|
-| `src/ZeyoCut.Core` | Model, JSON (de)serialization, easing, interpolation, transform math, motion paths, scene evaluation, validation, editing operations (timeline cuts and transitions, silence and transcript cutting, captions, reframing, presets, library, sound effects, camera, lip flap, effects and masks, project checks), edit operations and undo/redo, `EditorDocument` (the editor's open project). No rendering dependencies. |
-| `src/ZeyoCut.Render` | SkiaSharp renderer with layer effects and masks, HarfBuzz text layout and line breaking, previews and contact sheets, debug overlay, video decoding and normalization, analysis (scene cuts, noise floor, silences, whisper), FFmpeg exporter with ducking and loudness normalization, ffprobe, `frame_diff` and the `audio_levels` loudness meter, beat detection, per-frame voice levels, object tracking with OpenCV, face and plate detection, redaction |
+| `src/ZeyoCut.Core` | Model, JSON (de)serialization, easing, interpolation, transform math, motion paths, scene evaluation, validation, editing operations (timeline cuts and transitions, silence and transcript cutting, captions, reframing, presets, library, sound effects, camera, lip flap, effects and masks, project checks), edit operations and undo/redo, `EditorDocument` (the editor's open project), settings. No rendering dependencies. |
+| `src/ZeyoCut.Render` | SkiaSharp renderer with layer effects and masks, HarfBuzz text layout and line breaking, previews and contact sheets, debug overlay, video decoding and normalization, analysis (scene cuts, noise floor, silences, whisper), FFmpeg exporter with ducking and loudness normalization, ffprobe, `frame_diff` and the `audio_levels` loudness meter, beat detection, per-frame voice levels, object tracking with OpenCV, face and plate detection, redaction, video import and proxy jobs |
 | `src/ZeyoCut.Mcp` | Console app: the MCP server (official ModelContextProtocol C# SDK, stdio), background jobs, the preview page, the CLI commands and the demo |
+| `src/ZeyoCut.Editor` | WPF app (`net10.0-windows`): the editor. References Core and Render, not the server |
 | `tests/ZeyoCut.Tests` | xUnit v3 tests, including:<br>- easing values, interpolation, parent/child transforms, JSON round trip, editing, rendering, Burmese/Japanese shaping<br>- split/ripple frame identity, tone+silence+tone cut length, caption/transcript alignment, reframing<br>- export-vs-preview pixel match, measured loudness and ducking, preset size and profile, blurred-background fit, thumbnail crop and size, frame sequence count<br>- library actions on rig copies, camera shake determinism, glitch-frame detection, loudness metering, seeded project problems<br>- click-track tempo and beat times, tone+silence+tone lip flap, sound effect placement<br>- effect and mask pixels, even speed and orientation on motion paths, the middle frame of each transition<br>- MCP over stdio, demo |
+| `tests/ZeyoCut.Editor.Tests` | xUnit v3 tests of the editor's parts that need no window: the start page's lists, its settings file, timecodes, zoom and the time ruler, drawing preview frames, importing |
 
 ## How a tool call runs
 
@@ -20,6 +22,17 @@ ZeyoCut is a .NET 10 console app for Windows. It speaks the Model Context Protoc
 5. Work that takes long (normalizing video, analysis, AI mattes and detection, tracking, exports) runs as a background job and returns a job id at once. Each job's record is kept in the jobs folder, so jobs outlast a restart.
 
 The server's instructions to the model (`ServerInfo`), the tools (`Tools\`), the workflow prompts (`WorkflowPrompts`) and the preview page (`PreviewServer`) are all in `src/ZeyoCut.Mcp`.
+
+## The editor
+
+`src/ZeyoCut.Editor` holds no editing logic of its own; it shows the project and calls Core and Render.
+
+- **Opening and saving.** A project opens as an `EditorDocument`. Each change is an `EditOperation` saved at once on the same path as a tool call: `project.lock`, the SHA-256 check, a backup labelled `editor ...` and the next `revision`. Undo and redo are `EditorDocument`'s, step by step.
+- **Another program's saves.** A `FileSystemWatcher` on the project folder, with a check every second in case it misses one, calls `EditorDocument.Refresh`. The editor then shows the new version and names that program's edits from their backups.
+- **Preview.** `FrameRenderer` draws the frame at the playhead on a worker thread, with proxies. Only the latest frame asked for is drawn, and drawn frames are kept in the renderer's preview cache, so stepping back to one is instant. The pixels are copied into a `WriteableBitmap` that WPF scales to the panel.
+- **Import.** A file is copied in with `AssetImporter.Prepare` before the save takes `project.lock`, then added as one edit. Video goes through `VideoImport`: footage that needs it is normalized in a background job first, one at a time. Proxies start with `ProxyJobs`, as they do for the server. The editor's jobs are kept in memory, never in the jobs folder, so the server doesn't resume them.
+- **Its own settings** (recent projects, panel sizes, window placement) are in `%LOCALAPPDATA%\ZeyoCut\editor.json`, never in `project.json`.
+- **Size.** The published exe leaves out the native OpenCV, ONNX Runtime and DirectML libraries (a target in `ZeyoCut.Editor.csproj`). The editor runs no AI models, and nothing in drawing a frame needs them.
 
 ## Rendering
 

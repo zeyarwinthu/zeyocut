@@ -1,6 +1,6 @@
 # ZeyoCut
 
-**A video and animation editor that an AI model drives.** ZeyoCut has no window of its own: it is an [MCP](https://modelcontextprotocol.io) server for Windows. You tell Claude, or another MCP client, what you want. The model builds the project through ZeyoCut's tools, looks at rendered frames to check its work, and exports the MP4.
+**A video and animation editor that an AI model drives.** ZeyoCut is an [MCP](https://modelcontextprotocol.io) server for Windows. You tell Claude, or another MCP client, what you want. The model builds the project through ZeyoCut's tools, looks at rendered frames to check its work, and exports the MP4. A window for fine-tuning the same project by hand, [the editor](#the-editor), is in early development.
 
 [Website](https://cut.zeyoapp.com) · [Install](docs/install.md) · [Guide](docs/GUIDE.md) · [Tool reference](docs/TOOLS.md) · [Examples](examples/README.md)
 
@@ -49,6 +49,18 @@ Then ask for something. ZeyoCut imports files from your Desktop, Documents, Down
 > Make a YouTube video from Videos\talk.mp4: cut the silences with punch-ins, remove the "um"s, add bold captions and Music\bed.mp3 under the voice, and export it with the youtube_1080p preset. Then make a vertical Short of it with the speaker centered.
 
 > Blur every face in Videos\street.mp4, show me the frames I should check, and export it.
+
+## The editor
+
+`ZeyoCut.Editor.exe`, next to `ZeyoCut.Mcp.exe` in the release zip, opens the same projects in a window, for working on them by hand. It is early: so far it shows a project's media and its frame at any time, and imports media. Moving and trimming clips, playback and export come next.
+
+- **Open a project** from the start page, which lists your projects folder and recent projects, with File → Open project, or from the command line: `ZeyoCut.Editor.exe C:\Users\you\ZeyoCut\projects\my-video`.
+- **Import** images, audio, fonts and video with Media → Import. Video that needs normalizing (variable frame rate, rotation, HDR) is converted first, as `import_video` does, with its progress in the media list. Files you pick yourself can come from any folder; the import folders limit only what the model can read.
+- **The preview** draws the frame at the playhead with the same renderer as exports, from proxies for footage over 2560 px. Click or drag in the time ruler, or step with ←/→ (Shift: a second at a time), Home and End. Fit, 50%, 100% and 200% set the zoom.
+- **Every change is saved at once**, as one step that Ctrl+Z undoes and Ctrl+Y redoes. The status bar shows "Saved · revision N"; there's no Save button.
+- **With Claude at the same time.** When the server saves the project, the editor shows the new version and says what changed. The server's next reply lists what the editor changed. See [Saving alongside another program](docs/project-format.md#saving-alongside-another-program).
+
+The editor reads `FfmpegPath` and `ProjectsRoot` from the same `appsettings.json` and environment variables as the server. It keeps its own settings (recent projects, panel sizes, window position) in `%LOCALAPPDATA%\ZeyoCut\editor.json`, or the file `ZEYOCUT_EDITOR_SETTINGS` names, never in the project.
 
 ## Privacy
 
@@ -177,11 +189,19 @@ Copy both anywhere, for example `C:\Tools\ZeyoCut\`. On first run the native lib
 
 To try your own build, point the MCP client at `src\ZeyoCut.Mcp\bin\Debug\net10.0\ZeyoCut.Mcp.exe`. Don't use `dotnet run` as the command: its build output goes to stdout and corrupts the protocol stream.
 
+The editor publishes the same way:
+
+```powershell
+dotnet publish src/ZeyoCut.Editor -c Release -r win-x64 --self-contained -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true
+```
+
+Its `ZeyoCut.Editor.exe` (about 150 MB) goes to `src\ZeyoCut.Editor\bin\Release\net10.0-windows\win-x64\publish\`. It leaves out OpenCV, ONNX Runtime and DirectML, since the editor runs no AI models. Copy it next to `ZeyoCut.Mcp.exe`, so that both read the same `appsettings.json`. `dotnet test` runs the editor's tests with the others; to run them alone, use `tests\ZeyoCut.Editor.Tests\bin\Debug\net10.0-windows\ZeyoCut.Editor.Tests.exe`.
+
 ## FAQ
 
 **Do I need Claude?** No. Any MCP client that can run a local (stdio) server works, such as Claude Desktop, Claude Code or VS Code. Use a model that can look at images: `render_frame` and `render_contact_sheet` return pictures, and that's how the model checks its work.
 
-**Is there an editing window?** No. The model edits through ZeyoCut's tools. You see the result as frames and contact sheets in the chat, and on a preview page in your browser (`preview_server`) that plays the edit with its sound and follows every change. Every change can be undone.
+**Is there an editing window?** One is being built: [the editor](#the-editor) already opens a project, shows any frame and imports media. Until it can edit the timeline, the model edits through ZeyoCut's tools. You see the result as frames and contact sheets in the chat, and on a preview page in your browser (`preview_server`) that plays the edit with its sound and follows every change. Every change can be undone.
 
 **Does it cost anything?** ZeyoCut is free and needs no account. Your MCP client and its AI model may have their own costs.
 
