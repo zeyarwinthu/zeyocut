@@ -189,21 +189,7 @@ public static class DetectTools
 
             session.Mutate($"detect_and_track {finder.Plural} {clip}", p =>
             {
-                if (p.FindAsset(asset.Id) is null)
-                {
-                    throw new ZeyoCutException($"asset '{asset.Id}' was removed while its {finder.Plural} were being found, so no track was added; run detect_and_track again");
-                }
-
-                foreach (var track in tracks)
-                {
-                    if (p.FindTrack(track.Id) is not null)
-                    {
-                        throw new ZeyoCutException($"a track '{track.Id}' appeared while the {finder.Plural} were being found, so no track was added; run detect_and_track again");
-                    }
-
-                    p.Tracks.Add(track);
-                }
-
+                TrackEditor.AddDetected(p, asset.Id, tracks, finder.Plural);
                 return 0;
             });
         }

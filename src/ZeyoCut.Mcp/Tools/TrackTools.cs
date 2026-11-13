@@ -320,26 +320,7 @@ public static class TrackTools
             track.File = TrackFiles.Save(session.Directory, data);
             session.Mutate($"{tool} {track.Id}", p =>
             {
-                if (old is { } before)
-                {
-                    var index = p.Tracks.FindIndex(t => t.Id == track.Id);
-                    if (index < 0 || p.Tracks[index].File != before.File)
-                    {
-                        throw new ZeyoCutException($"track '{track.Id}' changed or was removed while it was being tracked, so the correction wasn't saved; run reanchor_track again");
-                    }
-
-                    p.Tracks[index] = track;
-                }
-                else
-                {
-                    if (p.FindTrack(track.Id) is not null)
-                    {
-                        throw new ZeyoCutException($"a track '{track.Id}' appeared while this one was being tracked, so it wasn't saved; run track_object again");
-                    }
-
-                    p.Tracks.Add(track);
-                }
-
+                TrackEditor.SaveTrack(p, track, old?.File);
                 return 0;
             });
             return session.Read(p => Describe(p, track, data, headline));

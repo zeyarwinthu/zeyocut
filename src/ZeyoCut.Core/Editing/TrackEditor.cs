@@ -31,6 +31,51 @@ public static class TrackEditor
     // The box has to be at least this big in source pixels, inside the clip's picture.
     public const double MinBoxSide = 4;
 
+    // Saves a track track_object made, or the one reanchor_track made in place of the version whose
+    // file was 'replacing'. Refused when the project changed meanwhile so that it would be wrong.
+    public static void SaveTrack(Project project, Track track, string? replacing)
+    {
+        if (replacing is not null)
+        {
+            var index = project.Tracks.FindIndex(t => t.Id == track.Id);
+            if (index < 0 || project.Tracks[index].File != replacing)
+            {
+                throw new ZeyoCutException($"track '{track.Id}' changed or was removed while it was being tracked, so the correction wasn't saved; run reanchor_track again");
+            }
+
+            project.Tracks[index] = track;
+        }
+        else
+        {
+            if (project.FindTrack(track.Id) is not null)
+            {
+                throw new ZeyoCutException($"a track '{track.Id}' appeared while this one was being tracked, so it wasn't saved; run track_object again");
+            }
+
+            project.Tracks.Add(track);
+        }
+    }
+
+    // Adds the tracks detect_and_track found in one asset's footage ('plural': faces, plates), all
+    // or none.
+    public static void AddDetected(Project project, string assetId, IReadOnlyList<Track> tracks, string plural)
+    {
+        if (project.FindAsset(assetId) is null)
+        {
+            throw new ZeyoCutException($"asset '{assetId}' was removed while its {plural} were being found, so no track was added; run detect_and_track again");
+        }
+
+        foreach (var track in tracks)
+        {
+            if (project.FindTrack(track.Id) is not null)
+            {
+                throw new ZeyoCutException($"a track '{track.Id}' appeared while the {plural} were being found, so no track was added; run detect_and_track again");
+            }
+
+            project.Tracks.Add(track);
+        }
+    }
+
     public static (VideoLayer Layer, Asset Asset) Clip(Project project, string? layerId)
     {
         var layer = ProjectEditor.GetLayer(project, layerId);
