@@ -595,7 +595,7 @@ public partial class MainWindow : Window
         }
 
         var size = asset.Width is { } w && asset.Height is { } h ? $"{w}×{h}" : null;
-        var length = asset.Duration is { } d ? Timecode.Short(d) : null;
+        var length = asset.Duration is { } d ? Timecode.Length(d) : null;
         string?[] details = asset.Type switch
         {
             AssetType.Video => [size, length, asset.FrameRate is { } rate ? $"{rate} fps" : null, asset.Normalized is null ? null : "normalized"],
@@ -629,13 +629,13 @@ public partial class MainWindow : Window
         }
 
         _inspectorStale = false;
-        var focused = typing?.Field.Label;
+        var focused = typing is { } field ? (field.Field.Label, Occurrence(field.Box)) : ((string Label, int Occurrence)?)null;
         var rows = InspectorRows();
         _inspectorTimed = rows.Any(f => f.Keyed || f.HasToggle);
         InspectorList.ItemsSource = rows;
         if (focused is not null)
         {
-            Dispatcher.InvokeAsync(() => FocusField(focused), DispatcherPriority.Loaded);
+            Dispatcher.InvokeAsync(() => FocusField(focused.Value.Label, focused.Value.Occurrence), DispatcherPriority.Loaded);
         }
     }
 
@@ -683,11 +683,12 @@ public partial class MainWindow : Window
             ? (field, box, box.Text.ReplaceLineEndings("\n") != field.Value.ReplaceLineEndings("\n"))
             : null;
 
-    private void FocusField(string label)
+    // Rows can share a label, as two face blurs' settings do: occurrence is which of them.
+    private void FocusField(string label, int occurrence)
     {
         foreach (var item in InspectorList.Items)
         {
-            if (item is InspectorField field && field.Label == label && InspectorList.ItemContainerGenerator.ContainerFromItem(item) is DependencyObject container
+            if (item is InspectorField field && field.Label == label && occurrence-- == 0 && InspectorList.ItemContainerGenerator.ContainerFromItem(item) is DependencyObject container
                 && Descendant<TextBox>(container) is { } box)
             {
                 box.Focus();
@@ -695,6 +696,27 @@ public partial class MainWindow : Window
                 return;
             }
         }
+    }
+
+    // Which of the rows with its label holds the box, counted from the top.
+    private int Occurrence(TextBox box)
+    {
+        var row = ItemsControl.ContainerFromElement(InspectorList, box) is FrameworkElement { DataContext: InspectorField shown } ? shown : null;
+        var occurrence = 0;
+        foreach (var item in InspectorList.Items)
+        {
+            if (ReferenceEquals(item, row))
+            {
+                return occurrence;
+            }
+
+            if (item is InspectorField field && field.Label == row?.Label)
+            {
+                occurrence++;
+            }
+        }
+
+        return 0;
     }
 
     private static T? Descendant<T>(DependencyObject parent) where T : DependencyObject
@@ -1881,6 +1903,16 @@ public partial class MainWindow : Window
         if (sender is CheckBox { Tag: InspectorField field } box)
         {
             CommitField(field, box.IsChecked == true ? "true" : "false");
+        }
+    }
+
+    // Typing into an animated value while playing stops the playback first: the field then shows the
+    // value at the frame stopped on, where the change is saved.
+    private void OnFieldEntered(object sender, KeyboardFocusChangedEventArgs e)
+    {
+        if (_playing && sender is TextBox { Tag: InspectorField { HasToggle: true } })
+        {
+            Pause();
         }
     }
 

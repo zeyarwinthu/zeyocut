@@ -1,6 +1,6 @@
 # Install ZeyoCut
 
-ZeyoCut runs on Windows 10 and 11 (x64). It is an MCP server: you use it from an MCP client such as Claude Desktop or Claude Code, and the client starts it. The release also has [the editor](#the-editor-optional), a window for working on projects by hand, in early development.
+ZeyoCut runs on Windows 10 and 11 (x64). It is an MCP server: you use it from an MCP client such as Claude Desktop or Claude Code, and the client starts it. The release also has [the editor](#the-editor-optional), a window for working on projects by hand.
 
 ## 1. Download
 
@@ -141,7 +141,7 @@ It plays sound with Windows Media Foundation. On an N edition of Windows, instal
 
 Claude can open it for you: ask it to open the project in the editor (`open_in_editor`). The server starts the `ZeyoCut.Editor.exe` in its own folder, which in the bundle is the bundle's copy, and passes on its settings. If the editor is somewhere else, set `EditorPath` in `appsettings.json` or `ZEYOCUT_EDITOR_PATH` to it.
 
-It can stay open while Claude works on the same project: each program saves on top of the other's changes. [The editor](https://github.com/zeyarwinthu/zeyocut#the-editor) in the README says what it can do so far.
+It can stay open while Claude works on the same project: each program saves on top of the other's changes. The [editor guide](editor.md) shows what it can do.
 
 ## Folders
 

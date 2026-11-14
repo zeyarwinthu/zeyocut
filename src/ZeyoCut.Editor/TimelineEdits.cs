@@ -30,6 +30,15 @@ public readonly record struct TimelineScale(double PixelsPerSecond, double Offse
         return Steps[^1];
     }
 
+    // How far to scroll on each step while a drag is held at x, near or past an edge of the lanes
+    // (left to right): left of 0, right of 0, or 0 away from the edges. The deeper into the edge, the
+    // faster, up to max pixels a step.
+    public static double EdgeScroll(double x, double left, double right, double band = 24, double max = 24)
+    {
+        var depth = x < left + band ? x - (left + band) : x > right - band ? x - (right - band) : 0;
+        return Math.Clamp(depth / 2, -max, max);
+    }
+
     // The frame shown at a time: frame f covers f/fps to (f+1)/fps.
     public static int FrameAt(double time, int fps, int frames) =>
         frames <= 0 ? 0 : Math.Clamp((int)Math.Floor(time * fps + 1e-6), 0, frames - 1);

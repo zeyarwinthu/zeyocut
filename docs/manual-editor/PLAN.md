@@ -138,6 +138,18 @@ The plan below was approved with these answers and changes. Where they disagree 
 - Most rows now depend on the playhead's time (a diamond is ◆ or ◇), so the inspector is built again once the playhead stops, not on every frame stepped or scrubbed. ◆ pressed while playing stops the playback and keys that frame.
 - The timeline marks are the keyframe times of the selected layer, which is a child layer when one was picked in the preview, drawn on the clip that holds it.
 
+**What Phase 6 found and did differently:**
+
+- Autosave and recovery weren't built: change 1 saves every edit as it's made, so there's no unsaved work to recover.
+- Polish, from working through the example projects in the editor:
+    - Holding a clip drag or a ruler scrub at the left or right edge of the lanes scrolls them (`TimelineScale.EdgeScroll`: up to 24 px every 30 ms, faster the deeper in), and the clip or the playhead keeps following the mouse. Before, a clip could only be dragged as far as the lanes showed.
+    - Clicking into an animated value while playing stops the playback, as ◆ already did, so the field shows the value on the frame stopped on, which is where a change is saved.
+    - Two face blurs on one footage give two sections whose rows share labels. The style buttons of one switched the other's (WPF groups radio buttons by name), and saving a field put the focus in the first field with that label. Now each field's buttons are a group of their own, and the focus goes back to the same row.
+    - A sound shorter than a second showed 0:00 in the media list; it shows tenths now (0:00.6).
+    - `open_in_editor`'s description named only what the editor did in Phase 4. It now says what it does and what stays with the tools; its name, parameters and behavior are unchanged, and `docs/TOOLS.md` and `docs/GUIDE.md` follow.
+- Docs: `docs/editor.md` is a page on the website, with screenshots of the examples (no paths with a user name in them). The README, the home page, install and the quick start link it, and "early" is gone from install and the CHANGELOG.
+- The link to `undo` / `redo` in the guide's `open_in_editor` section (Phase 4) used GitHub's anchor, `#undo--redo`, which the website doesn't make; it's `#undo-redo` now.
+
 ## Summary
 
 What I found:
@@ -434,7 +446,7 @@ Status *Ready* means the model, the renderer and MCP already support it, and onl
 | Basic adjustments | `brightness`, `contrast`, `saturation` (video, image) | Yes | `update_layer`, `set_keyframes` | Ready |
 | Shadow, outline, tint | `shadow`, `outline`, `tint` | Yes | `set_effect` | Ready (not in the spec list; available) |
 | Effect duration | No field (disagreement 6) | — | — | **Needs engine work**, or a keyframe UI |
-| Autosave with crash recovery | Backups exist; unsaved editor work does not | — | — | **Needs Core work** (Phase 6) |
+| Autosave with crash recovery | Backups exist; unsaved editor work does not | — | — | **Cut** (change 1: every edit is saved as it's made) |
 | Reduced-resolution preview render | No | — | — | Optional **engine work** (section 5) |
 
 ## 7. Undo and redo
@@ -644,7 +656,7 @@ Each phase ends with all tests passing, a commit on `feature/manual-editor`, and
 
 Either way the effect values follow 5a's rule: a value with keyframes shows its value at the playhead and a change adds a keyframe there.
 
-**Phase 6: autosave, recovery, polish, docs.**
+**Phase 6: autosave, recovery, polish, docs** (built 2026-11-14, without autosave and recovery, which change 1 cut).
 
 - Autosave of unsaved work in the editor's folder, and recovery on the next open.
 - Polish.

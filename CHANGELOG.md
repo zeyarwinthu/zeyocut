@@ -10,8 +10,8 @@ when they open.
 
 ### Added
 
-- **The ZeyoCut editor (early):** `ZeyoCut.Editor.exe`, a window for working on a project by hand,
-  in the release zip and the bundle. So far it opens a project (from a start page with the projects
+- **The ZeyoCut editor:** `ZeyoCut.Editor.exe`, a window for working on a project by hand,
+  in the release zip and the bundle. It opens a project (from a start page with the projects
   folder and recent projects, File → Open, or a folder on the command line), lists its media,
   imports images, audio, fonts and video (from the file picker or dropped on the window, normalizing
   video as `import_video` does, with progress) and shows the frame at any time, drawn by the same
@@ -38,8 +38,10 @@ when they open.
   on one axis and Escape puts it back. The Export view renders the project as `start_export` does,
   with presets, language versions, progress, stop and show in folder, and lists the exports folder.
   The Assistant view shows the revision and the 20 most recent saves, yours and Claude's. A project
-  is open in one editor window at a time. The editor keeps its own settings in
-  `%LOCALAPPDATA%\ZeyoCut\editor.json` (`ZEYOCUT_EDITOR_SETTINGS` names another file).
+  is open in one editor window at a time. Held at the timeline's edge, a drag or a scrub scrolls it,
+  and clicking into an animated value or its diamond while playing stops the playback first. The
+  editor keeps its own settings in `%LOCALAPPDATA%\ZeyoCut\editor.json` (`ZEYOCUT_EDITOR_SETTINGS`
+  names another file). The editor guide (`docs/editor.md`) shows it with screenshots.
 - **`open_in_editor`:** opens a project (by default the open one) in the editor on the user's
   computer, so they can fine-tune it while Claude keeps working; a project already open in the editor
   comes to the front. The editor is `ZeyoCut.Editor.exe` next to the server, or the one the new

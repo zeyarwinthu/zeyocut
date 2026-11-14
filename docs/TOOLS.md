@@ -58,7 +58,7 @@ The `zeyocut` server has 92 tools and 4 [workflow prompts](#workflow-prompts). E
 | [`list_sfx`](#list_sfx) | List the sound effects in the shared library's sfx folder (wav, mp3, ogg and other audio files; subfolders are categories), with their durations. |
 | [`move_layer`](#move_layer) | Move a layer to a new timeline start, together with its children and keyframes. |
 | [`new_project_from_template`](#new_project_from_template) | Create a new project from a library template and open it. |
-| [`open_in_editor`](#open_in_editor) | Open a project in ZeyoCut's editor window on this computer, so the user can fine-tune it by hand: move and trim clips on a timeline, fix caption text, change volumes, export. |
+| [`open_in_editor`](#open_in_editor) | Open a project in ZeyoCut's editor window on this computer, so the user can fine-tune it by hand: move, trim and split clips on a timeline, place, crop and animate layers with keyframes, set effects, color adjustments and face-blur settings, edit caption text and style, change volumes, export. |
 | [`open_project`](#open_project) | Open an existing project by name (a folder under the projects root) or by absolute folder path. |
 | [`prerender_layers`](#prerender_layers) | Render layers alone, each with its children, on a transparent background as ProRes 4444 .mov files with alpha in exports/&lt;project&gt;_prerender/&lt;layer id&gt;.mov: every frame the layer is on, as render_frame draws it with layerId and a transparent background. |
 | [`preview_server`](#preview_server) | Start or stop the preview page, for a browser on this computer: a timeline scrubber, the layers, and playback of low-res frames with the sound mixed as the export mixes it. |
@@ -698,7 +698,7 @@ Create a new project from a library template and open it. The folder is &lt;proj
 
 ### `open_in_editor`
 
-Open a project in ZeyoCut's editor window on this computer, so the user can fine-tune it by hand: move and trim clips on a timeline, fix caption text, change volumes, export. Default: the open project. The editor saves each change to project.json as it is made; your next tool call starts with a note of what the user changed, your edits are made on top of theirs, and the editor shows yours within a second. A project already open in the editor comes to the front instead of opening twice.
+Open a project in ZeyoCut's editor window on this computer, so the user can fine-tune it by hand: move, trim and split clips on a timeline, place, crop and animate layers with keyframes, set effects, color adjustments and face-blur settings, edit caption text and style, change volumes, export. Masks, motion paths, transitions and speed stay with the tools. Default: the open project. The editor saves each change to project.json as it is made; your next tool call starts with a note of what the user changed, your edits are made on top of theirs, and the editor shows yours within a second. A project already open in the editor comes to the front instead of opening twice.
 
 | Parameter | Type | Description |
 |---|---|---|

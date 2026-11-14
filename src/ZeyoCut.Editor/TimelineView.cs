@@ -4,6 +4,7 @@ using System.Globalization;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Threading;
 using ZeyoCut.Core;
 using ZeyoCut.Core.Animation;
 using ZeyoCut.Core.Editing;
@@ -68,12 +69,16 @@ public sealed class TimelineView : FrameworkElement
     private IReadOnlyList<double> _keyTimes = [];
     private (double Time, int? Lane)? _mediaDrop;
 
+    // Scrolls the lanes while a drag or a scrub is held at their left or right edge.
+    private readonly DispatcherTimer _edgeScroll = new(DispatcherPriority.Input) { Interval = TimeSpan.FromMilliseconds(30) };
+
     public TimelineView()
     {
         _visuals = new VisualCollection(this) { _content, _overlay };
         Focusable = true;
         FocusVisualStyle = null;
         ClipToBounds = true;
+        _edgeScroll.Tick += OnEdgeScroll;
     }
 
     // The frame the playhead was moved to.
@@ -329,7 +334,7 @@ public sealed class TimelineView : FrameworkElement
             return;
         }
 
-        _drag = new Drag(hit.Clip, hit.Lane, hit.Part, limits, point)
+        _drag = new Drag(hit.Clip, hit.Lane, hit.Part, limits, point, HorizontalOffset)
         {
             Place = new DragPlace(hit.Clip.Start, hit.Clip.End, null),
         };
@@ -343,6 +348,7 @@ public sealed class TimelineView : FrameworkElement
         if (_scrubbing)
         {
             SeekTo(point.X);
+            ScrollAtEdge(point);
             return;
         }
 
@@ -355,6 +361,7 @@ public sealed class TimelineView : FrameworkElement
 
             drag.Active = true;
             UpdateDrag(drag, point);
+            ScrollAtEdge(point);
             return;
         }
 
@@ -528,13 +535,51 @@ public sealed class TimelineView : FrameworkElement
 
     private void UpdateDrag(Drag drag, Point point)
     {
-        var delta = (point.X - drag.Pressed.X) / PixelsPerSecond;
+        var delta = (point.X + HorizontalOffset - drag.Pressed.X - drag.PressedOffset) / PixelsPerSecond;
         var snaps = Snapping ? drag.Snaps ??= TimelineEdits.SnapPoints(_lanes, drag.Clip.LayerId, _playhead / (double)_fps, _markers.Select(m => m.Time)) : [];
         drag.Place = TimelineEdits.Place(drag.Clip, drag.Part, delta, drag.Limits, _fps, snaps, SnapPixels / PixelsPerSecond);
         (drag.DropLane, drag.DropGap) = drag.Part == DragPart.Body && drag.Lane.Kind == LaneKind.Visual ? DropAt(point.Y) : (null, null);
         drag.Drop = TimelineEdits.Drop(VisualLanes(), drag.Lane, drag.DropLane, drag.DropGap);
         Cursor = drag.Part == DragPart.Body ? Cursors.SizeAll : Cursors.SizeWE;
         DrawContent();
+    }
+
+    // Starts scrolling when a drag or a scrub reaches an edge of the lanes.
+    private void ScrollAtEdge(Point point)
+    {
+        if (!_edgeScroll.IsEnabled && TimelineScale.EdgeScroll(point.X, HeaderWidth, ActualWidth) != 0)
+        {
+            _edgeScroll.Start();
+        }
+    }
+
+    // Each step while held at an edge: scroll, and the drag or the playhead follows. It stops when the
+    // mouse leaves the edge, the button is let go, or there's no further to scroll.
+    private void OnEdgeScroll(object? sender, EventArgs e)
+    {
+        var point = Mouse.GetPosition(this);
+        var held = IsMouseCaptured && (_scrubbing || Dragging);
+        var step = held ? TimelineScale.EdgeScroll(point.X, HeaderWidth, ActualWidth) : 0;
+        var before = HorizontalOffset;
+        if (step != 0)
+        {
+            SetScroll(_offset + step, _scrollY);
+        }
+
+        if (HorizontalOffset == before)
+        {
+            _edgeScroll.Stop();
+            return;
+        }
+
+        if (_scrubbing)
+        {
+            SeekTo(point.X);
+        }
+        else if (_drag is { Active: true } drag)
+        {
+            UpdateDrag(drag, point);
+        }
     }
 
     private List<TimelineLane> VisualLanes() => _lanes.Where(l => l.Kind != LaneKind.Audio).ToList();
@@ -943,7 +988,7 @@ public sealed class TimelineView : FrameworkElement
 
     private sealed record ClipHit(TimelineLane Lane, TimelineClip Clip, DragPart Part);
 
-    private sealed class Drag(TimelineClip clip, TimelineLane lane, DragPart part, TimelineLimits limits, Point pressed)
+    private sealed class Drag(TimelineClip clip, TimelineLane lane, DragPart part, TimelineLimits limits, Point pressed, double pressedOffset)
     {
         public TimelineClip Clip { get; } = clip;
 
@@ -954,6 +999,10 @@ public sealed class TimelineView : FrameworkElement
         public TimelineLimits Limits { get; } = limits;
 
         public Point Pressed { get; } = pressed;
+
+        // How far the lanes were scrolled when the mouse went down: scrolling at an edge moves the
+        // clip on as far as the lanes went.
+        public double PressedOffset { get; } = pressedOffset;
 
         public bool Active { get; set; }
 

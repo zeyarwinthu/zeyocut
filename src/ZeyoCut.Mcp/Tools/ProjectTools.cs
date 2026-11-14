@@ -134,7 +134,7 @@ public static class ProjectTools
     });
 
     [McpServerTool(Name = "open_in_editor")]
-    [Description("Open a project in ZeyoCut's editor window on this computer, so the user can fine-tune it by hand: move and trim clips on a timeline, fix caption text, change volumes, export. Default: the open project. The editor saves each change to project.json as it is made; your next tool call starts with a note of what the user changed, your edits are made on top of theirs, and the editor shows yours within a second. A project already open in the editor comes to the front instead of opening twice.")]
+    [Description("Open a project in ZeyoCut's editor window on this computer, so the user can fine-tune it by hand: move, trim and split clips on a timeline, place, crop and animate layers with keyframes, set effects, color adjustments and face-blur settings, edit caption text and style, change volumes, export. Masks, motion paths, transitions and speed stay with the tools. Default: the open project. The editor saves each change to project.json as it is made; your next tool call starts with a note of what the user changed, your edits are made on top of theirs, and the editor shows yours within a second. A project already open in the editor comes to the front instead of opening twice.")]
     public static string OpenInEditor(
         EditorState state,
         [Description("Project name from list_projects, or an absolute path to a project folder inside the projects root. Default: the open project.")] string? project = null) => Guard(() =>

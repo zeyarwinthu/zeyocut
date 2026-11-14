@@ -23,4 +23,7 @@ public static class Timecode
             : string.Create(CultureInfo.InvariantCulture, $"{whole / 60}:{whole % 60:00}");
         return tenths ? text + string.Create(CultureInfo.InvariantCulture, $".{(int)Math.Round((rounded - whole) * 10)}") : text;
     }
+
+    // A file's length in the media list: with tenths under a second, so a short sound isn't 0:00.
+    public static string Length(double seconds) => Short(seconds, seconds < 1);
 }

@@ -22,4 +22,11 @@ public class TimecodeTests
     [InlineData(0.1, true, "0:00.1")]
     [InlineData(59.96, true, "1:00.0")]
     public void ShortTimesReadAsPeopleWriteThem(double seconds, bool tenths, string expected) => Assert.Equal(expected, Timecode.Short(seconds, tenths));
+
+    [Theory]
+    [InlineData(0.6, "0:00.6")]
+    [InlineData(0.3, "0:00.3")]
+    [InlineData(6.2, "0:06")]
+    [InlineData(12, "0:12")]
+    public void AShortSoundShowsItsTenths(double seconds, string expected) => Assert.Equal(expected, Timecode.Length(seconds));
 }

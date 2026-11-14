@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 using System.Globalization;
+using System.Runtime.CompilerServices;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using ZeyoCut.Core;
@@ -49,10 +50,11 @@ public sealed record InspectorField(string Label, FieldKind Kind, string Value, 
     public IReadOnlyList<FieldChoice> Options => Choices?.Select(c => new FieldChoice(this, c, c == Value)).ToList() ?? [];
 }
 
-// One option of a choice field.
+// One option of a choice field. Group keeps each field's options apart, also when two fields share a
+// label (two face blurs' Style).
 public sealed record FieldChoice(InspectorField Field, string Name, bool Selected)
 {
-    public string Group => "inspector:" + Field.Label;
+    public string Group => $"inspector:{Field.Label}:{RuntimeHelpers.GetHashCode(Field)}";
 }
 
 // What the inspector shows for a clip at the playhead's time, and how each of its fields is changed.

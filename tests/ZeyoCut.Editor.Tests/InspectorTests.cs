@@ -378,6 +378,14 @@ public class InspectorTests
         Assert.Equal((80.0, 25.0, 30, RedactionStyle.Solid, "#202020"), (redaction.Strength, redaction.PaddingPercent, redaction.HoldFrames, redaction.Style, redaction.Color));
         Assert.Equal("Hold frames must be a whole number (got 2.5)", Error(project, "clip", "Hold frames", "2.5"));
         Assert.Equal("Feather can't be more than 100 (got 200)", Error(project, "clip", "Feather", "200"));
+
+        // A second face blur of the same footage has its own section, and its Style buttons a group of their own.
+        project.Tracks.Add(new Track { Id = "track_2", Asset = "clip", Layer = "clip", FirstFrame = 0, LastFrame = 59, File = "tracks/track_2-00000000.json", Anchors = [new TrackBox { Frame = 0, Width = 40, Height = 40 }] });
+        var second = RedactionEditor.Apply(project, ["track_2"], new RedactionSettings(RedactionStyle.Blur, 50, 15, 4, 15, "#000000")).Layer.Id;
+        var styles = Fields(project, "clip").Where(f => f.Label == "Style").ToList();
+        Assert.Equal((2, "solid", "blur"), (styles.Count, styles[0].Value, styles[1].Value));
+        Assert.NotEqual(styles[0].Options[0].Group, styles[1].Options[0].Group);
+        Assert.Equal("update_layer " + second, styles[1].Commit!("pixelate").Label);
     }
 
     private static System.Text.Json.JsonElement Json(double value) => System.Text.Json.JsonSerializer.SerializeToElement(value);

@@ -268,7 +268,7 @@ projects root: C:\Users\you\ZeyoCut\projects
 
 ### `open_in_editor`
 
-Opens a project in ZeyoCut's editor window on the user's computer, so they can fine-tune it by hand: move and trim clips on a timeline, fix caption text, change volumes, export. The editor saves each change to `project.json` as it is made. The next tool call's reply starts with a note of what the user changed (see [`undo` / `redo`](#undo--redo)), edits made with the tools go on top of theirs, and the editor shows them within a second. A project that is already open in the editor comes to the front instead of opening twice.
+Opens a project in ZeyoCut's editor window on the user's computer, so they can fine-tune it by hand: move, trim and split clips on a timeline, place, crop and animate layers with keyframes, set effects, color adjustments and face-blur settings, edit caption text and style, change volumes, export. Masks, motion paths, transitions and speed stay with the tools. The [editor guide](editor.md) shows it. The editor saves each change to `project.json` as it is made. The next tool call's reply starts with a note of what the user changed (see [`undo` / `redo`](#undo-redo)), edits made with the tools go on top of theirs, and the editor shows them within a second. A project that is already open in the editor comes to the front instead of opening twice.
 
 The editor is `ZeyoCut.Editor.exe` next to the server, or the one the `EditorPath` setting (`ZEYOCUT_EDITOR_PATH`) names. It gets the server's settings, and it runs on its own: it stays open when the server stops.
 

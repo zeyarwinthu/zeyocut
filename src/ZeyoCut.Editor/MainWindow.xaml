@@ -83,7 +83,7 @@
               <ColumnDefinition Width="Auto" SharedSizeGroup="KeyButton" />
             </Grid.ColumnDefinitions>
             <TextBlock Text="{Binding Label}" Style="{StaticResource FieldLabel}" />
-            <TextBox Grid.Column="1" Text="{Binding Value, Mode=OneTime}" Tag="{Binding}" PreviewKeyDown="OnFieldKey" LostKeyboardFocus="OnFieldLeft" />
+            <TextBox Grid.Column="1" Text="{Binding Value, Mode=OneTime}" Tag="{Binding}" PreviewKeyDown="OnFieldKey" LostKeyboardFocus="OnFieldLeft" GotKeyboardFocus="OnFieldEntered" />
             <TextBlock Grid.Column="2" Text="{Binding Unit}" Style="{StaticResource Secondary}" Margin="5,0,0,0" VerticalAlignment="Center" />
             <Button Grid.Column="3" Style="{StaticResource KeyButton}" Content="{Binding KeyGlyph}" ToolTip="{Binding KeyTip}" Tag="{Binding}" Click="OnToggleKeyframe"
                     Visibility="{Binding HasToggle, Converter={StaticResource Visible}}" />

@@ -117,6 +117,18 @@ public class TimelineTests
         Assert.All(Enumerable.Range(0, 180), f => Assert.Equal(f, TimelineScale.FrameAt(f / 30.0, 30, 180)));
     }
 
+    [Fact]
+    public void ADragHeldAtAnEdgeScrollsFasterTheFurtherIn()
+    {
+        // Lanes from x 200 to 1000, with a 24 px band at each edge.
+        Assert.Equal(0, TimelineScale.EdgeScroll(600, 200, 1000));
+        Assert.Equal(0, TimelineScale.EdgeScroll(224, 200, 1000));
+        Assert.Equal(-6, TimelineScale.EdgeScroll(212, 200, 1000));
+        Assert.Equal(6, TimelineScale.EdgeScroll(988, 200, 1000));
+        Assert.Equal(24, TimelineScale.EdgeScroll(1100, 200, 1000));
+        Assert.Equal(-24, TimelineScale.EdgeScroll(0, 200, 1000));
+    }
+
     [Theory]
     [InlineData(230, 0.5)]
     [InlineData(640, 0.1)]
