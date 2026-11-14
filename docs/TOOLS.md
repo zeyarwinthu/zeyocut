@@ -883,7 +883,7 @@ Where a finished export's time went: per stage (evaluating keyframes, decoding v
 
 ### `restore_backup`
 
-List the open project's backups, newest first, or put one back. Before every save the project.json being replaced is copied to the project's backups folder, named after the edit saved over it; the last 20 are kept, and the last 20 the editor saved besides (labelled editor ...). When open_project updates a file from an older ZeyoCut, the file as it was is kept there too, for good. Backups hold project.json only, not the assets. Restoring is one undo step, and what it replaces is backed up as well.
+List the open project's backups, newest first, or put one back. Before every save the project.json being replaced is copied to the project's backups folder, named after the edit saved over it; the last 20 are kept, and the last 20 the editor saved besides (labelled editor ...), with the copy of the project as the other of the two last left it. When open_project updates a file from an older ZeyoCut, the file as it was is kept there too, for good. Backups hold project.json only, not the assets. Restoring is one undo step, and what it replaces is backed up as well.
 
 | Parameter | Type | Description |
 |---|---|---|

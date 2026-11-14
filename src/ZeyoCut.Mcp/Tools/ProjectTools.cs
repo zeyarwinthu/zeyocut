@@ -196,7 +196,7 @@ public static class ProjectTools
     });
 
     [McpServerTool(Name = "restore_backup")]
-    [Description("List the open project's backups, newest first, or put one back. Before every save the project.json being replaced is copied to the project's backups folder, named after the edit saved over it; the last 20 are kept, and the last 20 the editor saved besides (labelled editor ...). When open_project updates a file from an older ZeyoCut, the file as it was is kept there too, for good. Backups hold project.json only, not the assets. Restoring is one undo step, and what it replaces is backed up as well.")]
+    [Description("List the open project's backups, newest first, or put one back. Before every save the project.json being replaced is copied to the project's backups folder, named after the edit saved over it; the last 20 are kept, and the last 20 the editor saved besides (labelled editor ...), with the copy of the project as the other of the two last left it. When open_project updates a file from an older ZeyoCut, the file as it was is kept there too, for good. Backups hold project.json only, not the assets. Restoring is one undo step, and what it replaces is backed up as well.")]
     public static string RestoreBackup(
         EditorState state,
         [Description("A backup's name from the list; its time (e.g. 20261104-161502-123) is enough. Omit to list them.")] string? backup = null) => Guard(() =>

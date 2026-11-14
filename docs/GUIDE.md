@@ -347,7 +347,7 @@ An error occurred invoking 'undo': can't undo 'add_text_layer subtitle': another
 
 Lists the open project's backups, newest first, or puts one back.
 
-- **Before every save,** the `project.json` being replaced is copied to the project's `backups` folder as `project-<time> before <edit>.json`, where `<edit>` is the change that was saved over it. Undo and redo are saves too. The last 20 are kept, and the last 20 the ZeyoCut editor saved besides (labelled `editor ...`), so a burst of edits there can't push out the server's.
+- **Before every save,** the `project.json` being replaced is copied to the project's `backups` folder as `project-<time> before <edit>.json`, where `<edit>` is the change that was saved over it. Undo and redo are saves too. The last 20 are kept, and the last 20 the ZeyoCut editor saved besides (labelled `editor ...`), so a burst of edits there can't push out the server's. The editor's backup made right after the server's last save holds the project as the server left it, and it stays however many editor saves follow; the same goes for the server's backup made right after the editor's last save.
 - **When `open_project` updates a file from an older ZeyoCut,** the file as it was stays there as `project-v<format>-<time>.json`, and these are never removed.
 - **Backups hold `project.json` only,** not the assets. They outlast a restart, unlike the undo history.
 - **Restoring is one undo step,** and the file it replaces is backed up like any other save.

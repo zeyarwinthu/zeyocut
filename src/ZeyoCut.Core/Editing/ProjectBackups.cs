@@ -15,8 +15,9 @@ public sealed record ProjectBackup(string Name, string Path, DateTime Time, stri
 // Before every save the project.json being replaced is copied to backups\, as
 // project-<time> before <edit>.json, and only the newest Kept of those stay: Kept of the editor's
 // (labelled "editor ...") and Kept of the others, so a burst of edits in the editor can't push out
-// the server's. The copies kept when an older format is updated (project-v<format>-<time>.json)
-// are never removed.
+// the server's. Of each of the two, the newest that was saved right after one of the other stays
+// as well: it holds project.json as the other program last left it. The copies kept when an older
+// format is updated (project-v<format>-<time>.json) are never removed.
 public static partial class ProjectBackups
 {
     public const int Kept = 20;
@@ -188,12 +189,21 @@ public static partial class ProjectBackups
 
     private static void Prune(string folder)
     {
-        var rolling = System.IO.Directory.EnumerateFiles(folder, "project-*.json")
+        static bool Editors((ProjectBackup Backup, int N) b) => b.Backup.Before!.StartsWith(EditorProgram + " ", StringComparison.Ordinal);
+        var newestFirst = System.IO.Directory.EnumerateFiles(folder, "project-*.json")
             .Select(Parse)
             .OfType<(ProjectBackup Backup, int N)>()
             .Where(b => b.Backup.Format is null)
-            .GroupBy(b => b.Backup.Before!.StartsWith(EditorProgram + " ", StringComparison.Ordinal))
-            .SelectMany(g => g.OrderByDescending(b => b.Backup.Time).ThenByDescending(b => b.N).Skip(Kept));
+            .OrderByDescending(b => b.Backup.Time)
+            .ThenByDescending(b => b.N)
+            .ToList();
+
+        // A backup made right after one of the other program's holds that program's last version.
+        var afterOther = newestFirst.Where((b, i) => i + 1 < newestFirst.Count && Editors(b) != Editors(newestFirst[i + 1]))
+            .GroupBy(Editors)
+            .Select(g => g.First())
+            .ToList();
+        var rolling = newestFirst.GroupBy(Editors).SelectMany(g => g.Skip(Kept)).Except(afterOther);
         foreach (var (backup, _) in rolling)
         {
             try

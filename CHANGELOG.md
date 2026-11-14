@@ -70,7 +70,9 @@ when they open.
 - A program reading `project.json` no longer holds up a save: saves rename the new file over the
   old one even while a reader that shares delete access has it open.
 - `backups\` keeps the last 20 saves of the ZeyoCut editor (labelled `editor ...`) apart from the
-  last 20 others, so a burst of edits in the editor can't push out the server's.
+  last 20 others, so a burst of edits in the editor can't push out the server's. The editor's backup
+  that holds the project as the server last left it stays however many edits follow, and so does
+  the server's that holds the editor's last version.
 - `import_asset`, `import_video` and `import_folder` copy files into the project before the save
   takes `project.lock`, so another program's saves don't wait for a big copy (they give up after
   5 s). A file is copied under a temporary name and renamed when complete.

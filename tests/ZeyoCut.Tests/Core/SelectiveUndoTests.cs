@@ -324,6 +324,7 @@ public class SelectiveUndoTests
         var server = ProjectSession.Create(directory, TestProjects.Empty());
         var editor = ProjectSession.Open(directory, ProjectBackups.EditorProgram);
         server.Mutate("update_project s1", p => p.Name = "s1");
+        editor.Mutate("update_project first", p => p.Name = "first");
         editor.Mutate("update_project 0", p => p.Name = "e0");
         server.Sync();
         server.TakeOutsideChanges();
@@ -334,12 +335,53 @@ public class SelectiveUndoTests
 
         server.Mutate("update_project s2", p => p.Name = "s2");
         var backups = ProjectBackups.List(directory);
-        Assert.Equal(ProjectBackups.Kept, backups.Count(b => b.Before!.StartsWith("editor ", StringComparison.Ordinal)));
+        Assert.Equal(ProjectBackups.Kept + 1, backups.Count(b => b.Before!.StartsWith("editor ", StringComparison.Ordinal)));
         Assert.Equal(["update_project s2", "update_project s1"], backups.Select(b => b.Before).Where(b => !b!.StartsWith("editor ", StringComparison.Ordinal)));
 
-        // The server knew of the editor's first backup, which has gone since: it names the edits
+        // The server knew of the editor's second backup, which has gone since: it names the edits
         // saved after it that are still kept, and none from before.
         var seen = Assert.IsType<OutsideChange>(server.TakeOutsideChanges());
         Assert.Equal(Enumerable.Range(6, 20).Select(i => $"editor update_project {i}"), seen.Edits);
+    }
+
+    [Fact]
+    public void TheBackupThatHoldsTheOtherProgramsLastVersionIsNeverPruned()
+    {
+        var directory = TestPaths.NewDirectory("backups-other-version");
+        var server = ProjectSession.Create(directory, TestProjects.Empty());
+        var editor = ProjectSession.Open(directory, ProjectBackups.EditorProgram);
+        List<ProjectBackup> Kept(bool editors) => ProjectBackups.List(directory).Where(b => b.Before!.StartsWith("editor ", StringComparison.Ordinal) == editors).ToList();
+        void Save(ProjectSession session, int from, int to, string name)
+        {
+            for (var i = from; i <= to; i++)
+            {
+                session.Mutate($"update_project {i}", p => p.Name = $"{name}{i}");
+            }
+        }
+
+        // The editor's first backup is the only copy of the project as the server left it.
+        Save(server, 1, 3, "s");
+        Save(editor, 1, 30, "e");
+        var editors = Kept(editors: true);
+        Assert.Equal(Enumerable.Range(11, 20).Reverse().Append(1).Select(i => $"editor update_project {i}"), editors.Select(b => b.Before));
+        Assert.Equal("s3", ProjectBackups.Load(editors[^1]).Name);
+        Assert.Equal(3, Kept(editors: false).Count);
+
+        // Once the server has saved again, the editor's next backup holds its last version, and
+        // the older one goes with the rest.
+        Save(server, 4, 4, "s");
+        Save(editor, 31, 55, "e");
+        editors = Kept(editors: true);
+        Assert.Equal(Enumerable.Range(36, 20).Reverse().Append(31).Select(i => $"editor update_project {i}"), editors.Select(b => b.Before));
+        Assert.Equal("s4", ProjectBackups.Load(editors[^1]).Name);
+
+        // The same goes for the server's backup that holds the editor's last version.
+        Save(server, 5, 29, "s");
+        var servers = Kept(editors: false);
+        Assert.Equal(Enumerable.Range(10, 20).Reverse().Append(5).Select(i => $"update_project {i}"), servers.Select(b => b.Before));
+        Assert.Equal("e55", ProjectBackups.Load(servers[^1]).Name);
+
+        // The editor's copy of the server's version from before those saves is no longer its last.
+        Assert.Equal(Enumerable.Range(36, 20).Reverse().Select(i => $"editor update_project {i}"), Kept(editors: true).Select(b => b.Before));
     }
 }
