@@ -49,7 +49,8 @@ public class InspectorTests
         var fields = Fields(project, "clip");
         Assert.Equal(
             ["Clip", "Id", "Start", "End", "Length", "Draw level", "Shown", "Child layers", "Transform", "X", "Y", "Scale X", "Scale Y", "Rotation", "Opacity",
-                "Video", "Asset", "Plays", "Speed", "Crop", "Left", "Top", "Right", "Bottom", "Sound", "Sound on", "Role", "Volume", "Fade in", "Fade out"],
+                "Video", "Asset", "Plays", "Speed", "Crop", "Left", "Top", "Right", "Bottom", "Sound", "Sound on", "Role", "Volume", "Fade in", "Fade out",
+                "Effects", "Blur", "Shadow", "Border", "Tint", "Adjustments", "Brightness", "Contrast", "Saturation"],
             fields.Select(f => f.Label));
         Assert.Equal(["0", "4", "4", "0", "true", "label", "4 – 8 s of the file", "1×", "true", "voice", "1"],
             new[] { "Start", "End", "Length", "Draw level", "Shown", "Child layers", "Plays", "Speed", "Sound on", "Role", "Volume" }.Select(l => fields.Single(f => f.Label == l).Value));
@@ -128,7 +129,8 @@ public class InspectorTests
     {
         var project = Footage();
         var labels = Fields(project, "title").Select(f => f.Label).ToList();
-        Assert.Equal(["Text", "Text", "Style", "Font", "Size", "Bold", "Color", "Outline", "Outline width", "Align", "Max width", "Line height", "Box"], labels[labels.IndexOf("Text")..]);
+        Assert.Equal(["Text", "Text", "Style", "Font", "Size", "Bold", "Color", "Outline", "Outline width", "Align", "Max width", "Line height", "Box",
+            "Effects", "Blur", "Shadow", "Border", "Tint"], labels[labels.IndexOf("Text")..]);
 
         Commit(project, "title", "Size", "48");
         Commit(project, "title", "Bold", "true");
@@ -174,7 +176,7 @@ public class InspectorTests
         var fields = Fields(project, cues[0]);
         Assert.Equal(("Caption", "captions_en, 2 caption(s)"), (fields[0].Label, fields.Single(f => f.Label == "Track").Value));
         Assert.Contains(fields, f => f.Label == "Style of all 2 caption(s) in the track");
-        Assert.DoesNotContain(fields, f => f.Label is "Draw level" or "Parent");
+        Assert.DoesNotContain(fields, f => f.Label is "Draw level" or "Parent" or "Effects");
 
         Commit(project, cues[0], "Text", "Hi");
         Assert.Equal(["Hi", "World"], cues.Select(id => ((TextLayer)project.FindLayer(id)!).Text));
@@ -206,11 +208,11 @@ public class InspectorTests
         Assert.Equal((100.0, 0.5, 15.0, 0.4), (title.X.Value, title.ScaleX.Value, title.Rotation.Value, title.Opacity.Value));
         Assert.Equal("Opacity can't be more than 100 (got 150)", Error(project, "title", "Opacity", "150"));
 
-        // Animated, a field shows the value at the playhead with a diamond, and a change there adds a
-        // keyframe; where the layer isn't, it can't.
+        // Animated, a field shows the value at the playhead, and a change there adds a keyframe; where
+        // the layer isn't, it can't.
         KeyframeEditor.SetKeyframes(project, [new KeyframeEntry("title", "y", 0, Json(0)), new KeyframeEntry("title", "y", 2, Json(200))]);
         var y = Field(project, "title", "Y", time: 1);
-        Assert.Equal(("100", true, " ◆"), (y.Value, y.Keyed, y.Mark));
+        Assert.Equal(("100", true, false), (y.Value, y.Keyed, y.KeyHere));
         Assert.StartsWith(InspectorField.KeyedTip, y.Tip);
         Assert.False(Field(project, "title", "X", time: 1).Keyed);
         Assert.Equal("set_keyframes title", y.Commit!("150").Label);
@@ -260,6 +262,122 @@ public class InspectorTests
         Assert.Equal("update_layer captions_en", move.Label);
         Assert.Equal("moved 2 layer(s) by 0, -40 px", move.Apply(project));
         Assert.Equal(before.Select(b => b - 40), cues.Select(id => Layer<TextLayer>(project, id).Y.Value));
+    }
+
+    [Fact]
+    public void EffectFieldsSwitchEffectsOnAndSetThem()
+    {
+        var project = Footage();
+        Assert.Equal(["Blur", "Shadow", "Border", "Tint"], Section(project, "title", "Effects"));
+        Assert.All(Section(project, "title", "Effects"), label => Assert.Equal(("false", FieldKind.Toggle), (Field(project, "title", label).Value, Field(project, "title", label).Kind)));
+
+        // On, an effect shows its settings with set_effect's defaults; a new tint is white.
+        Assert.Equal("set_effect title shadow", Field(project, "title", "Shadow").Commit!("true").Label);
+        Commit(project, "title", "Shadow", "true");
+        Commit(project, "title", "Tint", "true");
+        Assert.Equal(["Blur", "Shadow", "Shadow color", "Shadow X", "Shadow Y", "Shadow blur", "Shadow opacity", "Border", "Tint", "Tint color", "Tint amount"],
+            Section(project, "title", "Effects"));
+        Assert.Equal(["#000000", "8", "8", "6", "50", "#FFFFFF", "50"],
+            new[] { "Shadow color", "Shadow X", "Shadow Y", "Shadow blur", "Shadow opacity", "Tint color", "Tint amount" }.Select(l => Field(project, "title", l).Value));
+
+        Commit(project, "title", "Shadow opacity", "30");
+        Commit(project, "title", "Shadow X", "-4");
+        Commit(project, "title", "Shadow color", "#FF0000");
+        Commit(project, "title", "Tint amount", "100 %");
+        Commit(project, "title", "Border", "true");
+        Commit(project, "title", "Border width", "12");
+        Commit(project, "title", "Blur", "true");
+        Commit(project, "title", "Blur Y", "0");
+        var title = Layer<TextLayer>(project, "title");
+        Assert.Equal((0.3, -4.0, "#FF0000", 1.0, 12.0, 4.0, 0.0),
+            (title.Shadow!.Opacity.Value, title.Shadow.X.Value, title.Shadow.Color, title.Tint!.Amount.Value, title.Outline!.Width.Value, title.Blur!.X.Value, title.Blur.Y.Value));
+        Assert.Equal("Blur X can't be more than 500 (got 600)", Error(project, "title", "Blur X", "600"));
+        Assert.Equal("Shadow opacity can't be more than 100 (got 101)", Error(project, "title", "Shadow opacity", "101"));
+        Assert.Equal("Tint color can't be empty", Error(project, "title", "Tint color", ""));
+
+        // Off takes it away, with its settings.
+        Assert.StartsWith("removed the shadow effect from 'title'", Commit(project, "title", "Shadow", "false"));
+        Assert.Null(Layer<TextLayer>(project, "title").Shadow);
+        Assert.DoesNotContain(Fields(project, "title"), f => f.Label == "Shadow X");
+    }
+
+    [Fact]
+    public void AdjustmentsChangeAPicturesColor()
+    {
+        var project = Footage();
+        Assert.Equal(["Brightness", "Contrast", "Saturation"], Section(project, "clip", "Adjustments"));
+        Assert.Equal(["0", "100", "100"], new[] { "Brightness", "Contrast", "Saturation" }.Select(l => Field(project, "clip", l).Value));
+        Assert.DoesNotContain(Fields(project, "title"), f => f.Label == "Adjustments");
+
+        Assert.Equal("update_layer clip", Field(project, "clip", "Brightness").Commit!("20").Label);
+        Commit(project, "clip", "Brightness", "20");
+        Commit(project, "clip", "Contrast", "150");
+        Commit(project, "clip", "Saturation", "0");
+        var clip = Layer<VideoLayer>(project, "clip");
+        Assert.Equal((0.2, 1.5, 0.0), (clip.Brightness.Value, clip.Contrast.Value, clip.Saturation.Value));
+        Assert.Equal("Brightness can't be less than -100 (got -150)", Error(project, "clip", "Brightness", "-150"));
+    }
+
+    [Fact]
+    public void TheDiamondAddsAndTakesAwayAKeyframeAtThePlayhead()
+    {
+        var project = Footage();
+        var rotation = Field(project, "title", "Rotation", time: 1);
+        Assert.Equal((true, false, false, "◇"), (rotation.HasToggle, rotation.Keyed, rotation.KeyHere, rotation.KeyGlyph));
+        Assert.False(Field(project, "title", "Start").HasToggle);
+        Assert.False(Field(project, "title", "Size").HasToggle);
+        var cue = project.Layers.First(l => l.ParentId == "captions_en").Id;
+        Assert.False(Field(project, cue, "X").HasToggle);
+
+        // The first keyframe starts animating it; the field then shows it's there.
+        Assert.Equal("set 1 keyframe(s) at 1s on title.rotation", rotation.ToggleKey!(1).Apply(project));
+        rotation = Field(project, "title", "Rotation", time: 1);
+        Assert.Equal((true, true, "◆"), (rotation.Keyed, rotation.KeyHere, rotation.KeyGlyph));
+        Assert.Equal("Take away the keyframe at the playhead", rotation.KeyTip);
+        Commit(project, "title", "Rotation", "30", time: 2);
+        Assert.Equal(("30", false), (Field(project, "title", "Rotation", time: 2).Value, Field(project, "title", "Rotation", time: 1.5).KeyHere));
+        Assert.Equal([(1.0, 0.0), (2, 30)], Layer<TextLayer>(project, "title").Rotation.Keyframes.Select(k => (k.Time, k.Value)));
+
+        // Taking both away leaves the value of the last.
+        Field(project, "title", "Rotation", time: 1).ToggleKey!(1).Apply(project);
+        Assert.StartsWith("removed 1 keyframe(s) at 2s", Field(project, "title", "Rotation", time: 2).ToggleKey!(2).Apply(project));
+        var title = Layer<TextLayer>(project, "title");
+        Assert.Equal((30.0, 0), (title.Rotation.Value, title.Rotation.Keyframes.Count));
+        Assert.False(Field(project, "title", "Rotation", time: 2).Keyed);
+
+        // An effect's number too; where the layer isn't, it says so.
+        Commit(project, "title", "Shadow", "true");
+        Field(project, "title", "Shadow blur", time: 0.5).ToggleKey!(0.5).Apply(project);
+        Assert.Single(Layer<TextLayer>(project, "title").Shadow!.Blur.Keyframes);
+        Assert.Equal("A keyframe goes at the playhead, and 'title' isn't there; move the playhead into 0–3s, where the layer is",
+            Assert.Throws<ZeyoCutException>(() => Field(project, "title", "Opacity", time: 5).ToggleKey!(5)).Message);
+    }
+
+    [Fact]
+    public void AClipShowsTheFaceBlursOfItsFootage()
+    {
+        var project = Footage();
+        project.Tracks.Add(new Track { Id = "track_1", Asset = "clip", Layer = "clip", FirstFrame = 0, LastFrame = 59, File = "tracks/track_1-00000000.json", Anchors = [new TrackBox { Frame = 0, Width = 40, Height = 40 }] });
+        Assert.DoesNotContain(Fields(project, "clip"), f => f.Label.StartsWith("Redaction", StringComparison.Ordinal));
+        var id = RedactionEditor.Apply(project, ["track_1"], new RedactionSettings(RedactionStyle.Pixelate, 50, 15, 4, 15, "#000000")).Layer.Id;
+
+        var title = $"Redaction '{id}'";
+        Assert.Equal(["Style", "Strength", "Padding", "Feather", "Hold frames"], Section(project, "clip", title));
+        Assert.Equal(["pixelate", "50", "15", "4", "15"], new[] { "Style", "Strength", "Padding", "Feather", "Hold frames" }.Select(l => Field(project, "clip", l).Value));
+        Assert.Equal(["pixelate", "blur", "solid"], Field(project, "clip", "Style").Options.Select(o => o.Name));
+
+        // Each is update_layer on the redaction; solid fills with a color instead of a strength.
+        Assert.Equal("update_layer " + id, Field(project, "clip", "Strength").Commit!("80").Label);
+        Commit(project, "clip", "Strength", "80");
+        Commit(project, "clip", "Padding", "25");
+        Commit(project, "clip", "Hold frames", "30");
+        Commit(project, "clip", "Style", "solid");
+        Assert.Equal(["Style", "Fill color", "Padding", "Feather", "Hold frames"], Section(project, "clip", title));
+        Commit(project, "clip", "Fill color", "#202020");
+        var redaction = Assert.IsType<RedactionLayer>(project.FindLayer(id));
+        Assert.Equal((80.0, 25.0, 30, RedactionStyle.Solid, "#202020"), (redaction.Strength, redaction.PaddingPercent, redaction.HoldFrames, redaction.Style, redaction.Color));
+        Assert.Equal("Hold frames must be a whole number (got 2.5)", Error(project, "clip", "Hold frames", "2.5"));
+        Assert.Equal("Feather can't be more than 100 (got 200)", Error(project, "clip", "Feather", "200"));
     }
 
     private static System.Text.Json.JsonElement Json(double value) => System.Text.Json.JsonSerializer.SerializeToElement(value);

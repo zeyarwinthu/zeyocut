@@ -77,8 +77,10 @@ public partial class MainWindow : Window
     private bool _rebuilding;
     private bool _inspectorStale;
 
-    // The inspector shows animated values at the playhead, so it's built again when the playhead moves.
-    private bool _inspectorKeyed;
+    // The inspector shows animated values and keyframes at the playhead, so it's built again when the
+    // playhead stops moving; queued when that's on its way.
+    private bool _inspectorTimed;
+    private bool _inspectorQueued;
 
     // The layer boxes of the frame shown, for picking a layer in the preview; a drag of one under way,
     // where the mouse went down and is now (in screen pixels), and whether its frame is being drawn.
@@ -291,6 +293,10 @@ public partial class MainWindow : Window
         else if (open && plain && key is Key.Up or Key.Down)
         {
             JumpToEdit(next: key == Key.Down);
+        }
+        else if (open && modifiers == ModifierKeys.Alt && key is Key.Left or Key.Right)
+        {
+            JumpToKeyframe(next: key == Key.Right);
         }
         else if (open && ((plain && key == Key.S) || (control && key == Key.B)))
         {
@@ -553,6 +559,7 @@ public partial class MainWindow : Window
         }
 
         Timeline.Selection = ClipOf(_selectedLayer);
+        ShowKeyTimes();
 
         _rebuilding = true;
         var items = project.Assets.Select(a => Item(document.Session.Directory, a)).ToList();
@@ -624,7 +631,7 @@ public partial class MainWindow : Window
         _inspectorStale = false;
         var focused = typing?.Field.Label;
         var rows = InspectorRows();
-        _inspectorKeyed = rows.Any(f => f.Keyed);
+        _inspectorTimed = rows.Any(f => f.Keyed || f.HasToggle);
         InspectorList.ItemsSource = rows;
         if (focused is not null)
         {
@@ -913,10 +920,27 @@ public partial class MainWindow : Window
 
         RequestFrame();
         UpdateEditButtons();
-        if (_inspectorKeyed)
+        ShowInspectorAtPlayhead();
+    }
+
+    // The inspector at the playhead's time, once the playhead has stopped: built again on its own
+    // turn, so stepping or scrubbing through frames doesn't wait for it each frame.
+    private void ShowInspectorAtPlayhead()
+    {
+        if (!_inspectorTimed || _inspectorQueued)
         {
-            ShowInspector();
+            return;
         }
+
+        _inspectorQueued = true;
+        Dispatcher.InvokeAsync(() =>
+        {
+            _inspectorQueued = false;
+            if (_document is not null && !_playing)
+            {
+                ShowInspector();
+            }
+        }, DispatcherPriority.Background);
     }
 
     // The frame at the playhead, at the canvas size.
@@ -1267,10 +1291,7 @@ public partial class MainWindow : Window
         RenderText.Text = "";
         RequestFrame();
         UpdateEditButtons();
-        if (_inspectorKeyed)
-        {
-            ShowInspector();
-        }
+        ShowInspectorAtPlayhead();
     }
 
     // Each screen refresh while playing: where the clock (following the sound) is, and the frame
@@ -1471,10 +1492,37 @@ public partial class MainWindow : Window
         Seek(target);
     }
 
+    // The selected layer's keyframes, marked on its clip in the timeline.
+    private void ShowKeyTimes() =>
+        Timeline.KeyTimes = _selectedLayer is { } id && _document is not null ? ValueEditor.KeyTimes(_document.View, id) : [];
+
+    // Alt+Left and Alt+Right: the playhead to the selected layer's keyframe before or after it.
+    private void JumpToKeyframe(bool next)
+    {
+        if (_selectedLayer is null)
+        {
+            Message("Select a clip to go to its keyframes");
+            return;
+        }
+
+        var project = _document!.View;
+        var frames = Timeline.KeyTimes.Select(t => FrameMath.NearestFrame(project, t)).Distinct().Order().ToList();
+        var target = next ? frames.Where(f => f > _frame).Cast<int?>().FirstOrDefault() : frames.Where(f => f < _frame).Cast<int?>().LastOrDefault();
+        if (target is { } frame)
+        {
+            Seek(frame);
+        }
+        else
+        {
+            Message(frames.Count == 0 ? $"'{_selectedLayer}' has no keyframes" : $"'{_selectedLayer}' has no keyframe {(next ? "after" : "before")} the playhead");
+        }
+    }
+
     private void SelectLayer(string? id)
     {
         _selectedLayer = id;
         Timeline.Selection = ClipOf(id);
+        ShowKeyTimes();
         ShowSelection();
         if (id is not null)
         {
@@ -1777,6 +1825,7 @@ public partial class MainWindow : Window
         {
             _selectedLayer = null;
             Timeline.Selection = null;
+            ShowKeyTimes();
             UpdateEditButtons();
         }
 
@@ -1832,6 +1881,26 @@ public partial class MainWindow : Window
         if (sender is CheckBox { Tag: InspectorField field } box)
         {
             CommitField(field, box.IsChecked == true ? "true" : "false");
+        }
+    }
+
+    // The diamond beside an animatable number: a keyframe at the playhead, added or taken away. While
+    // playing, it's where the playback stops.
+    private void OnToggleKeyframe(object sender, RoutedEventArgs e)
+    {
+        if (_document is null || sender is not Button { Tag: InspectorField { ToggleKey: { } toggle } })
+        {
+            return;
+        }
+
+        Pause();
+        try
+        {
+            Apply(toggle(FrameMath.TimeOf(_document.View, _frame)));
+        }
+        catch (ZeyoCutException ex)
+        {
+            Message(ex.Message);
         }
     }
 

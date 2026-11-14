@@ -26,16 +26,20 @@ when they open.
   draw level, shown or muted, a video's sound, role, volume and fades, and a text's or caption's
   text and style (font, font file, size, bold, color, outline, alignment, width, line height, box);
   a caption's style applies to its whole track. Transform fields place a video, picture or text: X,
-  Y, scale, rotation and opacity, each its static value or, when the model animated it, a keyframe
-  at the playhead (marked with a diamond); a caption's position moves its whole track. A video's
-  crop is set by its sides, keeping what's left of the picture in place. A click in the preview
-  selects the layer drawn on top there, a child layer too, and dragging moves it, redrawn as it goes
-  and saved on release; Shift keeps it on one axis and Escape puts it back. The Export view renders
-  the project as `start_export` does, with presets, language versions, progress, stop and show in
-  folder, and lists the exports folder. The Assistant view shows the revision and the 20 most recent
-  saves, yours and Claude's. A project is open in one editor window at a time. The editor keeps its
-  own settings in `%LOCALAPPDATA%\ZeyoCut\editor.json` (`ZEYOCUT_EDITOR_SETTINGS` names another
-  file).
+  Y, scale, rotation and opacity, each its static value or, when animated, a keyframe at the
+  playhead; a caption's position moves its whole track. A diamond beside each animatable number adds
+  a keyframe at the playhead or takes away the one there, and the selected clip shows its keyframes
+  on the timeline, where a click or Alt+←/→ goes to one. Effects (blur, shadow, border, tint) switch
+  on and off and take their settings, animatable too; a video's or picture's brightness, contrast
+  and saturation are set in percent; and a clip a face blur follows shows the redaction's style,
+  strength, padding, feather, hold frames and fill. A video's crop is set by its sides, keeping
+  what's left of the picture in place. A click in the preview selects the layer drawn on top there,
+  a child layer too, and dragging moves it, redrawn as it goes and saved on release; Shift keeps it
+  on one axis and Escape puts it back. The Export view renders the project as `start_export` does,
+  with presets, language versions, progress, stop and show in folder, and lists the exports folder.
+  The Assistant view shows the revision and the 20 most recent saves, yours and Claude's. A project
+  is open in one editor window at a time. The editor keeps its own settings in
+  `%LOCALAPPDATA%\ZeyoCut\editor.json` (`ZEYOCUT_EDITOR_SETTINGS` names another file).
 - **`open_in_editor`:** opens a project (by default the open one) in the editor on the user's
   computer, so they can fine-tune it while Claude keeps working; a project already open in the editor
   comes to the front. The editor is `ZeyoCut.Editor.exe` next to the server, or the one the new

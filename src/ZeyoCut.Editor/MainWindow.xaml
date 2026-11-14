@@ -41,6 +41,20 @@
       <Setter Property="ToolTip" Value="{Binding Tip}" />
     </Style>
 
+    <Style x:Key="KeyButton" TargetType="Button" BasedOn="{StaticResource IconButton}">
+      <Setter Property="FontFamily" Value="Segoe UI Symbol" />
+      <Setter Property="FontSize" Value="12" />
+      <Setter Property="Padding" Value="4,1" />
+      <Setter Property="Margin" Value="2,0,0,0" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+      <Setter Property="Foreground" Value="{StaticResource SecondaryTextBrush}" />
+      <Style.Triggers>
+        <DataTrigger Binding="{Binding Keyed}" Value="True">
+          <Setter Property="Foreground" Value="{StaticResource AccentBrush}" />
+        </DataTrigger>
+      </Style.Triggers>
+    </Style>
+
     <local:InspectorTemplates x:Key="InspectorTemplates">
       <local:InspectorTemplates.Section>
         <DataTemplate>
@@ -66,10 +80,13 @@
               <ColumnDefinition Width="Auto" SharedSizeGroup="Key" />
               <ColumnDefinition Width="*" />
               <ColumnDefinition Width="22" />
+              <ColumnDefinition Width="Auto" SharedSizeGroup="KeyButton" />
             </Grid.ColumnDefinitions>
-            <TextBlock Style="{StaticResource FieldLabel}"><Run Text="{Binding Label, Mode=OneWay}" /><Run Text="{Binding Mark, Mode=OneWay}" Foreground="{StaticResource AccentBrush}" /></TextBlock>
+            <TextBlock Text="{Binding Label}" Style="{StaticResource FieldLabel}" />
             <TextBox Grid.Column="1" Text="{Binding Value, Mode=OneTime}" Tag="{Binding}" PreviewKeyDown="OnFieldKey" LostKeyboardFocus="OnFieldLeft" />
             <TextBlock Grid.Column="2" Text="{Binding Unit}" Style="{StaticResource Secondary}" Margin="5,0,0,0" VerticalAlignment="Center" />
+            <Button Grid.Column="3" Style="{StaticResource KeyButton}" Content="{Binding KeyGlyph}" ToolTip="{Binding KeyTip}" Tag="{Binding}" Click="OnToggleKeyframe"
+                    Visibility="{Binding HasToggle, Converter={StaticResource Visible}}" />
           </Grid>
         </DataTemplate>
       </local:InspectorTemplates.Number>
@@ -80,6 +97,7 @@
               <ColumnDefinition Width="Auto" SharedSizeGroup="Key" />
               <ColumnDefinition Width="*" />
               <ColumnDefinition Width="22" />
+              <ColumnDefinition Width="Auto" SharedSizeGroup="KeyButton" />
             </Grid.ColumnDefinitions>
             <TextBlock Text="{Binding Label}" Style="{StaticResource FieldLabel}" />
             <TextBox Grid.Column="1" Text="{Binding Value, Mode=OneTime}" Tag="{Binding}" PreviewKeyDown="OnFieldKey" LostKeyboardFocus="OnFieldLeft" />
@@ -93,6 +111,7 @@
               <ColumnDefinition Width="Auto" SharedSizeGroup="Key" />
               <ColumnDefinition Width="*" />
               <ColumnDefinition Width="22" />
+              <ColumnDefinition Width="Auto" SharedSizeGroup="KeyButton" />
             </Grid.ColumnDefinitions>
             <TextBlock Text="{Binding Label}" Style="{StaticResource FieldLabel}" />
             <TextBox Grid.Column="1" Text="{Binding Value, Mode=OneTime}" Tag="{Binding}" PreviewKeyDown="OnFieldKey" LostKeyboardFocus="OnFieldLeft" />

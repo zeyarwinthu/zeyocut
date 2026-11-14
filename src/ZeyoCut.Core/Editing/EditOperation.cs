@@ -113,6 +113,35 @@ public sealed record SetKeyframesOperation(IReadOnlyList<KeyframeEntry> Entries)
     }
 }
 
+// Keyframes taken away, as remove_keyframes takes them.
+public sealed record RemoveKeyframesOperation(IReadOnlyList<KeyframeRef> Refs) : EditOperation
+{
+    public override string Label => $"remove_keyframes {string.Join(" ", Layers)}";
+
+    public override IReadOnlyList<string> Layers => Refs.Select(r => r.LayerId).Distinct(StringComparer.Ordinal).ToList();
+
+    public override string Apply(Project project)
+    {
+        var removed = KeyframeEditor.RemoveKeyframes(project, Refs);
+        var targets = Refs.Select(r => $"{r.LayerId}.{r.Property}").Distinct().ToList();
+        return $"removed {removed} keyframe(s) at {Num(Refs[0].Time)}s from {string.Join(", ", targets)}";
+    }
+}
+
+// An effect added, changed or removed, as set_effect does it (EffectEditor.SetEffect).
+public sealed record SetEffectOperation(string LayerId, EffectKind Kind, EffectValues Values, bool Remove = false) : EditOperation
+{
+    public override string Label => $"set_effect {LayerId} {EnumNames.ToName(Kind)}";
+
+    public override IReadOnlyList<string> Layers => [LayerId];
+
+    public override string Apply(Project project)
+    {
+        var change = EffectEditor.SetEffect(project, LayerId, Kind, Values, Remove);
+        return change.Summary + string.Concat(change.Warnings.Select(w => $"; {w}"));
+    }
+}
+
 // Layers moved by X, Y pixels at every moment (PlacementEditor.Shift), such as every caption of a
 // track when one of them is dragged.
 public sealed record ShiftLayersOperation(string Name, IReadOnlyList<string> LayerIds, double X, double Y) : EditOperation

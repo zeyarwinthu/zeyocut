@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: MIT
 
 using System.Globalization;
-using System.Text.Json;
-using System.Text.Json.Nodes;
 using ZeyoCut.Core.Animation;
 using ZeyoCut.Core.Model;
 
@@ -17,63 +15,22 @@ public static class PlacementEditor
 {
     public static readonly IReadOnlyList<string> Properties = ["x", "y", "rotation", "scaleX", "scaleY", "opacity"];
 
-    // The edit that gives the layer these values at time. A value with keyframes gets a keyframe at
-    // time, as set_keyframes adds one, with the easing of the keyframe it replaces or the one before
-    // it, so the motion keeps its feel; the layer must be on the timeline then. A value without
-    // keyframes changes its static value, as update_layer does. x and y of a layer on a motion path
-    // aren't set: the path places it, and changing them would take the path off.
+    // The edit that gives the layer these placement values at time (ValueEditor.Set): a keyframe at
+    // time for a value with keyframes, its static value for one without. x and y of a layer on a
+    // motion path aren't set: the path places it.
     public static EditOperation Set(Project project, string layerId, IReadOnlyDictionary<string, double> values, double time)
     {
-        var layer = ProjectEditor.GetVisualLayer(project, layerId);
-        if (values.Count == 0)
+        if (values.Keys.FirstOrDefault(name => !Properties.Contains(name)) is { } other)
         {
-            throw new ZeyoCutException("there are no values to set");
+            throw new ZeyoCutException($"'{other}' isn't one of {string.Join(", ", Properties)}");
         }
 
-        var statics = new JsonObject();
-        var keys = new List<KeyframeEntry>();
-        foreach (var (name, value) in values)
-        {
-            var property = Properties.FirstOrDefault(p => p == name) ?? throw new ZeyoCutException($"'{name}' isn't one of {string.Join(", ", Properties)}");
-            if (!double.IsFinite(value))
-            {
-                throw new ZeyoCutException($"{property} must be a finite number (got {value})");
-            }
-
-            if (property is "x" or "y" && layer.MotionPath is not null)
-            {
-                throw OnPath(layer);
-            }
-
-            var track = AnimatableProperties.GetNumeric(layer, property);
-            if (track.Keyframes.Count == 0)
-            {
-                statics[property] = value;
-                continue;
-            }
-
-            if (!SceneEvaluator.IsActive(layer, time, project.Duration))
-            {
-                throw new ZeyoCutException(
-                    $"'{layer.Id}' animates {property} with keyframes, and a change adds one at the playhead; move the playhead into {Num(layer.Start)}–{Num(SceneEvaluator.EndOf(layer, project.Duration))}s, where the layer is");
-            }
-
-            keys.Add(new KeyframeEntry(layer.Id, property, time, JsonSerializer.SerializeToElement(value), EnumNames.ToName(EasingAt(track, time))));
-        }
-
-        EditOperation? update = statics.Count > 0 ? new UpdateLayerOperation(layer.Id, statics) : null;
-        EditOperation? keyframes = keys.Count > 0 ? new SetKeyframesOperation(keys) : null;
-        return (update, keyframes) switch
-        {
-            ({ } only, null) => only,
-            (null, { } only) => only,
-            _ => new BatchOperation($"set_keyframes {layer.Id}", [update!, keyframes!]),
-        };
+        return ValueEditor.Set(project, layerId, values, time);
     }
 
     // Why x and y can't be set on a layer: it follows a motion path. Null when they can.
     public static string? PositionLocked(VisualLayer layer) =>
-        layer.MotionPath is null ? null : OnPath(layer).Message;
+        layer.MotionPath is null ? null : ValueEditor.OnPath(layer).Message;
 
     // Moves layers by dx, dy at every moment: their x and y, each keyframe of them and the points of
     // their motion path. Returns how many moved.
@@ -195,16 +152,6 @@ public static class PlacementEditor
             key.Value += by;
         }
     }
-
-    // The easing of the keyframe at time, or else of the one before it: it shapes the segment the new
-    // keyframe starts.
-    private static Easing EasingAt(AnimatedValue track, double time) =>
-        track.Keyframes.FirstOrDefault(k => Math.Abs(k.Time - time) < KeyframeEditor.TimeTolerance)?.Easing
-        ?? track.Keyframes.LastOrDefault(k => k.Time < time)?.Easing
-        ?? Easing.Linear;
-
-    private static ZeyoCutException OnPath(VisualLayer layer) =>
-        new($"'{layer.Id}' follows a motion path, which places it; ask Claude to change the path (set_motion_path), or to take it off first");
 
     private static string Num(double value) => value.ToString("0.###", CultureInfo.InvariantCulture);
 }

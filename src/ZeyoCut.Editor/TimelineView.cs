@@ -5,6 +5,7 @@ using System.Windows;
 using System.Windows.Input;
 using System.Windows.Media;
 using ZeyoCut.Core;
+using ZeyoCut.Core.Animation;
 using ZeyoCut.Core.Editing;
 using ZeyoCut.Core.Model;
 
@@ -24,11 +25,14 @@ public sealed class TimelineView : FrameworkElement
     private const double GapReach = 6;
     private const double SnapPixels = 8;
     private const double DragThreshold = 3;
+    private const double KeyMark = 3.5;
+    private const double KeyReach = 5;
 
     private static readonly Typeface Face = new("Segoe UI");
     private static readonly Typeface Bold = new(new FontFamily("Segoe UI"), FontStyles.Normal, FontWeights.SemiBold, FontStretches.Normal);
     private static readonly Brush MarkBrush = Frozen(0xC0, 0x40, 0x90);
     private static readonly Brush BadgeBrush = Frozen(0x60, 0, 0, 0);
+    private static readonly Pen KeyEdge = Frozen(new Pen(Frozen(0xA0, 0, 0, 0), 1));
     private static readonly Brush PastEndBrush = Frozen(0x30, 0, 0, 0);
     private static readonly Dictionary<ClipKind, Brush> Fills = new()
     {
@@ -61,6 +65,7 @@ public sealed class TimelineView : FrameworkElement
     private Drag? _drag;
     private bool _scrubbing;
     private string? _hovered;
+    private IReadOnlyList<double> _keyTimes = [];
     private (double Time, int? Lane)? _mediaDrop;
 
     public TimelineView()
@@ -108,6 +113,23 @@ public sealed class TimelineView : FrameworkElement
         set
         {
             _selected = value;
+            DrawContent();
+        }
+    }
+
+    // The selected layer's keyframe times, marked on the selected clip: a click on a mark moves the
+    // playhead there.
+    public IReadOnlyList<double> KeyTimes
+    {
+        get => _keyTimes;
+        set
+        {
+            if (value.SequenceEqual(_keyTimes))
+            {
+                return;
+            }
+
+            _keyTimes = value;
             DrawContent();
         }
     }
@@ -285,6 +307,17 @@ public sealed class TimelineView : FrameworkElement
             return;
         }
 
+        if (KeyAt(point, hit) is { } key)
+        {
+            var frame = FrameMath.NearestFrame(_project!, key);
+            if (frame != _playhead)
+            {
+                Seek?.Invoke(this, frame);
+            }
+
+            return;
+        }
+
         ChangeSelection(hit.Clip.LayerId);
         TimelineLimits limits;
         try
@@ -326,11 +359,13 @@ public sealed class TimelineView : FrameworkElement
         }
 
         var hit = point.X >= HeaderWidth && point.Y >= RulerHeight ? HitClip(point) : null;
-        Cursor = hit?.Part is DragPart.Start or DragPart.End ? Cursors.SizeWE : null;
-        if (hit?.Clip.LayerId != _hovered)
+        var key = hit is null ? null : KeyAt(point, hit);
+        Cursor = key is not null ? Cursors.Hand : hit?.Part is DragPart.Start or DragPart.End ? Cursors.SizeWE : null;
+        var hovered = key is { } at ? $"{hit!.Clip.LayerId}@{at}" : hit?.Clip.LayerId;
+        if (hovered != _hovered)
         {
-            _hovered = hit?.Clip.LayerId;
-            ToolTip = hit is null ? null : Describe(hit.Clip);
+            _hovered = hovered;
+            ToolTip = hit is null ? null : key is { } time ? $"Keyframe at {Seconds(time)}: click to go there (Alt+Left, Alt+Right)" : Describe(hit.Clip);
         }
     }
 
@@ -405,6 +440,12 @@ public sealed class TimelineView : FrameworkElement
     }
 
     private static Brush Frozen(byte r, byte g, byte b) => Frozen(0xFF, r, g, b);
+
+    private static Pen Frozen(Pen pen)
+    {
+        pen.Freeze();
+        return pen;
+    }
 
     private static Brush Frozen(byte a, byte r, byte g, byte b)
     {
@@ -568,6 +609,39 @@ public sealed class TimelineView : FrameworkElement
         return null;
     }
 
+    // The keyframe mark under the point, on the selected clip: its time, or null.
+    private double? KeyAt(Point point, ClipHit hit)
+    {
+        if (hit.Clip.LayerId != _selected || _keyTimes.Count == 0)
+        {
+            return null;
+        }
+
+        var rect = ClipRect(hit.Lane, hit.Clip, RulerHeight + _laneTops[IndexOf(hit.Lane)] - _scrollY, Scale);
+        if (point.Y < rect.Bottom - 2 * KeyMark - 4)
+        {
+            return null;
+        }
+
+        var scale = Scale;
+        return KeysOn(hit.Clip)
+            .Select(t => (Time: t, Distance: Math.Abs(HeaderWidth + scale.XOf(t) - point.X)))
+            .Where(k => k.Distance <= KeyReach)
+            .OrderBy(k => k.Distance)
+            .Select(k => (double?)k.Time)
+            .FirstOrDefault();
+    }
+
+    private IEnumerable<double> KeysOn(TimelineClip clip) => _keyTimes.Where(t => t >= clip.Start - 1e-9 && t <= clip.End + 1e-9);
+
+    private static Rect ClipRect(TimelineLane lane, TimelineClip clip, double laneTop, TimelineScale scale)
+    {
+        var x0 = HeaderWidth + scale.XOf(clip.Start);
+        var x1 = HeaderWidth + scale.XOf(clip.End);
+        var rowHeight = RowHeight(lane.Kind);
+        return new Rect(Math.Round(x0) + 0.5, Math.Round(laneTop + LanePad + clip.Row * rowHeight) + 1.5, Math.Max(2, Math.Round(x1) - Math.Round(x0) - 1), rowHeight - 3);
+    }
+
     private Brush Resource(string key, Brush fallback) => TryFindResource(key) as Brush ?? fallback;
 
     private void DrawContent()
@@ -694,7 +768,7 @@ public sealed class TimelineView : FrameworkElement
         }
 
         var rowHeight = RowHeight(lane.Kind);
-        var rect = new Rect(Math.Round(x0) + 0.5, Math.Round(laneTop + LanePad + clip.Row * rowHeight) + 1.5, Math.Max(2, Math.Round(x1) - Math.Round(x0) - 1), rowHeight - 3);
+        var rect = ClipRect(lane, clip, laneTop, scale);
         var selected = clip.LayerId == _selected;
         dc.PushOpacity(clip.Hidden ? opacity * 0.45 : opacity);
         dc.DrawRoundedRectangle(Fills[clip.Kind], selected || outline ? new Pen(selected ? Brushes.White : accent, selected ? 2 : 1.5) : null, rect, 3, 3);
@@ -734,6 +808,25 @@ public sealed class TimelineView : FrameworkElement
                     Trimming = TextTrimming.CharacterEllipsis,
                 };
                 dc.DrawText(detail, new Point(left, rect.Y + 2 + label.Height - 1));
+            }
+        }
+
+        // The selected layer's keyframes, as diamonds along the clip's bottom edge.
+        if (selected && !outline)
+        {
+            var y = rect.Bottom - KeyMark - 2;
+            foreach (var time in KeysOn(clip))
+            {
+                var x = Math.Round(HeaderWidth + scale.XOf(time)) + 0.5;
+                var diamond = new StreamGeometry();
+                using (var context = diamond.Open())
+                {
+                    context.BeginFigure(new Point(x, y - KeyMark), true, true);
+                    context.PolyLineTo([new Point(x + KeyMark, y), new Point(x, y + KeyMark), new Point(x - KeyMark, y)], true, false);
+                }
+
+                diamond.Freeze();
+                dc.DrawGeometry(Brushes.White, KeyEdge, diamond);
             }
         }
 

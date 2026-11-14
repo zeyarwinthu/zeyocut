@@ -26,15 +26,23 @@ public enum FieldKind
 // chosen into the edit that makes the change (the Core operation a timeline drag or an MCP tool
 // makes), or throws a ZeyoCutException that says what's wrong with it. A toggle's value is true or
 // false, a choice's one of Choices. Unit is shown after a number; Tip explains the field. A Keyed
-// field is animated: it shows the value at the playhead, marked with a diamond.
+// field is animated: it shows the value at the playhead. ToggleKey is its diamond button's edit at
+// the playhead's time: it adds a keyframe there, or takes away the one there (KeyHere).
 public sealed record InspectorField(string Label, FieldKind Kind, string Value, Func<string, EditOperation>? Commit = null,
-    IReadOnlyList<string>? Choices = null, string Unit = "", string? Tip = null, bool Keyed = false)
+    IReadOnlyList<string>? Choices = null, string Unit = "", string? Tip = null, bool Keyed = false, bool KeyHere = false,
+    Func<double, EditOperation>? ToggleKey = null)
 {
     public const string KeyedTip = "Animated: this is its value at the playhead, and a change adds a keyframe there";
 
     public bool Editable => Commit is not null;
 
-    public string Mark => Keyed ? " ◆" : "";
+    public bool HasToggle => ToggleKey is not null;
+
+    public string KeyGlyph => KeyHere ? "◆" : "◇";
+
+    public string KeyTip => KeyHere ? "Take away the keyframe at the playhead"
+        : Keyed ? "Add a keyframe at the playhead with this value"
+        : "Animate: add a keyframe at the playhead with this value";
 
     public bool IsOn => Value == "true";
 
@@ -49,9 +57,9 @@ public sealed record FieldChoice(InspectorField Field, string Name, bool Selecte
 
 // What the inspector shows for a clip at the playhead's time, and how each of its fields is changed.
 // Timing moves and trims the clip as the timeline does; the rest are the layer's fields, as
-// update_layer sets them, or a keyframe at the playhead for an animated one (PlacementEditor.Set). A
-// caption's text and timing are its own, and its style and position the whole track's: a change to
-// them is made to every caption in the track at once, as one undo step.
+// update_layer and set_effect set them, or a keyframe at the playhead for an animated one
+// (ValueEditor.Set). A caption's text and timing are its own, and its style and position the whole
+// track's: a change to them is made to every caption in the track at once, as one undo step.
 public static partial class InspectorFields
 {
     public const string NoFontFile = "(none)";
@@ -134,6 +142,7 @@ public static partial class InspectorFields
                 fields.Add(Info("Plays", $"{Num(video.TrimIn)} – {Num(video.TrimOut)} s of the file"));
                 fields.Add(Info("Speed", $"{Num(video.Speed)}×"));
                 AddCrop(fields, project, video);
+                AddRedactions(fields, project, video);
                 fields.Add(Section("Sound"));
                 if (project.FindAsset(video.Asset)?.HasAudio == false)
                 {
@@ -163,6 +172,15 @@ public static partial class InspectorFields
                 fields.Add(Section("Image"));
                 fields.Add(Info("Drawings", string.Join(", ", image.Drawings.Select(d => $"{d.Key}: {d.Value}"))));
                 break;
+        }
+
+        if (group is null && layer is VisualLayer shown)
+        {
+            AddEffects(fields, project, shown, time);
+            if (shown is IColorAdjustable)
+            {
+                AddAdjustments(fields, project, shown, time);
+            }
         }
 
         return fields;
@@ -202,16 +220,25 @@ public static partial class InspectorFields
 
     public static string Num(double value) => value.ToString("0.###", CultureInfo.InvariantCulture);
 
+    // An animatable number (ValueEditor) at the playhead: a change sets it, or a keyframe there when
+    // it's animated, and its diamond adds or takes away a keyframe there. factor turns the value kept
+    // into the one shown, as 0.5 into 50 %.
+    private static InspectorField Animated(Project project, VisualLayer layer, string property, double time, string label, double factor, string unit, string tip,
+        double? min = null, double? max = null)
+    {
+        var value = AnimatableProperties.Numeric(layer).First(p => p.Name == property).Value;
+        var keyed = value.Keyframes.Count > 0;
+        return new InspectorField(label, FieldKind.Number, Num((keyed ? Interpolator.Evaluate(value, time) : value.Value) * factor),
+            text => ValueEditor.Set(project, layer.Id, new Dictionary<string, double> { [property] = Parse(text, label, min: min, max: max) / factor }, time),
+            Unit: unit, Tip: keyed ? $"{InspectorField.KeyedTip}. {tip}" : tip, Keyed: keyed, KeyHere: ValueEditor.KeyAt(project, value, time) is not null,
+            ToggleKey: at => ValueEditor.ToggleKeyframe(project, layer.Id, property, at));
+    }
+
     // Where the layer is, its size, turn and opacity. A child's x and y are in its parent's pixels.
     private static void AddTransform(List<InspectorField> fields, Project project, VisualLayer layer, double time)
     {
-        EditOperation Set(string property, double value) =>
-            PlacementEditor.Set(project, layer.Id, new Dictionary<string, double> { [property] = value }, time);
-
-        InspectorField Animated(string label, AnimatedValue value, double factor, string unit, Func<string, EditOperation> commit, string tip) =>
-            value.Keyframes.Count > 0
-                ? new(label, FieldKind.Number, Num(Interpolator.Evaluate(value, time) * factor), commit, Unit: unit, Tip: $"{InspectorField.KeyedTip}. {tip}", Keyed: true)
-                : new(label, FieldKind.Number, Num(value.Value * factor), commit, Unit: unit, Tip: tip);
+        InspectorField Field(string property, string label, double factor, string unit, string tip, double? min = null, double? max = null) =>
+            Animated(project, layer, property, time, label, factor, unit, tip, min, max);
 
         fields.Add(Section("Transform"));
         var where = layer.ParentId is { } parent ? $"in its parent '{parent}', in the parent's own pixels" : "on the canvas, in pixels from its top-left corner";
@@ -221,14 +248,107 @@ public static partial class InspectorFields
         }
         else
         {
-            fields.Add(Animated("X", layer.X, 1, "px", text => Set("x", Parse(text, "X")), $"Where the layer's anchor is {where}"));
-            fields.Add(Animated("Y", layer.Y, 1, "px", text => Set("y", Parse(text, "Y")), $"Where the layer's anchor is {where}"));
+            fields.Add(Field("x", "X", 1, "px", $"Where the layer's anchor is {where}"));
+            fields.Add(Field("y", "Y", 1, "px", $"Where the layer's anchor is {where}"));
         }
 
-        fields.Add(Animated("Scale X", layer.ScaleX, 100, "%", text => Set("scaleX", Parse(text, "Scale X") / 100), "100 is its own size; a negative scale flips it"));
-        fields.Add(Animated("Scale Y", layer.ScaleY, 100, "%", text => Set("scaleY", Parse(text, "Scale Y") / 100), "100 is its own size; a negative scale flips it"));
-        fields.Add(Animated("Rotation", layer.Rotation, 1, "°", text => Set("rotation", Parse(text, "Rotation")), "Degrees clockwise around the anchor"));
-        fields.Add(Animated("Opacity", layer.Opacity, 100, "%", text => Set("opacity", Parse(text, "Opacity", min: 0, max: 100) / 100), "100 is solid, 0 is invisible"));
+        fields.Add(Field("scaleX", "Scale X", 100, "%", "100 is its own size; a negative scale flips it"));
+        fields.Add(Field("scaleY", "Scale Y", 100, "%", "100 is its own size; a negative scale flips it"));
+        fields.Add(Field("rotation", "Rotation", 1, "°", "Degrees clockwise around the anchor"));
+        fields.Add(Field("opacity", "Opacity", 100, "%", "100 is solid, 0 is invisible", min: 0, max: 100));
+    }
+
+    // The layer's effects, each switched on and off as set_effect adds and takes it away, and their
+    // settings: a color for the whole effect, numbers animatable as the transform's are.
+    private static void AddEffects(List<InspectorField> fields, Project project, VisualLayer layer, double time)
+    {
+        var id = layer.Id;
+        static EffectValues Values(string? color = null) => new(color, null, null, null, null, null, null);
+
+        // A new tint needs a color: white, which its color field then changes.
+        InspectorField Switch(string label, EffectKind kind, bool on, string tip) =>
+            Toggle(label, on, value => value
+                ? new SetEffectOperation(id, kind, Values(kind == EffectKind.Tint ? "#FFFFFF" : null))
+                : new SetEffectOperation(id, kind, Values(), Remove: true), tip);
+
+        InspectorField Color(string label, EffectKind kind, string color) =>
+            new(label, FieldKind.Color, color, value => new SetEffectOperation(id, kind, Values(Required(value, label))), Tip: "#RRGGBB, or #RRGGBBAA with opacity");
+
+        InspectorField Field(string property, string label, double factor, string unit, string tip, double? min = null, double? max = null) =>
+            Animated(project, layer, property, time, label, factor, unit, tip, min, max);
+
+        fields.Add(Section("Effects"));
+        fields.Add(Switch("Blur", EffectKind.Blur, layer.Blur is not null, "Softens the layer"));
+        if (layer.Blur is not null)
+        {
+            fields.Add(Field("blur.x", "Blur X", 1, "px", "How far it spreads sideways", min: 0, max: EffectEditor.MaxBlur));
+            fields.Add(Field("blur.y", "Blur Y", 1, "px", "How far it spreads up and down", min: 0, max: EffectEditor.MaxBlur));
+        }
+
+        fields.Add(Switch("Shadow", EffectKind.Shadow, layer.Shadow is not null, "A soft shadow behind the layer"));
+        if (layer.Shadow is { } shadow)
+        {
+            fields.Add(Color("Shadow color", EffectKind.Shadow, shadow.Color));
+            fields.Add(Field("shadow.x", "Shadow X", 1, "px", "How far right it falls; negative is left"));
+            fields.Add(Field("shadow.y", "Shadow Y", 1, "px", "How far down it falls; negative is up"));
+            fields.Add(Field("shadow.blur", "Shadow blur", 1, "px", "How soft its edge is", min: 0, max: EffectEditor.MaxBlur));
+            fields.Add(Field("shadow.opacity", "Shadow opacity", 100, "%", "100 is solid", min: 0, max: 100));
+        }
+
+        fields.Add(Switch("Border", EffectKind.Outline, layer.Outline is not null, "A line around the layer's shape (the outline effect)"));
+        if (layer.Outline is { } outline)
+        {
+            fields.Add(Color("Border color", EffectKind.Outline, outline.Color));
+            fields.Add(Field("outline.width", "Border width", 1, "px", "How thick the line is", min: 0, max: EffectEditor.MaxOutline));
+        }
+
+        fields.Add(Switch("Tint", EffectKind.Tint, layer.Tint is not null, "Mixes the layer's colors toward one color"));
+        if (layer.Tint is { } tint)
+        {
+            fields.Add(Color("Tint color", EffectKind.Tint, tint.Color));
+            fields.Add(Field("tint.amount", "Tint amount", 100, "%", "100 paints it in the color, keeping its shape", min: 0, max: 100));
+        }
+    }
+
+    // A picture's brightness, contrast and saturation, animatable.
+    private static void AddAdjustments(List<InspectorField> fields, Project project, VisualLayer layer, double time)
+    {
+        fields.Add(Section("Adjustments"));
+        fields.Add(Animated(project, layer, "brightness", time, "Brightness", 100, "%", "0 leaves it as it is; -100 is black, 100 is white", min: -100, max: 100));
+        fields.Add(Animated(project, layer, "contrast", time, "Contrast", 100, "%", "100 leaves it as it is; 0 is flat gray", min: 0, max: 400));
+        fields.Add(Animated(project, layer, "saturation", time, "Saturation", 100, "%", "100 leaves it as it is; 0 is black and white", min: 0, max: 400));
+    }
+
+    // The face blurs (apply_redaction) that hide parts of the clip's footage, with their settings as
+    // update_layer sets them on the redaction: a strength for pixelate and blur, a fill for solid.
+    private static void AddRedactions(List<InspectorField> fields, Project project, VideoLayer video)
+    {
+        var redactions = project.Layers.OfType<RedactionLayer>()
+            .Where(r => r.Tracks.Select(project.FindTrack).OfType<Track>().Any(t => t.Asset == video.Asset))
+            .ToList();
+        foreach (var redaction in redactions)
+        {
+            var id = redaction.Id;
+            fields.Add(Section($"Redaction '{id}'"));
+            fields.Add(new InspectorField("Style", FieldKind.Choice, EnumNames.ToName(redaction.Style), value => Update(id, "style", value), EnumNames.All<RedactionStyle>().ToList(),
+                Tip: "How the boxes are hidden, in every clip of this footage"));
+            if (redaction.Style == RedactionStyle.Solid)
+            {
+                fields.Add(new InspectorField("Fill color", FieldKind.Color, redaction.Color, value => Update(id, "color", Required(value, "Fill color")), Tip: "#RRGGBB"));
+            }
+            else
+            {
+                fields.Add(Number("Strength", redaction.Strength, "", text => Update(id, "strength", Parse(text, "Strength", min: 0, max: 100)),
+                    "0 to 100: bigger blocks, or more blur"));
+            }
+
+            fields.Add(Number("Padding", redaction.PaddingPercent, "%", text => Update(id, "paddingPercent", Parse(text, "Padding", min: 0, max: RedactionEditor.MaxPadding)),
+                "Each side of a box grows by this share of its size"));
+            fields.Add(Number("Feather", redaction.Feather, "px", text => Update(id, "feather", Parse(text, "Feather", min: 0, max: RedactionEditor.MaxFeather)),
+                "A soft edge outside the box, in the footage's pixels"));
+            fields.Add(Number("Hold frames", redaction.HoldFrames, "", text => Update(id, "holdFrames", (int)Parse(text, "Hold frames", min: 0, max: RedactionEditor.MaxHold, whole: true)),
+                "How many frames a box stays before a face is first found and after it's last seen"));
+        }
     }
 
     // The sides of the picture the video's crop cuts off, in the file's pixels.
@@ -303,8 +423,8 @@ public static partial class InspectorFields
     private static InspectorField Number(string label, double value, string unit, Func<string, EditOperation> commit, string? tip = null) =>
         new(label, FieldKind.Number, Num(value), commit, Unit: unit, Tip: tip);
 
-    private static InspectorField Toggle(string label, bool on, Func<bool, EditOperation> commit) =>
-        new(label, FieldKind.Toggle, on ? "true" : "false", value => commit(value == "true"));
+    private static InspectorField Toggle(string label, bool on, Func<bool, EditOperation> commit, string? tip = null) =>
+        new(label, FieldKind.Toggle, on ? "true" : "false", value => commit(value == "true"), Tip: tip);
 
     [GeneratedRegex(@"^\s*([-+]?(?:\d+(?:[.,]\d*)?|[.,]\d+)(?:[eE][-+]?\d+)?)\s*(?:s|px|×|x|%|°)?\s*$", RegexOptions.IgnoreCase)]
     private static partial Regex NumberPattern();

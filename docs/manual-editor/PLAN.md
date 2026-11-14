@@ -128,6 +128,16 @@ The plan below was approved with these answers and changes. Where they disagree 
 - A drag works in the parent's pixels (the outline carries the parent's matrix), so children of turned or scaled layers follow the mouse. Positions are saved to a hundredth of a pixel. A layer scaled to 0 can't be dragged.
 - The live redraw applies the edit to a copy of the project for each frame drawn, one at a time, so a slow frame doesn't queue more. Nothing is saved until release, so the history gets one step per drag.
 
+**What Phase 5c found and did differently** (you chose A, the keyframe UI):
+
+- 5a's rule for animated values moved from `PlacementEditor.Set` into `ValueEditor.Set`, which covers every animatable number except a motion path's progress, a crop's position and a mask's box: those keep their own tools and fields, and masks and motion paths stay the model's. An effect's static value is saved as `set_effect` saves it (`SetEffectOperation`, history name `set_effect <id> <kind>`); taking a keyframe away is `RemoveKeyframesOperation` (`remove_keyframes <id>`). Neither adds an MCP tool.
+- "The keyframe at the playhead" means the one on the playhead's frame: a keyframe the model put between frames belongs to the frame nearest it (`ValueEditor.KeyAt`). So ◆ can take it away, and a change on that frame moves its value instead of adding a second keyframe beside it. This also applies to 5a's typed values and 5b's drags.
+- `remove_keyframes` alone would drop the value back to the old static value. So when the last keyframe goes, its value is made the static one in the same step, and nothing on screen jumps.
+- The outline effect is called **Border** in the inspector, since a text's Style already has an Outline (its stroke). A new tint is white, since `set_effect` needs a color for one.
+- Rows that don't apply aren't shown: a solid face blur has a fill color and no strength, pixelate and blur the other way round. Its settings are the redaction's and change every clip of that footage; the section's title names the redaction. Captions get no Effects section: their look belongs to their track.
+- Most rows now depend on the playhead's time (a diamond is ◆ or ◇), so the inspector is built again once the playhead stops, not on every frame stepped or scrubbed. ◆ pressed while playing stops the playback and keys that frame.
+- The timeline marks are the keyframe times of the selected layer, which is a child layer when one was picked in the preview, drawn on the clip that holds it.
+
 ## Summary
 
 What I found:
@@ -622,7 +632,7 @@ Each phase ends with all tests passing, a commit on `feature/manual-editor`, and
 - 5b: text font, size, color, background, alignment, position, and dragging in the preview.
 - 5c: effects: blur, face blur settings, adjustments. Effect duration needs engine work or a keyframe UI (disagreement 6); I'll bring you a short design for it before 5c.
 
-**5c design (proposed 2026-11-14, waiting for your answer).** Effect duration is the open question. Two ways:
+**5c design (proposed 2026-11-14; you chose A on 2026-11-14, built).** Effect duration was the open question. Two ways:
 
 - **A. A keyframe UI (my recommendation).** No format change, no MCP change. An effect lasts as long as its layer, as now, and a time-limited one is keyframes (blur 0 → 8 → 0), as `add_transition` already writes them. Phase 5a's rule covers changing an animated value; what's missing is starting and ending the animation by hand:
     1. An **Effects** section in the inspector for video, pictures and text: Blur (x, y), Shadow (color, x, y, blur, opacity), Outline (color, width), Tint (color, amount), each switched on and off as `set_effect` adds and removes it (`EffectEditor.SetEffect`), and Brightness, Contrast and Saturation for video and pictures.
