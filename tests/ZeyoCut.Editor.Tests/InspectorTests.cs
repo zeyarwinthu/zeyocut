@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 using System.Text.Json.Nodes;
+using System.Windows.Input;
 using ZeyoCut.Core;
 using ZeyoCut.Core.Editing;
 using ZeyoCut.Core.Model;
@@ -412,6 +413,24 @@ public class InspectorTests
         Assert.Equal((2, "solid", "blur"), (styles.Count, styles[0].Value, styles[1].Value));
         Assert.NotEqual(styles[0].Options[0].Group, styles[1].Options[0].Group);
         Assert.Equal("update_layer " + second, styles[1].Commit!("pixelate").Label);
+    }
+
+    [Fact]
+    public void UndoAndRedoKeysPressedInAFieldAreNotTheProjects()
+    {
+        const ModifierKeys control = ModifierKeys.Control;
+        Assert.True(MainWindow.HistoryKey(Key.Z, control, inField: false));
+        Assert.False(MainWindow.HistoryKey(Key.Y, control, inField: false));
+        Assert.False(MainWindow.HistoryKey(Key.Z, control | ModifierKeys.Shift, inField: false));
+        Assert.Null(MainWindow.HistoryKey(Key.Z, ModifierKeys.None, inField: false));
+        Assert.Null(MainWindow.HistoryKey(Key.Z, ModifierKeys.Shift, inField: false));
+        Assert.Null(MainWindow.HistoryKey(Key.Y, control | ModifierKeys.Shift, inField: false));
+
+        // In a field they take back and put back the typing there, also once none is left to take
+        // back: the project's last saved change stays.
+        Assert.Null(MainWindow.HistoryKey(Key.Z, control, inField: true));
+        Assert.Null(MainWindow.HistoryKey(Key.Y, control, inField: true));
+        Assert.Null(MainWindow.HistoryKey(Key.Z, control | ModifierKeys.Shift, inField: true));
     }
 
     private static System.Text.Json.JsonElement Json(double value) => System.Text.Json.JsonSerializer.SerializeToElement(value);

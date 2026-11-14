@@ -250,6 +250,15 @@ public partial class MainWindow : Window
         }
     }
 
+    // Whether a key is the project's undo (true) or redo (false): Ctrl+Z, and Ctrl+Y or Ctrl+Shift+Z.
+    // Pressed in a text field they are neither: there they are for the typing, also once none of it
+    // is left to take back, so they never reach the project's last saved change from a field.
+    public static bool? HistoryKey(Key key, ModifierKeys modifiers, bool inField) =>
+        inField ? null
+        : modifiers == ModifierKeys.Control && key == Key.Z ? true
+        : (modifiers == ModifierKeys.Control && key == Key.Y) || (modifiers == (ModifierKeys.Control | ModifierKeys.Shift) && key == Key.Z) ? false
+        : null;
+
     protected override void OnKeyDown(KeyEventArgs e)
     {
         base.OnKeyDown(e);
@@ -277,13 +286,16 @@ public partial class MainWindow : Window
         {
             ChooseMedia();
         }
-        else if (control && key == Key.Z && _document is not null)
+        else if (_document is not null && HistoryKey(key, modifiers, e.OriginalSource is TextBox) is { } undo)
         {
-            Undo();
-        }
-        else if (_document is not null && ((control && key == Key.Y) || (modifiers == (ModifierKeys.Control | ModifierKeys.Shift) && key == Key.Z)))
-        {
-            Redo();
+            if (undo)
+            {
+                Undo();
+            }
+            else
+            {
+                Redo();
+            }
         }
         else if (open && modifiers is ModifierKeys.None or ModifierKeys.Shift && key is Key.Left or Key.Right)
         {

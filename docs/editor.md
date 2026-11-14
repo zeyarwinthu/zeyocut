@@ -74,6 +74,8 @@ The inspector shows the selected clip and changes it.
 
 Enter saves a field, and so does clicking or tabbing away; Escape puts it back. In a text, Shift+Enter starts a new line.
 
+While the keyboard is in a field, Ctrl+Z and Ctrl+Y undo and redo what you typed there. They don't reach the project's saved changes until you leave the field, also when nothing typed is left to take back.
+
 Numbers take a point or a comma, with or without their unit: `2,5`, `2.5 s`, `40px`, `50%` and `15°` all work. A value the project can't take is refused with the reason, and the field shows what's saved.
 
 ### Keyframes
@@ -119,7 +121,7 @@ It shows the progress, Stop ends it, and Show in folder opens File Explorer on t
 | Escape | Cancel a drag, else clear the selection; in a field, put it back |
 | − / + | Zoom the timeline out and in (also Ctrl+wheel) |
 | Shift+Z | Fit the whole video in the timeline |
-| Ctrl+Z / Ctrl+Y | Undo and redo |
+| Ctrl+Z / Ctrl+Y | Undo and redo; in a field, the typing there |
 | Ctrl+1 / Ctrl+2 / Ctrl+3 | Assistant, Edit and Export |
 | Ctrl+O | Open a project |
 | Ctrl+I | Import media |
