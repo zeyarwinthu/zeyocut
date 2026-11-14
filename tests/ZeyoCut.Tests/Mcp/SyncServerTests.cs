@@ -82,6 +82,40 @@ public class SyncServerTests
     }
 
     [Fact]
+    public async Task UndoStepsOverAStepItRefusedBeforeAndNamesIt()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var root = TestPaths.NewDirectory("mcp-undo-step-over");
+        var projects = Path.Combine(root, "projects");
+        var directory = Path.Combine(projects, "shared");
+        await using var client = await StartServer(root, projects, Path.Combine(root, "logs"), ct);
+        await CallOk(client, "create_project", new() { ["name"] = "shared", ["width"] = 320, ["height"] = 180, ["duration"] = 5.0 }, ct);
+        await CallOk(client, "add_text_layer", new() { ["text"] = "Hello", ["id"] = "title" }, ct);
+        await CallOk(client, "add_text_layer", new() { ["text"] = "World", ["id"] = "sub" }, ct);
+        var size = ((TextLayer)ProjectStore.Load(directory).FindLayer("title")!).FontSize;
+        Assert.NotEqual(40, size);
+        await CallOk(client, "update_layer", new() { ["layerId"] = "title", ["changes"] = new Dictionary<string, object> { ["fontSize"] = 40 } }, ct);
+        await CallOk(client, "update_layer", new() { ["layerId"] = "sub", ["changes"] = new Dictionary<string, object> { ["fontSize"] = 40 } }, ct);
+
+        var editor = ProjectSession.Open(directory, ProjectBackups.EditorProgram);
+        editor.Mutate("update_layer sub", p => ProjectEditor.UpdateLayer(p, "sub", new JsonObject { ["text"] = "Edited" }));
+
+        var refused = await Call(client, "undo", new(), ct);
+        Assert.True(refused.IsError == true);
+        Assert.Contains(
+            "can't undo 'update_layer sub': another program changed layer 'sub' since that edit (saved: editor update_layer sub), and undoing it would throw that change away. "
+            + "restore_backup lists the copies of project.json kept before each save. The next undo steps over this step and goes on to the one before it",
+            Text(refused));
+
+        Assert.Equal(
+            "undid: update_layer title (3 more undo step(s), 1 redo step(s)). Stepped over 'update_layer sub', which can't be undone on top of another program's changes",
+            await CallOk(client, "undo", new(), ct));
+        var saved = ProjectStore.Load(directory);
+        var sub = (TextLayer)saved.FindLayer("sub")!;
+        Assert.Equal((size, 40.0, "Edited"), (((TextLayer)saved.FindLayer("title")!).FontSize, sub.FontSize, sub.Text));
+    }
+
+    [Fact]
     public async Task ServerAndAnotherProcessSavingAtOnceLoseNothing()
     {
         const int each = 50;

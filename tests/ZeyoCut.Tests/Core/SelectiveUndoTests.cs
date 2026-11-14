@@ -137,6 +137,78 @@ public class SelectiveUndoTests
     }
 
     [Fact]
+    public void TheUndoAfterARefusedOneStepsOverThatStep()
+    {
+        var (server, editor, directory) = TwoSessions("undo-step-over");
+        editor.Mutate("move_layer title", p => TimelineEditor.MoveLayer(p, "title", 1));
+        editor.Mutate("update_layer music", p => ProjectEditor.UpdateLayer(p, "music", new JsonObject { ["volume"] = 0.3 }));
+        server.Mutate("update_layer music", p => ProjectEditor.UpdateLayer(p, "music", new JsonObject { ["fadeIn"] = 1 }));
+
+        // The editor's session names no tool: it has no restore_backup.
+        var error = Assert.Throws<ZeyoCutException>(() => editor.Undo());
+        Assert.Equal(
+            "can't undo 'update_layer music': another program changed layer 'music' since that edit (saved: update_layer music), and undoing it would throw that change away. "
+            + "The next undo steps over this step and goes on to the one before it",
+            error.Message);
+        Assert.Equal(2, editor.UndoCount);
+
+        // The step stays as it is, with what the other program did to its layer.
+        Assert.Equal("move_layer title", editor.Undo(out var over));
+        Assert.Equal(["update_layer music"], over);
+        var music = Saved<AudioLayer>(directory, "music");
+        Assert.Equal((0.0, 0.3, 1.0), (Saved<TextLayer>(directory, "title").Start, music.Volume, music.FadeIn));
+        Assert.Equal((1, 1), (editor.UndoCount, editor.RedoCount));
+        Assert.Equal("editor undo move_layer title", ProjectBackups.List(directory)[0].Before);
+        var revision = ProjectStore.Load(directory).Revision;
+        error = Assert.Throws<ZeyoCutException>(() => editor.Undo());
+        Assert.Equal("nothing to undo: 'update_layer music' can't be undone on top of another program's changes", error.Message);
+        Assert.Equal(revision, ProjectStore.Load(directory).Revision);
+
+        Assert.Equal("move_layer title", editor.Redo());
+        Assert.Equal(1, Saved<TextLayer>(directory, "title").Start);
+
+        // Once the other program has taken its change back, the step can be undone after all.
+        Assert.Equal("update_layer music", server.Undo());
+        Assert.Equal("move_layer title", editor.Undo(out over));
+        Assert.Empty(over);
+        Assert.Equal("update_layer music", editor.Undo(out over));
+        Assert.Empty(over);
+        Assert.Equal((0.0, 0.8), (Saved<TextLayer>(directory, "title").Start, Saved<AudioLayer>(directory, "music").Volume));
+        Assert.Equal(0, editor.UndoCount);
+    }
+
+    [Fact]
+    public void AStepUnderASteppedOverOneIsRefusedWhenThatOneChangedItsLayerToo()
+    {
+        var (server, editor, directory) = TwoSessions("undo-under-stepped-over");
+        editor.Mutate("update_layer title", p => ProjectEditor.UpdateLayer(p, "title", new JsonObject { ["text"] = "One" }));
+        editor.Mutate("restyle", p =>
+        {
+            ProjectEditor.UpdateLayer(p, "title", new JsonObject { ["fontSize"] = 50 });
+            ProjectEditor.UpdateLayer(p, "label", new JsonObject { ["fontSize"] = 50 });
+            return 0;
+        });
+        server.Mutate("update_layer label", p => ProjectEditor.UpdateLayer(p, "label", new JsonObject { ["text"] = "Server" }));
+        var error = Assert.Throws<ZeyoCutException>(() => editor.Undo());
+        Assert.StartsWith("can't undo 'restyle': another program changed layer 'label' since that edit (saved: update_layer label)", error.Message);
+
+        // It was this program's own later step that changed 'title', not another program.
+        error = Assert.Throws<ZeyoCutException>(() => editor.Undo());
+        Assert.Equal("can't undo 'update_layer title': 'restyle', a later step that was stepped over, changed layer 'title' too, and undoing 'update_layer title' would throw that change away", error.Message);
+        var title = Saved<TextLayer>(directory, "title");
+        Assert.Equal(("One", 50.0), (title.Text, title.FontSize));
+        Assert.Equal(2, editor.UndoCount);
+        error = Assert.Throws<ZeyoCutException>(() => editor.Undo());
+        Assert.Equal("nothing to undo: 'restyle' and 'update_layer title' can't be undone on top of another program's changes", error.Message);
+
+        // A new step is undone as ever, over the two that stay.
+        editor.Mutate("update_layer music", p => ProjectEditor.UpdateLayer(p, "music", new JsonObject { ["volume"] = 0.3 }));
+        Assert.Equal("update_layer music", editor.Undo(out var over));
+        Assert.Empty(over);
+        Assert.Equal(0.8, Saved<AudioLayer>(directory, "music").Volume);
+    }
+
+    [Fact]
     public void TheProjectsLengthFollowsTheLayersUnlessTheStepOnlyChangedTheLength()
     {
         var (server, editor, directory) = TwoSessions("undo-duration");

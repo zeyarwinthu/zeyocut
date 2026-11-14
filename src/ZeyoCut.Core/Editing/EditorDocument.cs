@@ -93,7 +93,23 @@ public sealed class EditorDocument
         return true;
     }
 
-    public bool Undo() => Run("undo", () => Session.Undo());
+    // After an undo that was refused, the next one steps over that step, and Status names it.
+    public bool Undo()
+    {
+        var label = "";
+        IReadOnlyList<string> over = [];
+        if (!Run("undo", () => label = Session.Undo(out over)))
+        {
+            return false;
+        }
+
+        if (over.Count > 0)
+        {
+            Status = $"Undid '{label}' and stepped over {string.Join(", ", over.Select(l => $"'{l}'"))}, which can't be undone on top of another program's changes. {Saved()}";
+        }
+
+        return true;
+    }
 
     public bool Redo() => Run("redo", () => Session.Redo());
 

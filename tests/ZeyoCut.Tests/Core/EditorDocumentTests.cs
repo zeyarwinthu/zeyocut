@@ -209,6 +209,33 @@ public class EditorDocumentTests
     }
 
     [Fact]
+    public void TheUndoAfterARefusedOneStepsOverThatStepAndSaysSo()
+    {
+        var (server, editor, directory) = Open("editor-undo-step-over");
+        Assert.True(editor.Apply(new MoveLayerOperation("title", 1)));
+        Assert.True(editor.Apply(new UpdateLayerOperation("music", new JsonObject { ["volume"] = 0.3 })));
+        server.Mutate("update_layer music", p => ProjectEditor.UpdateLayer(p, "music", new JsonObject { ["fadeIn"] = 1 }));
+
+        // The editor has no restore_backup, so its message doesn't name it.
+        Assert.False(editor.Undo());
+        Assert.Equal(
+            "can't undo 'update_layer music': another program changed layer 'music' since that edit (saved: update_layer music), and undoing it would throw that change away. "
+            + "The next undo steps over this step and goes on to the one before it",
+            editor.Status);
+
+        Assert.True(editor.Undo());
+        Assert.Equal("Undid 'move_layer title' and stepped over 'update_layer music', which can't be undone on top of another program's changes. Saved · revision 5", editor.Status);
+        Assert.Equal(0, editor.View.FindLayer("title")!.Start);
+        var music = Saved<AudioLayer>(directory, "music");
+        Assert.Equal((0.3, 1.0), (music.Volume, music.FadeIn));
+
+        Assert.False(editor.Undo());
+        Assert.Equal("nothing to undo: 'update_layer music' can't be undone on top of another program's changes", editor.Status);
+        Assert.True(editor.Redo());
+        Assert.Equal("Saved · revision 6", editor.Status);
+    }
+
+    [Fact]
     public void AnImportIsSavedAsAnEdit()
     {
         var (_, editor, directory) = Open("editor-import");

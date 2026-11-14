@@ -177,12 +177,13 @@ public static class ProjectTools
     });
 
     [McpServerTool(Name = "undo")]
-    [Description("Undo the last change to the open project (in-memory history of this session, up to 200 steps). When another program (such as the editor) has saved since, only what that change did is put back, and the other program's changes stay; it's refused when the other program changed the same layers or settings since.")]
+    [Description("Undo the last change to the open project (in-memory history of this session, up to 200 steps). When another program (such as the editor) has saved since, only what that change did is put back, and the other program's changes stay; it's refused when the other program changed the same layers or settings since. After such a refusal, the next undo steps over that change, which stays as it is, and undoes the one before it; the reply names the change it stepped over.")]
     public static string Undo(EditorState state) => Guard(() =>
     {
         var session = state.Session;
-        var label = session.Undo();
-        return $"undid: {label} ({session.UndoCount} more undo step(s), {session.RedoCount} redo step(s))";
+        var label = session.Undo(out var over);
+        var stepped = over.Count == 0 ? "" : $". Stepped over {string.Join(", ", over.Select(l => $"'{l}'"))}, which can't be undone on top of another program's changes";
+        return $"undid: {label} ({session.UndoCount} more undo step(s), {session.RedoCount} redo step(s)){stepped}";
     });
 
     [McpServerTool(Name = "redo")]

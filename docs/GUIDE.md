@@ -308,6 +308,12 @@ redid: remove_layer mimi_body (19 undo step(s), 0 more redo step(s))
 
 When another program, such as the ZeyoCut editor, saves `project.json` too, undo still takes back this server's steps one at a time, but only what each step changed: the other program's changes stay. Undo is refused when the other program changed the same layer or setting since, because putting the step's version back would throw that change away. Redo works the same way.
 
+After a refused `undo`, the next one steps over that step: it stays as it is, the step before it is undone, and the reply names the step it stepped over. A step that was stepped over is undone after all once the other program's change is gone. For example, when the editor changed `sub` after this server's `update_layer sub`:
+
+```text
+undid: update_layer title (3 more undo step(s), 1 redo step(s)). Stepped over 'update_layer sub', which can't be undone on top of another program's changes
+```
+
 Here the project has three text layers, and the editor saved three edits between two calls. The next call, `list_layers`, starts with a note:
 
 ```text
@@ -334,7 +340,7 @@ undid: add_text_layer credits (2 more undo step(s), 2 redo step(s))
 The third would take back adding `subtitle`, which the editor removed since:
 
 ```text
-An error occurred invoking 'undo': can't undo 'add_text_layer subtitle': another program removed layer 'subtitle' since that edit (saved: editor update_layer title, editor remove_layer subtitle, editor add_markers (1 marker)), and undoing it would throw that change away. restore_backup lists the copies of project.json kept before each save
+An error occurred invoking 'undo': can't undo 'add_text_layer subtitle': another program removed layer 'subtitle' since that edit (saved: editor update_layer title, editor remove_layer subtitle, editor add_markers (1 marker)), and undoing it would throw that change away. restore_backup lists the copies of project.json kept before each save. The next undo steps over this step and goes on to the one before it
 ```
 
 ### `restore_backup`

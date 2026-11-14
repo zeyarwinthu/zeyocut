@@ -1108,7 +1108,7 @@ Trim a layer's start, end or both, as dragging the edge of a clip does: the rest
 
 ### `undo`
 
-Undo the last change to the open project (in-memory history of this session, up to 200 steps). When another program (such as the editor) has saved since, only what that change did is put back, and the other program's changes stay; it's refused when the other program changed the same layers or settings since.
+Undo the last change to the open project (in-memory history of this session, up to 200 steps). When another program (such as the editor) has saved since, only what that change did is put back, and the other program's changes stay; it's refused when the other program changed the same layers or settings since. After such a refusal, the next undo steps over that change, which stays as it is, and undoes the one before it; the reply names the change it stepped over.
 
 No parameters.
 
