@@ -74,7 +74,8 @@ public static class Proxies
         ];
     }
 
-    // Makes the asset's proxy (written as .partial.mp4 and renamed when done) and returns its path.
+    // Makes the asset's proxy (written as a .partial.mp4 of its own and renamed when done) and returns
+    // its path. A proxy another program put there in the meantime is kept.
     public static string Make(string ffmpeg, string projectDirectory, Asset asset, Action<double>? progress = null, CancellationToken cancellationToken = default)
     {
         var source = ProjectStore.AssetPath(projectDirectory, asset);
@@ -85,7 +86,7 @@ public static class Proxies
 
         var output = PathOf(projectDirectory, asset);
         Directory.CreateDirectory(Path.GetDirectoryName(output)!);
-        var temp = Path.ChangeExtension(output, ".partial.mp4");
+        var temp = PartialFile.For(output);
         var duration = asset.Duration ?? 0;
         using var process = Process.Start(ProcessRunner.StartInfo(ffmpeg, Arguments(source, asset, temp)))
             ?? throw new ZeyoCutException($"could not start {ffmpeg}");
@@ -109,7 +110,20 @@ public static class Proxies
                 throw new ZeyoCutException($"ffmpeg could not make the proxy of '{asset.Id}' (exit code {process.ExitCode}): {stderr.Result.Trim()}");
             }
 
-            File.Move(temp, output, overwrite: true);
+            try
+            {
+                File.Move(temp, output);
+            }
+            catch (IOException) when (File.Exists(output))
+            {
+                try
+                {
+                    File.Delete(temp);
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                }
+            }
         }
         catch
         {

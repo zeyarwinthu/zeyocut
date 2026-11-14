@@ -127,7 +127,7 @@ public class ExportTests
         Assert.True(result.Media.HasAudio);
         Assert.Equal("aac", result.Media.AudioCodec);
         Assert.InRange(result.Media.Duration, 0.99, 1.05);
-        Assert.False(File.Exists(Path.Combine(session.Directory, "exports", "match.partial.mp4")));
+        Assert.Equal([output], Directory.GetFiles(Path.Combine(session.Directory, "exports")));
 
         using var renderer = new FrameRenderer(session.Directory);
         double ErrorAgainst(int renderedFrame, byte[] decoded)
@@ -144,6 +144,81 @@ public class ExportTests
 
         Assert.True(same < 2.5, $"exported frame 15 differs from the render by {same:0.00}/255 on average");
         Assert.True(same < before && same < after, "frame 15 of the MP4 should match render frame 15 better than its neighbours");
+    }
+
+    // The server and the editor export to one file name at the same time.
+    [Fact]
+    public async Task TwoExportsToOneFileAtOnceEachWriteTheirOwn()
+    {
+        var ffmpeg = Ffmpeg.Require();
+        var ct = TestContext.Current.CancellationToken;
+        var session = MovingSquareProject("export-two-writers", ffmpeg, withAudio: true);
+        var project = session.Snapshot();
+        var output = Path.Combine(session.Directory, "exports", "same.mp4");
+        var limit = TimeSpan.FromSeconds(60);
+        using var secondIsWriting = new ManualResetEventSlim();
+        using var firstIsDone = new ManualResetEventSlim();
+
+        // The first holds its last frame until the second is writing too; the second then waits for
+        // the first to finish.
+        var first = Task.Run(() =>
+        {
+            try
+            {
+                return Exporter.Export(project, session.Directory, output, 18, ffmpeg, (frame, count) =>
+                {
+                    if (frame == count)
+                    {
+                        secondIsWriting.Wait(limit, ct);
+                    }
+                }, cancellationToken: ct);
+            }
+            finally
+            {
+                firstIsDone.Set();
+            }
+        }, ct);
+        var second = Task.Run(() => Exporter.Export(project, session.Directory, output, 18, ffmpeg, (frame, count) =>
+        {
+            if (frame == count - 1)
+            {
+                secondIsWriting.Set();
+                firstIsDone.Wait(limit, ct);
+            }
+        }, cancellationToken: ct), ct);
+
+        foreach (var result in await Task.WhenAll(first, second))
+        {
+            Assert.Equal((30, true), (result.Media.VideoFrames, result.Media.HasAudio));
+        }
+
+        Assert.Equal([output], Directory.GetFiles(Path.Combine(session.Directory, "exports")));
+        Assert.Equal(30, Ffprobe.Probe(ffmpeg.Ffprobe, output).VideoFrames);
+    }
+
+    // The preview page and the editor mix the same sound within a second of an edit.
+    [Fact]
+    public async Task TwoProgramsMixingThePreviewSoundAtOnceBothGetIt()
+    {
+        var ffmpeg = Ffmpeg.Require();
+        var ct = TestContext.Current.CancellationToken;
+        var session = MovingSquareProject("mix-two-writers", ffmpeg, withAudio: true);
+        var project = session.Snapshot();
+        var path = PreviewAudio.PathOf(session.Directory, PreviewAudio.Key(project, session.Directory)!);
+        await Task.WhenAll(Enumerable.Range(0, 2).Select(_ => Task.Run(() => PreviewAudio.Make(session.Snapshot(), session.Directory, ffmpeg, path, ct), ct)));
+
+        Assert.Equal([path], Directory.GetFiles(Path.GetDirectoryName(path)!));
+        Assert.InRange(Ffprobe.AudioDuration(ffmpeg.Ffprobe, path), 0.95, 1.1);
+
+        // A program playing the mix doesn't stop another from making the same one.
+        var mixed = File.ReadAllBytes(path);
+        using (File.Open(path, FileMode.Open, FileAccess.Read, FileShare.Read))
+        {
+            PreviewAudio.Make(project, session.Directory, ffmpeg, path, ct);
+        }
+
+        Assert.Equal(mixed, File.ReadAllBytes(path));
+        Assert.Equal([path], Directory.GetFiles(Path.GetDirectoryName(path)!));
     }
 
     [Fact]

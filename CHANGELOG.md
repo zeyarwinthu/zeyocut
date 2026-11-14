@@ -76,6 +76,10 @@ when they open.
 
 - The server no longer overwrites a `project.json` that another program saved while the project was
   open; before, its next edit silently replaced the other program's changes.
+- Two programs making the same proxy, preview sound mix or export file at the same time (the server
+  and the editor, or two servers) no longer leave a damaged file or fail: each writes a partial file
+  of its own, and a proxy or mix the other finished first is kept. Before, a proxy made this way
+  could have most of its frames unreadable, and previews and `track_object` went on reading it.
 
 - A release's `SHA256SUMS.txt` has Unix line endings, so `sha256sum -c` can check the downloads too,
   not only PowerShell.

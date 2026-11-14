@@ -69,7 +69,7 @@ public static class Exporter
         var stopwatch = Stopwatch.StartNew();
         var output = Path.GetFullPath(outputPath);
         Directory.CreateDirectory(Path.GetDirectoryName(output)!);
-        var temp = Path.Combine(Path.GetDirectoryName(output)!, Path.GetFileNameWithoutExtension(output) + ".partial" + Path.GetExtension(output));
+        var temp = PartialFile.For(output);
 
         var audio = FfmpegArgs.AudioClips(project, projectDirectory);
         foreach (var clip in audio.Where(c => !File.Exists(c.Path)))
