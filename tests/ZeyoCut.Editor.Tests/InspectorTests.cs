@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 
+using System.Text.Json.Nodes;
 using ZeyoCut.Core;
 using ZeyoCut.Core.Editing;
 using ZeyoCut.Core.Model;
@@ -89,6 +90,31 @@ public class InspectorTests
         Assert.Equal("Volume can't be more than 10 (got 11)", Error(project, "clip", "Volume", "11"));
         Assert.Equal("Font can't be empty", Error(project, "title", "Font", "  "));
         Assert.Equal(before, Core.Serialization.ProjectJson.Serialize(project));
+    }
+
+    // Claude changes the layer while a field still holds what was typed. The inspector isn't built
+    // again under the typing, so the edit comes from the version its fields were built from.
+    [Fact]
+    public void AFieldTypedBeforeAnotherProgramsChangeIsntSavedOverIt()
+    {
+        var folder = TestFiles.NewProject("inspector-typed-before", Footage());
+        var document = EditorDocument.Open(folder);
+        var built = document.View;
+        var text = Field(built, "title", "Text");
+        var length = Field(built, "title", "Length");
+
+        ProjectSession.Open(folder).Mutate("update_layer title", p => ProjectEditor.UpdateLayer(p, "title", new JsonObject { ["text"] = "from Claude", ["start"] = 5, ["end"] = 7 }));
+        Assert.True(document.Refresh());
+
+        Assert.False(document.Apply(text.Commit!("typed before"), built));
+        Assert.Equal("Your change wasn't saved: another program changed 'title' first (update_layer title). You see its version now.", document.Status);
+        Assert.False(document.Apply(length.Commit!("2"), built));
+        var title = Layer<TextLayer>(document.View, "title");
+        Assert.Equal(("from Claude", 5.0, 7.0), (title.Text, title.Start, title.End));
+
+        // Typed again into the field of the version shown now, it is saved.
+        Assert.True(document.Apply(Field(document.View, "title", "Text").Commit!("typed before"), document.View));
+        Assert.Equal("typed before", Layer<TextLayer>(document.View, "title").Text);
     }
 
     [Fact]

@@ -84,6 +84,23 @@ public class PreviewDragTests
             Assert.Throws<ZeyoCutException>(() => PreviewDrag.Start(project, Outline("title", Affine2D.Identity), 1)).Message);
     }
 
+    // Claude moves the layer while it is being dragged.
+    [Fact]
+    public void ADragThatBeganBeforeAnotherProgramsChangeIsntSavedOverIt()
+    {
+        var folder = TestFiles.NewProject("drag-began-before", Titled());
+        var document = EditorDocument.Open(folder);
+        var began = document.View;
+        var drag = PreviewDrag.Start(began, Outline("title", Affine2D.Identity), 1);
+        Assert.Same(began, drag.Project);
+
+        ProjectSession.Open(folder).Mutate("update_layer title", p => ProjectEditor.UpdateLayer(p, "title", new System.Text.Json.Nodes.JsonObject { ["x"] = 100 }));
+        Assert.True(document.Refresh());
+        Assert.False(document.Apply(drag.Move(10, 0, oneAxis: false)!, drag.Project));
+        Assert.Equal("Your change wasn't saved: another program changed 'title' first (update_layer title). You see its version now.", document.Status);
+        Assert.Equal(100, Layer<TextLayer>(document.View, "title").X.Value);
+    }
+
     [Fact]
     public void ACaptionTakesItsWholeTrackAlong()
     {

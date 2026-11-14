@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 using ZeyoCut.Core.Editing;
+using ZeyoCut.Core.Model;
 
 namespace ZeyoCut.Editor;
 
@@ -56,6 +57,10 @@ public sealed record DragPlace(double Start, double End, double? Snapped);
 
 // A draw level a dragged clip goes to: another lane's, or (Insert) a level of its own there.
 public sealed record LaneDrop(int ZIndex, bool Insert);
+
+// The edit a finished drag makes, and the project the drag began in: the edit is checked against
+// that version.
+public sealed record TimelineEdit(EditOperation Operation, Project From);
 
 // What a drag on the timeline does, worked out apart from the control that draws it. Times land on
 // whole frames, or on a snap point within reach; the result goes to Core as an EditOperation.

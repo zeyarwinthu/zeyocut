@@ -36,6 +36,9 @@ public sealed class PreviewDrag
 
     public string LayerId { get; }
 
+    // The project the drag began in: its edit is checked against that version.
+    public Project Project => _project;
+
     // A drag of the layer an outline belongs to, in the project the outline was drawn from, at time;
     // or a ZeyoCutException that says why it can't be dragged.
     public static PreviewDrag Start(Project project, LayerOutline outline, double time)

@@ -20,7 +20,9 @@ when they open.
   for each draw level, caption track and sound role; clips move, trim, split, delete, hide and
   change lanes by dragging, keys and a right-click menu, with snapping to clip edges, the playhead
   and markers. Each change is saved at once as an undoable step. When another program saves the
-  project, the editor shows the new version and says what changed. Media goes onto the timeline by
+  project, the editor shows the new version and says what changed. A change begun before that (text
+  typed into a field, a drag) isn't saved over a layer the other program changed meanwhile: the
+  status bar says so, and what was typed stays in the field. Media goes onto the timeline by
   dragging it onto a lane or at the playhead, and Pack lanes puts layers that never show together on
   shared levels without changing a frame. The inspector edits the selected clip: start, end, length,
   draw level, shown or muted, a video's sound, role, volume and fades, and a text's or caption's

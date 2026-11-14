@@ -88,7 +88,7 @@ public class EditorDocumentTests
         // Claude changed the clip the editor trims: the trim is dropped and the editor shows Claude's version.
         server.Mutate("update_layer clip_2", p => ProjectEditor.UpdateLayer(p, "clip_2", new JsonObject { ["volume"] = 0.5 }));
         Assert.False(editor.Apply(new TrimLayerOperation("clip_2", null, 7)));
-        Assert.Equal("trim_layer clip_2 wasn't saved: another program changed layer 'clip_2' first (update_layer clip_2); this is its version now", editor.Status);
+        Assert.Equal("Your change wasn't saved: another program changed 'clip_2' first (update_layer clip_2). You see its version now.", editor.Status);
         Assert.Equal(4, ProjectStore.Load(directory).Revision);
         Assert.Equal(0.5, Assert.IsType<VideoLayer>(editor.View.FindLayer("clip_2")).Volume);
 
@@ -99,8 +99,55 @@ public class EditorDocumentTests
 
         server.Mutate("remove_layer title", p => ProjectEditor.RemoveLayer(p, "title", withChildren: false));
         Assert.False(editor.Apply(new MoveLayerOperation("title", 2)));
-        Assert.Equal("move_layer title wasn't saved: another program removed layer 'title' first (remove_layer title); this is its version now", editor.Status);
+        Assert.Equal("Your change wasn't saved: another program removed 'title' first (remove_layer title). You see its version now.", editor.Status);
         Assert.Null(editor.View.FindLayer("title"));
+    }
+
+    // (b) again, with the edit built before Claude's change and made after the editor showed it: a
+    // field that still holds what was typed, or a drag that began before.
+    [Fact]
+    public void AnEditBuiltFromAnEarlierViewIsDroppedWhenAnotherProgramChangedItsLayerSince()
+    {
+        var (server, editor, directory) = Open("editor-built-from");
+        var built = editor.View;
+        server.Mutate("update_layer clip_2", p => ProjectEditor.UpdateLayer(p, "clip_2", new JsonObject { ["volume"] = 0.5 }));
+        Assert.True(editor.Refresh());
+        Assert.Equal(["update_layer clip_2"], editor.TakeOutsideChanges()!.Edits);
+
+        Assert.False(editor.Apply(new TrimLayerOperation("clip_2", null, 7), built));
+        Assert.Equal("Your change wasn't saved: another program changed 'clip_2' first (update_layer clip_2). You see its version now.", editor.Status);
+        Assert.Equal("clip_2", editor.Overtaken);
+        Assert.Equal(2, ProjectStore.Load(directory).Revision);
+
+        // An edit to another layer built then is saved, and so is the trim built from what's shown now.
+        Assert.True(editor.Apply(new MoveLayerOperation("title", 1), built));
+        Assert.Null(editor.Overtaken);
+        Assert.True(editor.Apply(new TrimLayerOperation("clip_2", null, 7), editor.View));
+        Assert.Equal((7.0, 0.5), (Saved<VideoLayer>(directory, "clip_2").TrimOut, Saved<VideoLayer>(directory, "clip_2").Volume));
+
+        // The editor's own saves since then aren't another program's.
+        built = editor.View;
+        Assert.True(editor.Apply(new UpdateLayerOperation("clip_2", new JsonObject { ["fadeIn"] = 1 })));
+        Assert.True(editor.Apply(new TrimLayerOperation("clip_2", null, 6), built), editor.Status);
+
+        // Claude's change comes in with an edit of the editor's to another layer. A copy of a project
+        // in place of a View is compared with what's shown.
+        built = editor.View;
+        var copy = ZeyoCut.Core.Serialization.ProjectJson.Clone(built);
+        server.Mutate("update_layer music", p => ProjectEditor.UpdateLayer(p, "music", new JsonObject { ["volume"] = 0.3 }));
+        Assert.True(editor.Apply(new MoveLayerOperation("title", 2)));
+        Assert.False(editor.Apply(new UpdateLayerOperation("music", new JsonObject { ["fadeIn"] = 1 }), built));
+        Assert.Equal("Your change wasn't saved: another program changed 'music' first (update_layer music). You see its version now.", editor.Status);
+        Assert.False(editor.Apply(new UpdateLayerOperation("music", new JsonObject { ["fadeIn"] = 1 }), copy));
+        Assert.Equal("music", editor.Overtaken);
+
+        // A layer another program removed.
+        built = editor.View;
+        server.Mutate("remove_layer title", p => ProjectEditor.RemoveLayer(p, "title", withChildren: false));
+        editor.Refresh();
+        Assert.False(editor.Apply(new MoveLayerOperation("title", 3), built));
+        Assert.Equal("Your change wasn't saved: another program removed 'title' first (remove_layer title). You see its version now.", editor.Status);
+        Assert.Equal((0.3, 0.0), (Saved<AudioLayer>(directory, "music").Volume, Saved<AudioLayer>(directory, "music").FadeIn));
     }
 
     // (c) Both save at nearly the same moment.

@@ -88,7 +88,7 @@ public sealed class TimelineView : FrameworkElement
     public event EventHandler<string?>? Selected;
 
     // A finished drag's edit.
-    public event EventHandler<EditOperation>? Edit;
+    public event EventHandler<TimelineEdit>? Edit;
 
     // A clip right-clicked; it is selected first.
     public event EventHandler<TimelineClip>? ClipMenu;
@@ -337,6 +337,7 @@ public sealed class TimelineView : FrameworkElement
         _drag = new Drag(hit.Clip, hit.Lane, hit.Part, limits, point, HorizontalOffset)
         {
             Place = new DragPlace(hit.Clip.Start, hit.Clip.End, null),
+            From = _project!,
         };
         CaptureMouse();
     }
@@ -398,7 +399,7 @@ public sealed class TimelineView : FrameworkElement
         DrawContent();
         if (operation is not null)
         {
-            Edit?.Invoke(this, operation);
+            Edit?.Invoke(this, new TimelineEdit(operation, drag.From));
         }
     }
 
@@ -1009,6 +1010,9 @@ public sealed class TimelineView : FrameworkElement
         public IReadOnlyList<double>? Snaps { get; set; }
 
         public required DragPlace Place { get; set; }
+
+        // The project shown when the mouse went down.
+        public required Project From { get; init; }
 
         public LaneDrop? Drop { get; set; }
 

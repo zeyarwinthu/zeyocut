@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 
+using System.Runtime.CompilerServices;
 using ZeyoCut.Core.Model;
 using ZeyoCut.Core.Serialization;
 
@@ -11,15 +12,24 @@ namespace ZeyoCut.Core.Editing;
 //
 // When another program saved since View was taken, the edit is made on top of that version, unless
 // it changed a layer the edit works on: then nothing is saved, Status says why, and View becomes
-// that version, so you see what the other program did before you try again.
+// that version, so you see what the other program did before you try again. An edit built from an
+// earlier View (a field typed in, a drag begun before the other program's change was shown) says so,
+// and is dropped the same way.
 public sealed class EditorDocument
 {
     private readonly List<OutsideChange> _outside = [];
+
+    // How many changes by other programs each View came after, and for each layer the last of them
+    // that changed it, with the edits it saved. The editor's own saves aren't counted.
+    private readonly ConditionalWeakTable<Project, StrongBox<int>> _cameAfter = [];
+    private readonly Dictionary<string, (int Change, IReadOnlyList<string> Edits)> _changedBy = new(StringComparer.Ordinal);
+    private int _changes;
 
     private EditorDocument(ProjectSession session)
     {
         Session = session;
         View = session.Snapshot();
+        _cameAfter.Add(View, new StrongBox<int>(0));
         Status = Saved();
     }
 
@@ -32,6 +42,9 @@ public sealed class EditorDocument
     // What the last edit saved did, in its operation's words; null when it wasn't saved.
     public string? Summary { get; private set; }
 
+    // The layer another program changed first, when the last edit wasn't saved for that.
+    public string? Overtaken { get; private set; }
+
     public long Revision => View.Revision;
 
     public IReadOnlyList<HistoryEntry> History => Session.History;
@@ -42,8 +55,9 @@ public sealed class EditorDocument
 
     public static EditorDocument Open(string directory) => new(ProjectSession.Open(directory, ProjectBackups.EditorProgram));
 
-    // True when the edit was saved.
-    public bool Apply(EditOperation operation)
+    // True when the edit was saved. 'from' is the View the edit was built from, when that isn't the
+    // one shown now.
+    public bool Apply(EditOperation operation, Project? from = null)
     {
         var shown = View;
         string? changed = null;
@@ -52,7 +66,7 @@ public sealed class EditorDocument
         {
             summary = Session.Mutate(operation.Label, project =>
             {
-                changed = operation.Layers.FirstOrDefault(id => LayerJson(shown, id) != LayerJson(project, id));
+                changed = operation.Layers.FirstOrDefault(id => (from is not null && ChangedSince(from, id)) || LayerJson(shown, id) != LayerJson(project, id));
                 if (changed is not null)
                 {
                     throw new ZeyoCutException($"another program changed layer '{changed}'");
@@ -65,14 +79,16 @@ public sealed class EditorDocument
         {
             Take();
             Summary = null;
+            Overtaken = changed;
             Status = changed is null
                 ? $"{operation.Label} wasn't saved: {ex.Message}"
-                : $"{operation.Label} wasn't saved: another program {(View.FindLayer(changed) is null ? "removed" : "changed")} layer '{changed}' first{SavedBy()}; this is its version now";
+                : $"Your change wasn't saved: another program {(View.FindLayer(changed) is null ? "removed" : "changed")} '{changed}' first{SavedBy(changed)}. You see its version now.";
             return false;
         }
 
         Take();
         Summary = summary;
+        Overtaken = null;
         Status = Saved();
         return true;
     }
@@ -114,6 +130,13 @@ public sealed class EditorDocument
     private static string? LayerJson(Project project, string id) =>
         project.FindLayer(id) is { } layer ? ProjectJson.LayerToJson(layer) : null;
 
+    // Whether another program changed the layer after 'from' was the View. A project that never was
+    // the View is compared with it instead.
+    private bool ChangedSince(Project from, string id) =>
+        _cameAfter.TryGetValue(from, out var seen)
+            ? _changedBy.TryGetValue(id, out var by) && by.Change > seen.Value
+            : LayerJson(from, id) != LayerJson(View, id);
+
     private bool Run(string verb, Action action)
     {
         try
@@ -139,20 +162,26 @@ public sealed class EditorDocument
     private string? Take()
     {
         View = Session.Snapshot();
-        if (Session.TakeOutsideChanges() is not { } change)
+        var change = Session.TakeOutsideChanges();
+        if (change is not null)
         {
-            return null;
+            _outside.Add(change);
+            _changes++;
+            foreach (var item in change.Items.Where(i => i.Kind == "layer"))
+            {
+                _changedBy[item.Id] = (_changes, change.Edits);
+            }
         }
 
-        _outside.Add(change);
-        return change.Problem is { } problem
+        _cameAfter.Add(View, new StrongBox<int>(_changes));
+        return change?.Problem is { } problem
             ? $"{ProjectStore.ProjectFileName} can't be read ({problem}); edits aren't saved until it's fixed or restore_backup puts a backup back"
             : null;
     }
 
-    private string SavedBy()
+    private string SavedBy(string layer)
     {
-        var edits = _outside.Count > 0 ? _outside[^1].Edits : [];
+        var edits = _changedBy.TryGetValue(layer, out var by) ? by.Edits : [];
         return edits.Count == 0 ? "" : $" ({string.Join(", ", edits.TakeLast(3))})";
     }
 

@@ -77,6 +77,11 @@ public partial class MainWindow : Window
     private bool _rebuilding;
     private bool _inspectorStale;
 
+    // The project the inspector's rows were built from, which their edits are checked against, and
+    // the layer they are of.
+    private Project? _inspectorProject;
+    private string? _inspectorLayer;
+
     // The inspector shows animated values and keyframes at the playhead, so it's built again when the
     // playhead stops moving; queued when that's on its way.
     private bool _inspectorTimed;
@@ -630,6 +635,8 @@ public partial class MainWindow : Window
 
         _inspectorStale = false;
         var focused = typing is { } field ? (field.Field.Label, Occurrence(field.Box)) : ((string Label, int Occurrence)?)null;
+        _inspectorProject = _document!.View;
+        _inspectorLayer = _selectedLayer;
         var rows = InspectorRows();
         _inspectorTimed = rows.Any(f => f.Keyed || f.HasToggle);
         InspectorList.ItemsSource = rows;
@@ -684,7 +691,7 @@ public partial class MainWindow : Window
             : null;
 
     // Rows can share a label, as two face blurs' settings do: occurrence is which of them.
-    private void FocusField(string label, int occurrence)
+    private TextBox? FocusField(string label, int occurrence)
     {
         foreach (var item in InspectorList.Items)
         {
@@ -693,9 +700,43 @@ public partial class MainWindow : Window
             {
                 box.Focus();
                 box.SelectAll();
-                return;
+                return box;
             }
         }
+
+        return null;
+    }
+
+    // After another program changed the layer first, the inspector shows its version: what was typed
+    // goes back into its field, not saved, for the user to save over that change or drop.
+    private void KeepTyped(string layer, string label, int occurrence, string text)
+    {
+        if (_inspectorLayer == layer && FocusField(label, occurrence) is { } box)
+        {
+            box.Text = text;
+            box.CaretIndex = text.Length;
+            Message("What you typed is still in the field: Enter saves it over the other program's change, Escape drops it");
+        }
+    }
+
+    // Which of the rows with its label a field is, counted from the top; null when it isn't shown.
+    private int? Occurrence(InspectorField field)
+    {
+        var occurrence = 0;
+        foreach (var item in InspectorList.Items)
+        {
+            if (ReferenceEquals(item, field))
+            {
+                return occurrence;
+            }
+
+            if (item is InspectorField above && above.Label == field.Label)
+            {
+                occurrence++;
+            }
+        }
+
+        return null;
     }
 
     // Which of the rows with its label holds the box, counted from the top.
@@ -735,8 +776,9 @@ public partial class MainWindow : Window
 
     // Saves a field's new value through its edit; false when the value can't be used, which the
     // status line says. Typed with Enter it stays to be fixed, otherwise the field shows the saved
-    // value again.
-    private bool CommitField(InspectorField field, string text, bool fromEnter = false)
+    // value again. 'from' is the project the field's row was built from, when the inspector may have
+    // been built again since.
+    private bool CommitField(InspectorField field, string text, bool fromEnter = false, Project? from = null)
     {
         if (_document is null || field.Commit is null)
         {
@@ -769,14 +811,22 @@ public partial class MainWindow : Window
             return false;
         }
 
+        var shown = Occurrence(field);
+        var layer = _inspectorLayer;
+        bool saved;
         _committingField = true;
         try
         {
-            Apply(operation);
+            saved = Apply(operation, from ?? _inspectorProject);
         }
         finally
         {
             _committingField = false;
+        }
+
+        if (!saved && _document.Overtaken is not null && shown is { } occurrence && layer is not null)
+        {
+            Dispatcher.InvokeAsync(() => KeepTyped(layer, field.Label, occurrence, text), DispatcherPriority.Loaded);
         }
 
         return true;
@@ -1189,7 +1239,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        Apply(edit);
+        Apply(edit, drag.Project);
     }
 
     private void OnPreviewLostCapture(object sender, MouseEventArgs e) => CancelPreviewDrag();
@@ -1596,12 +1646,14 @@ public partial class MainWindow : Window
         }
     }
 
-    // Saves an edit and shows the project with it, or why it wasn't saved.
-    private void Apply(EditOperation operation)
+    // Saves an edit and shows the project with it, or why it wasn't saved. 'from' is the project the
+    // edit was built from, when that isn't the one shown now: a field's rows, or where a drag began.
+    private bool Apply(EditOperation operation, Project? from = null)
     {
-        var saved = _document!.Apply(operation);
+        var saved = _document!.Apply(operation, from);
         Rebuild();
         Message(saved ? _document.Summary ?? "" : "");
+        return saved;
     }
 
     private void ShowStartPage(string? error = null)
@@ -1858,7 +1910,7 @@ public partial class MainWindow : Window
 
     private void OnClipSelected(object? sender, string? id) => SelectLayer(id);
 
-    private void OnTimelineEdit(object? sender, EditOperation operation) => Apply(operation);
+    private void OnTimelineEdit(object? sender, TimelineEdit edit) => Apply(edit.Operation, edit.From);
 
     // Enter saves a field (Shift+Enter starts a new line of text); Escape puts back what it holds.
     private void OnFieldKey(object sender, KeyEventArgs e)
@@ -1894,7 +1946,8 @@ public partial class MainWindow : Window
         if (sender is TextBox { Tag: InspectorField field } box)
         {
             var text = box.Text;
-            Dispatcher.InvokeAsync(() => CommitField(field, text), DispatcherPriority.Input);
+            var from = _inspectorProject;
+            Dispatcher.InvokeAsync(() => CommitField(field, text, from: from), DispatcherPriority.Input);
         }
     }
 
@@ -1928,7 +1981,7 @@ public partial class MainWindow : Window
         Pause();
         try
         {
-            Apply(toggle(FrameMath.TimeOf(_document.View, _frame)));
+            Apply(toggle(FrameMath.TimeOf(_document.View, _frame)), _inspectorProject);
         }
         catch (ZeyoCutException ex)
         {

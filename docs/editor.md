@@ -101,6 +101,7 @@ It shows the progress, Stop ends it, and Show in folder opens File Explorer on t
 
 - **Every change is saved at once**, as one step that Ctrl+Z undoes and Ctrl+Y redoes. The status bar shows "Saved · revision N" and what the last change did; there's no Save button.
 - When the server saves the project, the editor shows the new version and says what changed. The server's next reply lists what the editor changed. Undo on either side takes back only its own changes. See [Saving alongside another program](project-format.md#saving-alongside-another-program).
+- A change you began before the server's isn't saved over it. If the server changes a layer while you're typing in one of its fields or dragging it, your change isn't saved and the status bar says "Your change wasn't saved: another program changed '…' first". What you typed stays in the field: Enter saves it over the server's change, Escape drops it.
 - The **Assistant** view (Ctrl+1) shows the revision, who saved it last, and the 20 most recent saves, each marked You or Claude.
 
 ## Keys
