@@ -2,9 +2,13 @@
 
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using ModelContextProtocol;
+using ZeyoCut.Core;
 using ZeyoCut.Core.Editing;
 using ZeyoCut.Core.Model;
+using ZeyoCut.Core.Serialization;
 using ZeyoCut.Mcp;
+using ZeyoCut.Mcp.Tools;
 using ZeyoCut.Tests.TestSupport;
 using static ZeyoCut.Tests.Mcp.McpServerTests;
 
@@ -187,6 +191,48 @@ public class SyncServerTests
         var project = JsonDocument.Parse(await CallOk(client, "get_project", new(), ct)).RootElement;
         Assert.Equal(2 * each, project.GetProperty("markers").GetArrayLength());
         Assert.Equal(1 + 2 * each, project.GetProperty("revision").GetInt64());
+    }
+
+    // generate_captions behindSubject=auto measures up to 600 caption frames before it saves. What
+    // another program saves meanwhile is kept, unless it changed what the captions are measured on.
+    // Run in the server's own process, so the other program's save lands between the plan and the save.
+    [Fact]
+    public void CaptionsMeasuredDirectlyAreSavedOnTopOfAnotherProgramsSave()
+    {
+        Ffmpeg.Require();
+        var root = TestPaths.NewDirectory("mcp-sync-captions");
+        var directory = Path.Combine(root, "projects", "talk");
+        var session = ProjectSession.Create(directory, TestProjects.Empty(width: 96, height: 64, fps: 10, duration: 2));
+        var asset = TestVideos.Import(session, TestVideos.GreenScreen(Path.Combine(root, "screen.mp4"), 2), "screen");
+        session.Mutate("add_video_layer clip", p => ProjectEditor.AddVideoLayer(p, new VideoLayerOptions { Id = "clip", Asset = "screen" }));
+        session.Mutate("add_text_layer title", p => ProjectEditor.AddTextLayer(p, new TextLayerOptions { Id = "title", Text = "Hi" }));
+        session.Mutate("text_behind_subject clip", p =>
+            SubjectEditor.Apply(p, "clip", ["title"], false, MatteEditor.Build((IMattable)p.FindLayer("clip")!, MatteMethod.Chroma, new MatteValues("#28BE3C", null, null, null))));
+        AnalysisFiles.Save(AnalysisFiles.TranscriptPath(directory, asset), new Transcript
+        {
+            Asset = "screen",
+            Language = "en",
+            Words = [new TranscriptWord { Text = "Hi.", Start = 0.1, End = 0.3, Probability = 0.9 }, new TranscriptWord { Text = "Go.", Start = 0.9, End = 1.1, Probability = 0.9 }],
+        });
+        using var state = new EditorState(new Settings(null, Path.Combine(root, "projects"), Path.Combine(root, "logs"), LibraryPath: Path.Combine(root, "library")));
+        state.Open(session);
+        var editor = ProjectSession.Open(directory);
+        string Captions() => CaptionTools.GenerateCaptions(state, assetId: "screen", style: "bold_center", fontSize: 14, behindSubject: "auto");
+
+        // A marker added meanwhile is kept, and the fades are added.
+        editor.Mutate("editor add_markers (1 marker)", p => MarkerEditor.AddMarkers(p, [new MarkerEntry("intro", 1, "Intro", null)]));
+        var added = Captions();
+        Assert.Contains("\n- auto: the subject covers up to ", added);
+        Assert.DoesNotContain("get_job_status", added);
+        var saved = ProjectStore.Load(directory);
+        Assert.Equal("intro", Assert.Single(saved.Markers).Id);
+        Assert.NotNull(saved.FindLayer("captions_subject"));
+
+        // The clip the captions follow, moved meanwhile, refuses them.
+        editor.Mutate("editor update_layer clip", p => ProjectEditor.UpdateLayer(p, "clip", new JsonObject { ["x"] = 10 }));
+        Assert.Equal("layer 'clip' changed while the captions were measured; run generate_captions again",
+            Assert.Throws<McpException>(Captions).Message);
+        Assert.Equal(saved.Revision + 1, ProjectStore.Load(directory).Revision);
     }
 
     [Fact]

@@ -82,7 +82,6 @@ public static class CaptionTools
         // Planned on a copy first: which mattes the subject needs and how many frames auto measures.
         var directory = session.Directory;
         var plan = session.Snapshot();
-        var before = ProjectJson.Serialize(plan);
         var planned = Build(plan);
         var subject = planned.Subject!;
         var mattes = CoverMattes(plan, directory, subject, all: mode == BehindSubject.Auto);
@@ -99,12 +98,14 @@ public static class CaptionTools
             var measured = Measure(state, directory, plan, planned, null, CancellationToken.None);
             var (done, auto) = session.Mutate(label, p =>
             {
-                if (ProjectJson.Serialize(p) != before)
+                // Another program's save meanwhile counts only when it changed what the captions were
+                // measured on (CaptionBuilder.FadesChanged), or they come out different now.
+                var made = Build(p);
+                if ((CaptionBuilder.FadesChanged(plan, p, planned) ?? (made.LayerIds.SequenceEqual(planned.LayerIds) ? null : "the captions")) is { } changed)
                 {
-                    throw new ZeyoCutException("the project changed while the captions were measured; run generate_captions again");
+                    throw new ZeyoCutException($"{changed} changed while the captions were measured; run generate_captions again");
                 }
 
-                var made = Build(p);
                 return (made, CaptionBuilder.Auto(p, made.Subject!, measured, threshold));
             });
             var direct = mattes.SelectMany(m => m.Targets).Select(t => $"{t.Label}: the matte is already computed: {MatteFiles.Relative(directory, t.Path)}").ToList();

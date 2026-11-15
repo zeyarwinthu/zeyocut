@@ -101,7 +101,8 @@ when they open.
   been opened.
 - `generate_captions behindSubject=auto` adds its fades after an edit made meanwhile to another
   layer, in the editor or with a tool. Only a change to the captions or to what covers them makes
-  its background job refuse. Before, any save did, even one that changed nothing.
+  it refuse, whether it answers directly or from its background job. Before, any save did, even one
+  that changed nothing.
 
 - A release's `SHA256SUMS.txt` has Unix line endings, so `sha256sum -c` can check the downloads too,
   not only PowerShell.
