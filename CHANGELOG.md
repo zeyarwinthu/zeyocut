@@ -88,7 +88,8 @@ when they open.
   open; before, its next edit silently replaced the other program's changes.
 - Two programs making the same proxy, preview sound mix or export file at the same time (the server
   and the editor, or two servers) no longer leave a damaged file or fail: each writes a partial file
-  of its own, and a proxy or mix the other finished first is kept. Before, a proxy made this way
+  of its own, and a proxy or mix the other finished first is kept. A proxy another program is making
+  is waited for and then read, instead of being made a second time. Before, a proxy made this way
   could have most of its frames unreadable, and previews and `track_object` went on reading it.
 - `open_project` on a project whose footage over 2560 px names a file outside `assets\` lists that
   as a problem, as for any other asset. Before, the reply was an error, although the project had

@@ -104,7 +104,8 @@ public sealed class ProxyJobs(JobManager jobs, Func<FfmpegPaths> ffmpeg)
             var stopwatch = Stopwatch.StartNew();
             try
             {
-                var path = Proxies.Make(ffmpeg.Ffmpeg, directory, asset, p => job.Report((index + p) / assets.Count), ct);
+                var path = Proxies.Make(ffmpeg.Ffmpeg, directory, asset, p => job.Report((index + p) / assets.Count), ct,
+                    () => job.Report((double)index / assets.Count, $"waiting for another program making the proxy of '{asset.Id}' ({index + 1} of {assets.Count})"));
                 var (width, height) = Proxies.Size(asset);
                 var megabytes = new FileInfo(path).Length / 1048576.0;
                 made.Add($"- '{asset.Id}': {width}x{height}, {megabytes.ToString("0.0", CultureInfo.InvariantCulture)} MB, in {stopwatch.Elapsed.TotalSeconds.ToString("0.0", CultureInfo.InvariantCulture)}s: {Path.GetRelativePath(directory, path)}");

@@ -77,10 +77,13 @@ public class ProxyTests
         var ffmpeg = Ffmpeg.Require();
         var ct = TestContext.Current.CancellationToken;
         var (session, asset) = RampProject("proxy-two-writers");
-        var made = await Task.WhenAll(Enumerable.Range(0, 2).Select(_ => Task.Run(() => Proxies.Make(ffmpeg.Ffmpeg, session.Directory, asset, cancellationToken: ct), ct)));
+        var encoded = new bool[2];
+        var made = await Task.WhenAll(Enumerable.Range(0, 2).Select(i => Task.Run(() => Proxies.Make(ffmpeg.Ffmpeg, session.Directory, asset, _ => encoded[i] = true, ct), ct)));
 
+        // One makes it; the other waits for it and reads it (or, started after, finds it made).
         var path = Proxies.PathOf(session.Directory, asset);
         Assert.Equal([path, path], made);
+        Assert.Single(encoded, true);
         Assert.Equal([path], Directory.GetFiles(Path.Combine(session.Directory, "proxies")));
         var probe = VideoProbe.Probe(ffmpeg.Ffprobe, path);
         Assert.Equal((1920, 1080, 30), (probe.Width, probe.Height, probe.FrameCount));
@@ -89,6 +92,59 @@ public class ProxyTests
         {
             Assert.Equal(frame, FrameCode(Preview.RenderFrame(renderer, session.Snapshot(), frame / 10.0, 640, debug: false).Png));
         }
+    }
+
+    [Fact]
+    public async Task AProxyAnotherProgramIsMakingIsWaitedForAndThenRead()
+    {
+        var ffmpeg = Ffmpeg.Require();
+        var ct = TestContext.Current.CancellationToken;
+        var (session, asset) = RampProject("proxy-wait");
+        var path = Proxies.PathOf(session.Directory, asset);
+        var folder = Path.GetDirectoryName(path)!;
+        Directory.CreateDirectory(folder);
+
+        // The other program holds the proxy's lock while it makes it, and puts it there.
+        byte[] theirs = [1, 2, 3];
+        var waited = new TaskCompletionSource();
+        Task<string> made;
+        using (new FileStream(Proxies.LockOf(path), FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None))
+        {
+            made = Task.Run(() => Proxies.Make(ffmpeg.Ffmpeg, session.Directory, asset, _ => throw new InvalidOperationException("made it as well"), ct, () => waited.TrySetResult()), ct);
+            await waited.Task.WaitAsync(TimeSpan.FromSeconds(30), ct);
+            await Task.Delay(300, ct);
+            Assert.False(made.IsCompleted);
+            File.WriteAllBytes(path, theirs);
+        }
+
+        Assert.Equal(path, await made);
+        Assert.Equal(theirs, File.ReadAllBytes(path));
+        Assert.Equal([path], Directory.GetFiles(folder));
+    }
+
+    [Fact]
+    public void MakingAProxyCanBeStoppedWhileItWaitsAndALockNoOneHoldsIsNone()
+    {
+        var ffmpeg = Ffmpeg.Require();
+        var (session, asset) = RampProject("proxy-wait-stopped");
+        var path = Proxies.PathOf(session.Directory, asset);
+        var folder = Path.GetDirectoryName(path)!;
+        Directory.CreateDirectory(folder);
+        using (new FileStream(Proxies.LockOf(path), FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None))
+        {
+            using var stop = new CancellationTokenSource(TimeSpan.FromMilliseconds(500));
+            var waited = false;
+            Assert.ThrowsAny<OperationCanceledException>(() => Proxies.Make(ffmpeg.Ffmpeg, session.Directory, asset, null, stop.Token, () => waited = true));
+            Assert.True(waited);
+            Assert.False(File.Exists(path));
+        }
+
+        // The lock file a stopped program left behind holds nothing back.
+        Assert.True(File.Exists(Proxies.LockOf(path)));
+        var waitedAgain = false;
+        Assert.Equal(path, Proxies.Make(ffmpeg.Ffmpeg, session.Directory, asset, null, TestContext.Current.CancellationToken, () => waitedAgain = true));
+        Assert.False(waitedAgain);
+        Assert.Equal([path], Directory.GetFiles(folder));
     }
 
     [Fact]
