@@ -219,7 +219,20 @@ public partial class MainWindow : Window
 
         CloseProject();
         _claim = claim;
-        ShowProject(document);
+        try
+        {
+            ShowProject(document);
+        }
+        catch (Exception ex)
+        {
+            // Something in it the window can't show: the project is closed again, so the window
+            // isn't left half open, and the error's details go to the log.
+            CloseProject();
+            var log = App.Log(ex, _settings.LogDirectory);
+            ShowStartPage($"Couldn't show {directory}: {ex.Message}{(log is null ? "" : $" (the details are in {log})")}");
+            return;
+        }
+
         _prefs.AddRecent(directory);
         SavePrefs();
         UpdateMenus();
@@ -579,11 +592,19 @@ public partial class MainWindow : Window
         ShowKeyTimes();
 
         _rebuilding = true;
-        var items = project.Assets.Select(a => Item(document.Session.Directory, a)).ToList();
-        MediaList.ItemsSource = items;
-        MediaList.SelectedItem = items.FirstOrDefault(i => i.Id == _selectedAsset);
-        _selectedAsset = (MediaList.SelectedItem as MediaItem)?.Id;
-        _rebuilding = false;
+        List<MediaItem> items;
+        try
+        {
+            items = project.Assets.Select(a => Item(document.Session.Directory, a)).ToList();
+            MediaList.ItemsSource = items;
+            MediaList.SelectedItem = items.FirstOrDefault(i => i.Id == _selectedAsset);
+            _selectedAsset = (MediaList.SelectedItem as MediaItem)?.Id;
+        }
+        finally
+        {
+            _rebuilding = false;
+        }
+
         MediaEmpty.Visibility = items.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
 
         ShowInspector();
@@ -1618,8 +1639,14 @@ public partial class MainWindow : Window
         {
             _selectedAsset = null;
             _rebuilding = true;
-            MediaList.SelectedItem = null;
-            _rebuilding = false;
+            try
+            {
+                MediaList.SelectedItem = null;
+            }
+            finally
+            {
+                _rebuilding = false;
+            }
         }
 
         ShowInspector();

@@ -66,20 +66,28 @@ public partial class App : Application
     public static string Describe(Exception error, string? logDirectory)
     {
         var said = $"Something went wrong in the editor: {error.Message}\n\nYour changes before it are saved in {ProjectStore.ProjectFileName}.";
-        if (logDirectory is not null)
+        return Log(error, logDirectory) is { } log ? $"{said} The details are in {log}." : $"{said}\n\nDetails:\n{error}";
+    }
+
+    // Adds an error's details to editor-errors.log in the log folder; the file's path, or null when
+    // it can't be written.
+    public static string? Log(Exception error, string? logDirectory)
+    {
+        if (logDirectory is null)
         {
-            var log = Path.Combine(logDirectory, ErrorLogName);
-            try
-            {
-                Directory.CreateDirectory(logDirectory);
-                File.AppendAllText(log, string.Create(CultureInfo.InvariantCulture, $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} {error}{Environment.NewLine}{Environment.NewLine}"));
-                return $"{said} The details are in {log}.";
-            }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
-            {
-            }
+            return null;
         }
 
-        return $"{said}\n\nDetails:\n{error}";
+        var log = Path.Combine(logDirectory, ErrorLogName);
+        try
+        {
+            Directory.CreateDirectory(logDirectory);
+            File.AppendAllText(log, string.Create(CultureInfo.InvariantCulture, $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} {error}{Environment.NewLine}{Environment.NewLine}"));
+            return log;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
+        {
+            return null;
+        }
     }
 }
