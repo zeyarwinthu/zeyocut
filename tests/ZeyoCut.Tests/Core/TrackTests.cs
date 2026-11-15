@@ -49,6 +49,15 @@ public class TrackTests
         Anchors = anchors.Select(f => new TrackBox { Frame = f, Width = 10, Height = 10 }).ToList(),
     };
 
+    // A track as a job saves it, its file named by 'version'.
+    private static Track Tracked(string id, string version = "00000000")
+    {
+        var track = Track(TrackDirection.Forward, 0, 0);
+        track.Id = id;
+        track.File = $"tracks/{id}-{version}.json";
+        return track;
+    }
+
     [Fact]
     public void ACanvasBoxMapsIntoTheClipsOwnPixels()
     {
@@ -154,6 +163,108 @@ public class TrackTests
                 "track 'track_1': frames 0–100 must run forward from 0 and include its origin frame 200",
             ],
             ProjectValidator.Validate(restored));
+    }
+
+    // track_object and reanchor_track save when their job is done, as the server's session; 'other'
+    // is another program (the editor) saving meanwhile. What it changed stays, unless it makes the
+    // track wrong: then nothing is saved.
+    [Fact]
+    public void ATrackingJobSavesOnTopOfAnotherProgramsChangesUnlessTheyMakeItWrong()
+    {
+        var directory = TestPaths.NewDirectory("track-job-saves");
+        var server = ProjectSession.Create(directory, Canvas());
+        var other = ProjectSession.Open(directory);
+        void Save(Track track, string? replacing) => server.Mutate($"track_object {track.Id}", p =>
+        {
+            TrackEditor.SaveTrack(p, track, replacing);
+            return 0;
+        });
+
+        // A title added while track_1 is tracked: both are kept.
+        other.Mutate("add_text_layer title", p => ProjectEditor.AddTextLayer(p, new TextLayerOptions { Id = "title", Text = "Hi" }));
+        Save(Tracked("track_1"), null);
+        var saved = ProjectStore.Load(directory);
+        Assert.Equal("tracks/track_1-00000000.json", saved.FindTrack("track_1")!.File);
+        Assert.NotNull(saved.FindLayer("title"));
+        Assert.Equal(3, saved.Revision);
+
+        // A track_2 of its own saved meanwhile isn't saved over.
+        other.Mutate("track_object track_2", p =>
+        {
+            p.Tracks.Add(Tracked("track_2", "11111111"));
+            return 0;
+        });
+        Assert.Equal("a track 'track_2' appeared while this one was being tracked, so it wasn't saved; run track_object again",
+            Assert.Throws<ZeyoCutException>(() => Save(Tracked("track_2"), null)).Message);
+        saved = ProjectStore.Load(directory);
+        Assert.Equal("tracks/track_2-11111111.json", saved.FindTrack("track_2")!.File);
+        Assert.Equal(4, saved.Revision);
+
+        // A correction replaces the version it began from, not one put in its place or a track removed.
+        other.Mutate("reanchor_track track_1", p =>
+        {
+            p.FindTrack("track_1")!.File = "tracks/track_1-22222222.json";
+            return 0;
+        });
+        const string Refused = "track 'track_1' changed or was removed while it was being tracked, so the correction wasn't saved; run reanchor_track again";
+        Assert.Equal(Refused, Assert.Throws<ZeyoCutException>(() => Save(Tracked("track_1", "33333333"), "tracks/track_1-00000000.json")).Message);
+        Assert.Equal("tracks/track_1-22222222.json", ProjectStore.Load(directory).FindTrack("track_1")!.File);
+
+        other.Mutate("remove track_1", p =>
+        {
+            p.Tracks.RemoveAll(t => t.Id == "track_1");
+            return 0;
+        });
+        Assert.Equal(Refused, Assert.Throws<ZeyoCutException>(() => Save(Tracked("track_1", "33333333"), "tracks/track_1-22222222.json")).Message);
+        Assert.Null(ProjectStore.Load(directory).FindTrack("track_1"));
+
+        Save(Tracked("track_2", "44444444"), "tracks/track_2-11111111.json");
+        saved = ProjectStore.Load(directory);
+        Assert.Equal("tracks/track_2-44444444.json", saved.FindTrack("track_2")!.File);
+        Assert.Equal(7, saved.Revision);
+    }
+
+    // detect_and_track adds what it found in one asset's footage when its job is done: all of it, or
+    // nothing when another program took one of its ids or removed the footage meanwhile.
+    [Fact]
+    public void ADetectionJobAddsAllItFoundOrNothingAfterAnotherProgramsChanges()
+    {
+        var directory = TestPaths.NewDirectory("detect-job-saves");
+        var server = ProjectSession.Create(directory, Canvas());
+        var other = ProjectSession.Open(directory);
+        void Add(params string[] ids) => server.Mutate("detect_and_track faces clip", p =>
+        {
+            TrackEditor.AddDetected(p, "square", ids.Select(id => Tracked(id)).ToList(), "faces");
+            return 0;
+        });
+
+        other.Mutate("add_text_layer title", p => ProjectEditor.AddTextLayer(p, new TextLayerOptions { Id = "title", Text = "Hi" }));
+        Add("face_1", "face_2");
+        var saved = ProjectStore.Load(directory);
+        Assert.Equal(["face_1", "face_2"], saved.Tracks.Select(t => t.Id));
+        Assert.NotNull(saved.FindLayer("title"));
+
+        other.Mutate("track_object face_4", p =>
+        {
+            p.Tracks.Add(Tracked("face_4", "11111111"));
+            return 0;
+        });
+        Assert.Equal("a track 'face_4' appeared while the faces were being found, so no track was added; run detect_and_track again",
+            Assert.Throws<ZeyoCutException>(() => Add("face_3", "face_4")).Message);
+        saved = ProjectStore.Load(directory);
+        Assert.Equal(["face_1", "face_2", "face_4"], saved.Tracks.Select(t => t.Id));
+        Assert.Equal("tracks/face_4-11111111.json", saved.FindTrack("face_4")!.File);
+
+        other.Mutate("remove_layer clip", p =>
+        {
+            p.Tracks.Clear();
+            p.Layers.RemoveAll(l => l.Id == "clip");
+            p.Assets.RemoveAll(a => a.Id == "square");
+            return 0;
+        });
+        Assert.Equal("asset 'square' was removed while its faces were being found, so no track was added; run detect_and_track again",
+            Assert.Throws<ZeyoCutException>(() => Add("face_5")).Message);
+        Assert.Empty(ProjectStore.Load(directory).Tracks);
     }
 
     [Fact]
