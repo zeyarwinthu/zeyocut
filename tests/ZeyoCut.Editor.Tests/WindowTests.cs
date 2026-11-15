@@ -401,6 +401,40 @@ public class WindowTests
         Assert.Equal("Imported 'picture'", Text(window, "MessageText"));
     });
 
+    // Space plays from the playhead and pauses where it is; played to the end (2 s), it stops on the
+    // last frame.
+    [Fact]
+    public void SpacePlaysAndPausesAndPlayingStopsAtTheEnd() => TestWindow.Run("window-playback", (window, folder) =>
+    {
+        WithTitle(window, folder);
+        var play = (Button)window.FindName("PlayButton");
+        string Frame() => Text(window, "FrameText");
+        void PumpWhile(Func<bool> condition)
+        {
+            for (var i = 0; i < 500 && condition(); i++)
+            {
+                TestWindow.Pump(10);
+            }
+        }
+
+        Assert.EndsWith("frame 0 of 59", Frame());
+        TestWindow.Press(window, Key.Space);
+        Assert.Equal("Pause (Space)", play.ToolTip);
+        PumpWhile(() => Frame().EndsWith("frame 0 of 59", StringComparison.Ordinal));
+        TestWindow.Press(window, Key.Space);
+        Assert.Equal("Play (Space)", play.ToolTip);
+        var paused = Frame();
+        Assert.DoesNotContain("frame 0 of", paused);
+        TestWindow.Pump(300);
+        Assert.Equal(paused, Frame());
+
+        TestWindow.Press(window, Key.Space);
+        PumpWhile(() => (string)play.ToolTip == "Pause (Space)");
+        Assert.Equal("Play (Space)", play.ToolTip);
+        Assert.EndsWith("frame 59 of 59", Frame());
+        Assert.Equal("00:00:01:29", Text(window, "TimecodeText"));
+    });
+
     // Split, Delete, Pack lanes, a keyframe's diamond and Export act on the project as shown: given
     // while an edit is being saved, they wait for it, as they did when saves held up the window.
     [Fact]
