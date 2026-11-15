@@ -509,7 +509,13 @@ public partial class MainWindow : Window
         _importer!.CancelAll();
         _importer.Added -= OnAssetAdded;
         _watcher?.Dispose();
-        _preview?.Dispose();
+        if (_preview is { } preview)
+        {
+            // Disposed on a worker thread: a frame being drawn (footage on a slow drive, many effects)
+            // is waited for there, not by the window.
+            _ = Task.Run(preview.Dispose);
+        }
+
         _sound!.Changed -= OnSoundChanged;
         _sound.Dispose();
         _claim?.Dispose();

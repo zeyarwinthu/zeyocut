@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 
+using System.Diagnostics;
 using System.Text.Json.Nodes;
 using System.Windows;
 using System.Windows.Controls;
@@ -222,6 +223,29 @@ public class WindowTests
         pack.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
         TestWindow.Pump();
         Assert.False(pack.IsEnabled);
+    });
+
+    [Fact]
+    public void ClosingAProjectDoesntWaitForTheFrameBeingDrawn() => TestWindow.Run("window-close-drawing", (window, folder) =>
+    {
+        // 300 titles blurred by 100 px: their frame takes seconds to draw.
+        var project = TestFiles.Project(1920, 1080);
+        for (var i = 0; i < 300; i++)
+        {
+            var title = ProjectEditor.AddTextLayer(project, new TextLayerOptions { Id = $"t{i}", Text = "Slow to draw", FontSize = 400 });
+            title.Blur = new BlurEffect { X = new(100), Y = new(100) };
+        }
+
+        var directory = Path.Combine(folder, "slow");
+        ProjectSession.Create(directory, project);
+        window.OpenProject(directory);
+        TestWindow.Pump(300);
+        Assert.Equal("", Text(window, "RenderText"));
+
+        var watch = Stopwatch.StartNew();
+        ((MenuItem)window.FindName("CloseItem")).RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+        Assert.True(watch.ElapsedMilliseconds < 1000, $"closing took {watch.ElapsedMilliseconds} ms");
+        Assert.Equal("ZeyoCut Editor", window.Title);
     });
 
     [Fact]
