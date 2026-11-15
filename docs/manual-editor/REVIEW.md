@@ -7,7 +7,7 @@
 - **Possible** means I could not confirm it.
 - Not done: the Release publish, and a run of the three Whisper tests (see below).
 - **Status, 2026-11-15:** findings 1, 2, 3, 4, 8 and 12 were fixed on this branch, one commit each, and findings 5, 6, 7, 9, 10 and 11 deferred.
-- **Status, 2026-11-16:** findings 5, 6, 7, 9, 10 and 11 are fixed too, one commit each, as are the items left open inside findings 1, 3 and 8, and the two open test gaps are closed. The findings below stand as written at the review; each has a Status line.
+- **Status, 2026-11-16:** findings 5, 6, 7, 9, 10 and 11 are fixed too, one commit each, as are the items left open inside findings 1, 3 and 8, and the two open test gaps are closed. Later that day, the parts still open in findings 5, 10 and 11 were fixed and playback was tested from the window; a window test of cancelling a timeline drag is still missing. The findings below stand as written at the review; each has a Status line.
 
 ## Status of the findings
 
@@ -26,18 +26,18 @@
 | 11. Closing can block the window | Fixed | `c8fe3f0` |
 | 12. Ctrl+Z in a field can undo a project edit | Fixed | `8ae73d9` |
 
-- **Tests after the fixes:** at `eadb15e`, `ZeyoCut.Tests` 580 total and `ZeyoCut.Editor.Tests` 73; at `8b5a19f`, `ZeyoCut.Tests` 591 total, 0 failed, 0 skipped, with `WHISPER_PATH` set, and `ZeyoCut.Editor.Tests` 88 total, 0 failed. Both `dotnet format --verify-no-changes` checks pass. One full run at `a432203` had `McpServerTests.ServerSaysWhichEncoderAnExportUsed` fail; it passed alone three times and in every full run since, and wasn't looked into further.
-- Each fix began with a test that failed. Findings 2, 3, 8 and 12 were also checked in the real window, shown off screen by a throwaway program kept outside the repository. Since `c3adf67` the window tests drive `MainWindow` itself. Two parts have no test that failed first: the pack-lanes part of finding 9, which only saves time, and the timeline's drawing of a dropped clip in finding 10, as a test can't drag in the window (WPF's mouse events in a test take their position from the real mouse). The tracking jobs' tests (`8b5a19f`) passed at once, as the refusals were right; with the checks disabled, both fail.
+- **Tests after the fixes:** at `eadb15e`, `ZeyoCut.Tests` 580 total and `ZeyoCut.Editor.Tests` 73; at `8b5a19f`, `ZeyoCut.Tests` 591 total, 0 failed, 0 skipped, with `WHISPER_PATH` set, and `ZeyoCut.Editor.Tests` 88 total, 0 failed; at `d3669b9`, `ZeyoCut.Tests` 592 total, 0 failed, 0 skipped, with `WHISPER_PATH` set, and `ZeyoCut.Editor.Tests` 91 total, 0 failed. Both `dotnet format --verify-no-changes` checks pass. Three tests failed once each in a full run and passed alone and in the full runs after: `McpServerTests.ServerSaysWhichEncoderAnExportUsed` at `a432203`; `BackupTests.NothingIsSavedWhenTheBackupCantBeWritten` before `8c61b64` (Windows refused a `Directory.Move`); and `VideoEncoderTests.QuickSyncExportsInChunksWhereItWorks` before `d2b3cd5` (the Intel encoder said "Invalid FrameType"; in the next full run it skipped itself, as its check of the encoder failed). None was looked into further.
+- Each fix began with a test that failed. Findings 2, 3, 8 and 12 were also checked in the real window, shown off screen by a throwaway program kept outside the repository. Since `c3adf67` the window tests drive `MainWindow` itself. Two parts have no test that failed first: the pack-lanes part of finding 9, which only saves time, and the timeline's drawing of a dropped clip in finding 10, as a test can't drag in the window (WPF's mouse events in a test take their position from the real mouse). Nor does looking for proxies after an import only once no edit is being saved (`4ebead8`). The playback test (`d3669b9`) passed at once. The tracking jobs' tests (`8b5a19f`) passed at once, as the refusals were right; with the checks disabled, both fail.
 - **Left open inside the fixed findings** on 2026-11-15, all fixed since:
     - Finding 1: the lock per proxy across processes (`e6ca278`).
     - Finding 3: a refused redo stopped the redos after it (`cfc98cc`); the editor's other messages named `restore_backup` (`a923d47`).
     - Finding 8: an error of any other kind got the dialog with the stack trace (`03c9c4e`); `OpenProject` showed the project outside its `try`, and `Rebuild` set `_rebuilding` without a `finally` (`c3adf67`). Opening a project with each problem the validator names, in the real window, found two more that threw: fps 0 (`7441d77`) and a long clip at the closest zoom (`4756ed0`).
-- **Still open:**
-    - Finding 5: the direct path (up to 600 frames, with the matte computed) still compares the whole project. It builds the captions again on the project as it is, so their ids and order depend on all of it, and it waits only for the seconds of measuring.
-    - Finding 10: the media importer still saves on the window's thread, when an import finishes. While a save runs, Split, Delete, Pack lanes, a keyframe's diamond and Export ask to try again once it's saved, rather than waiting for it.
-    - Finding 11: closing the window still waits, bounded: 3 s for jobs, 5 s for an export to stop, and now up to 10 s for edits being saved.
-    - Section 5: cancelling a timeline drag on an outside change, and playback, aren't driven from the window tests.
-- **Test gaps** (section 5): all closed. The two-writer, undo and backup gaps on 2026-11-15; tests that drive `MainWindow` with `a432203` and the window tests of the later fixes; a job that saves after another program's change with `8b5a19f` (tracking) and `70b5532` (the caption-fade check).
+- **Left open on 2026-11-16** (at `f905af6`), all fixed since but the last:
+    - Finding 5: the direct path (up to 600 frames, with the matte computed) compared the whole project. It refuses now only on the changes the job refuses on, or when the captions come out different (`8c61b64`).
+    - Finding 10: the media importer saved on the window's thread (`4ebead8`). While a save ran, Split, Delete, Pack lanes, a keyframe's diamond and Export asked to try again once it was saved; they wait for it now (`d2b3cd5`).
+    - Finding 11: closing the window waited on its thread: up to 10 s for edits being saved, 5 s for an export to stop, 3 s for jobs. When something is left, the window is now hidden at once and closes once it's done, within the same bounds (`823e6ea`).
+    - Section 5: playback is driven from the window tests (`d3669b9`). Cancelling a timeline drag on an outside change, and the drawing of a dropped clip, aren't: the timeline takes the mouse's position and its left button from the real mouse (`e.GetPosition`, `e.LeftButton`), so a test can't drag without a seam in `TimelineView` that only tests would use. These fixes don't add one.
+- **Test gaps** (section 5): all closed, but for the timeline drag above. The two-writer, undo and backup gaps on 2026-11-15; tests that drive `MainWindow` with `a432203` and the window tests of the later fixes; a job that saves after another program's change with `8b5a19f` (tracking) and `70b5532` (the caption-fade check).
 
 ## Test run
 
@@ -146,7 +146,7 @@
 ### Finding 5: the caption-fade job refuses after any save, which the editor now makes likely
 
 - **Severity:** Should fix. It can wait for 0.2.x.
-- **Status:** Fixed in `70b5532`. The job refuses only when what the fades are measured on changed: a caption, what covers them, a layer they follow, an asset those use, the order they draw in, the canvas size, the frame rate or the camera; the refusal names it. The direct path (up to 600 frames, with the matte computed) still compares the whole project.
+- **Status:** Fixed in `70b5532`. The job refuses only when what the fades are measured on changed: a caption, what covers them, a layer they follow, an asset those use, the order they draw in, the canvas size, the frame rate or the camera; the refusal names it. Since `8c61b64` the direct path (up to 600 frames, with the matte computed) refuses on the same changes, or when the captions come out different.
 - **Where:** `src/ZeyoCut.Mcp/Tools/CaptionTools.cs:102`, `:185`, `:193` compare the whole project JSON, which now includes `revision`.
 - **What goes wrong:**
     1. Claude runs `generate_captions behindSubject=auto`. The captions are added and the matte is computed for minutes.
@@ -262,7 +262,7 @@
 ### Finding 10: saves run on the UI thread
 
 - **Severity:** Nice to have.
-- **Status:** Fixed in `19c0a58`. Edits, undo and redo are saved one after another on a worker thread, with "Saving…" in the status bar; until they're shown, the window leaves the session alone (the once-a-second check, the undo and redo menu items, Export). Closing the window waits up to 10 s for them, and a clip dropped on the timeline stays drawn where it was dropped until its save is shown. The media importer still saves on the window's thread.
+- **Status:** Fixed in `19c0a58`. Edits, undo and redo are saved one after another on a worker thread, with "Saving…" in the status bar; until they're shown, the window leaves the session alone (the once-a-second check, the undo and redo menu items, Export). Closing the window waits up to 10 s for them, and a clip dropped on the timeline stays drawn where it was dropped until its save is shown. Since `d2b3cd5` Split, Delete, Pack lanes, a keyframe's diamond and Export, given while a save runs, wait for it, and since `4ebead8` the media importer's edits are saved the same way.
 - **Where:** `src/ZeyoCut.Editor/MainWindow.xaml.cs:1600-1605`. It includes the wait for `project.lock`, up to 5 s with `Thread.Sleep` (`ProjectLock.cs:52`), the backup copy and the flush to disk.
 - **Measured:** 30 to 80 ms for one edit on projects of 0.3 to 1.7 MB, and 95 to 215 ms for a style change to a whole caption track.
 - The window freezes for up to 5 s if another program holds the lock that long. I found no ZeyoCut code that does.
@@ -272,7 +272,7 @@
 ### Finding 11: closing can block the window
 
 - **Severity:** Nice to have.
-- **Status:** Fixed in `c8fe3f0`: the preview is disposed on a worker thread. The bounded waits when the window closes (3 s for jobs, 5 s for an export) are left.
+- **Status:** Fixed in `c8fe3f0`: the preview is disposed on a worker thread. Since `823e6ea` the bounded waits when the window closes (up to 10 s for edits being saved, 5 s for an export to stop, 3 s for jobs) run with the window hidden. Closing a project, or opening another, while an export runs still waits up to 5 s for it to stop.
 - **Where:**
     - `src/ZeyoCut.Editor/FramePreview.cs:122-123` waits up to 5 s for the worker, then for the frame being drawn, with no limit.
     - `src/ZeyoCut.Editor/MainWindow.xaml.cs:368` waits 3 s for jobs.
@@ -302,7 +302,7 @@
 
 - **Finding 1 got through 565 green tests.** No test runs two writers on one proxy or one sound mix. `ProxyTests` covers one process. **Status:** added with `461a18b` (two proxies, two mixes, two exports to one file).
 - **No test for a job that saves after another program changed the project** (scenario d in PLAN.md). The refusals in `TrackEditor.SaveTrack` and `AddDetected` (`src/ZeyoCut.Core/Editing/TrackEditor.cs:36-76`) and the caption-fade check have none. **Status:** closed with `8b5a19f` (`track_object`, `reanchor_track` and `detect_and_track` saving after a second session's saves) and `70b5532` (the caption-fade check).
-- **Nothing in `ZeyoCut.Editor.Tests` exercises `MainWindow`:** saving on Enter and on focus loss, the kept-while-typing path of finding 2, cancelling a drag on an outside change, playback, closing. `EditorAcceptanceTests` drives `EditorDocument`, not the window. **Status:** closed with `a432203` (saving on Enter and on focus loss, the kept-while-typing path) and the window tests added with findings 6 to 11 (closing too). Cancelling a timeline drag on an outside change and playback aren't driven from window tests.
+- **Nothing in `ZeyoCut.Editor.Tests` exercises `MainWindow`:** saving on Enter and on focus loss, the kept-while-typing path of finding 2, cancelling a drag on an outside change, playback, closing. `EditorAcceptanceTests` drives `EditorDocument`, not the window. **Status:** closed with `a432203` (saving on Enter and on focus loss, the kept-while-typing path) and the window tests added with findings 6 to 11 (closing too), and playback with `d3669b9`. Cancelling a timeline drag on an outside change isn't driven from a window test (see the top).
 - **Undo:** a refusal is tested. What happens to the steps under a refused one isn't pinned either way (finding 3). **Status:** pinned with `48606f9`.
 - **Backups:** `TheEditorsBackupsDontPushOutTheServers` checks the two groups of 20, not that a copy of the other program's last version survives (finding 4). **Status:** added with `68297ce`.
 - **Solid:** the tests I read assert outcomes, not just that nothing throws. The hammer test checks all 100 edits and every revision. The operations are compared as JSON with what the tools' editors produce. Pack lanes compares draw orders before and after. I found none that would pass with the code wrong.
