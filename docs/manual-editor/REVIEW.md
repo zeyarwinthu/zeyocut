@@ -6,7 +6,8 @@
 - I did not drive the editor window. Findings about the window come from reading its code, and where possible from running the code underneath it.
 - **Possible** means I could not confirm it.
 - Not done: the Release publish, and a run of the three Whisper tests (see below).
-- **Status, 2026-11-15:** findings 1, 2, 3, 4, 8 and 12 have since been fixed on this branch, one commit each. Findings 5, 6, 7, 9, 10 and 11 are deferred. The findings below stand as written at the review; each has a Status line.
+- **Status, 2026-11-15:** findings 1, 2, 3, 4, 8 and 12 were fixed on this branch, one commit each, and findings 5, 6, 7, 9, 10 and 11 deferred.
+- **Status, 2026-11-16:** findings 5, 6, 7, 9, 10 and 11 are fixed too, one commit each, as are the items left open inside findings 1, 3 and 8, and the two open test gaps are closed. The findings below stand as written at the review; each has a Status line.
 
 ## Status of the findings
 
@@ -16,22 +17,27 @@
 | 2. A value typed before Claude's change is saved over it | Fixed | `204187d` |
 | 3. One refused undo blocks every step under it | Fixed | `48606f9` |
 | 4. No backup holds the project as Claude left it | Fixed | `68297ce` |
-| 5. The caption-fade job refuses after any save | Deferred | |
-| 6. The frame on screen isn't redrawn when a file changes without a save | Deferred | |
-| 7. The project's length can't be changed in the editor | Deferred | |
+| 5. The caption-fade job refuses after any save | Fixed | `70b5532` |
+| 6. The frame on screen isn't redrawn when a file changes without a save | Fixed | `c27de68` |
+| 7. The project's length can't be changed in the editor | Fixed | `80a28b3` |
 | 8. Errors the editor doesn't catch end in a stack-trace dialog | Fixed | `eadb15e` |
-| 9. The once-a-second check does work that grows with the project | Deferred | |
-| 10. Saves run on the UI thread | Deferred | |
-| 11. Closing can block the window | Deferred | |
+| 9. The once-a-second check does work that grows with the project | Fixed | `f5e354b` |
+| 10. Saves run on the UI thread | Fixed | `19c0a58` |
+| 11. Closing can block the window | Fixed | `c8fe3f0` |
 | 12. Ctrl+Z in a field can undo a project edit | Fixed | `8ae73d9` |
 
-- **Tests after the fixes** (at `eadb15e`): `ZeyoCut.Tests` 580 total, 0 failed, 0 skipped, with `WHISPER_PATH` set; `ZeyoCut.Editor.Tests` 73 total, 0 failed. Both `dotnet format --verify-no-changes` checks pass.
-- Each fix began with a test that failed. Findings 2, 3, 8 and 12 were also checked in the real window, shown off screen by a throwaway program kept outside the repository.
-- **Left open inside the fixed findings:**
-    - Finding 1: the lock per proxy across processes isn't built. Two programs can still each encode the same proxy; the one that finishes second drops its copy.
-    - Finding 3: only undo steps over a refused step. A refused redo still stops the redos after it.
-    - Finding 8: `Rebuild` still sets `_rebuilding` without a `finally`, and `OpenProject` still calls `ShowProject` outside its `try`; what made them throw is fixed. An error of any other kind still gets the dialog with the stack trace (`App.xaml.cs`).
-- **Test gaps** (section 5): the two-writer, undo and backup gaps are closed. A job that saves after another program's change, and tests that drive `MainWindow` itself, are still open.
+- **Tests after the fixes:** at `eadb15e`, `ZeyoCut.Tests` 580 total and `ZeyoCut.Editor.Tests` 73; at `8b5a19f`, `ZeyoCut.Tests` 591 total, 0 failed, 0 skipped, with `WHISPER_PATH` set, and `ZeyoCut.Editor.Tests` 88 total, 0 failed. Both `dotnet format --verify-no-changes` checks pass. One full run at `a432203` had `McpServerTests.ServerSaysWhichEncoderAnExportUsed` fail; it passed alone three times and in every full run since, and wasn't looked into further.
+- Each fix began with a test that failed. Findings 2, 3, 8 and 12 were also checked in the real window, shown off screen by a throwaway program kept outside the repository. Since `c3adf67` the window tests drive `MainWindow` itself. Two parts have no test that failed first: the pack-lanes part of finding 9, which only saves time, and the timeline's drawing of a dropped clip in finding 10, as a test can't drag in the window (WPF's mouse events in a test take their position from the real mouse). The tracking jobs' tests (`8b5a19f`) passed at once, as the refusals were right; with the checks disabled, both fail.
+- **Left open inside the fixed findings** on 2026-11-15, all fixed since:
+    - Finding 1: the lock per proxy across processes (`e6ca278`).
+    - Finding 3: a refused redo stopped the redos after it (`cfc98cc`); the editor's other messages named `restore_backup` (`a923d47`).
+    - Finding 8: an error of any other kind got the dialog with the stack trace (`03c9c4e`); `OpenProject` showed the project outside its `try`, and `Rebuild` set `_rebuilding` without a `finally` (`c3adf67`). Opening a project with each problem the validator names, in the real window, found two more that threw: fps 0 (`7441d77`) and a long clip at the closest zoom (`4756ed0`).
+- **Still open:**
+    - Finding 5: the direct path (up to 600 frames, with the matte computed) still compares the whole project. It builds the captions again on the project as it is, so their ids and order depend on all of it, and it waits only for the seconds of measuring.
+    - Finding 10: the media importer still saves on the window's thread, when an import finishes. While a save runs, Split, Delete, Pack lanes, a keyframe's diamond and Export ask to try again once it's saved, rather than waiting for it.
+    - Finding 11: closing the window still waits, bounded: 3 s for jobs, 5 s for an export to stop, and now up to 10 s for edits being saved.
+    - Section 5: cancelling a timeline drag on an outside change, and playback, aren't driven from the window tests.
+- **Test gaps** (section 5): all closed. The two-writer, undo and backup gaps on 2026-11-15; tests that drive `MainWindow` with `a432203` and the window tests of the later fixes; a job that saves after another program's change with `8b5a19f` (tracking) and `70b5532` (the caption-fade check).
 
 ## Test run
 
@@ -56,7 +62,7 @@
 ### Finding 1: both programs make the same proxy at once, and a damaged proxy stays
 
 - **Severity:** Must fix.
-- **Status:** Fixed in `461a18b`. Proxies, the preview sound mix and exports are written to partial files with unique names; a proxy or mix that is already there at rename time is kept; tests run two writers at once. The lock across processes ("Better" below) is deferred.
+- **Status:** Fixed in `461a18b`. Proxies, the preview sound mix and exports are written to partial files with unique names; a proxy or mix that is already there at rename time is kept; tests run two writers at once. The lock across processes ("Better" below) is built in `e6ca278`: a program holds `<proxy>.lock` while it makes a proxy, and another that wants the same one waits for it, then reads it, or makes it if the first one stopped.
 - **Where:**
     - `src/ZeyoCut.Render/Video/Proxies.cs:88` writes every proxy to the one name `<name>.partial.mp4`, with `-y` (`:63`).
     - `src/ZeyoCut.Render/Video/ProxyJobs.cs:17` and `:47` keep "being made" in memory, so it only stops a second job in the same process.
@@ -110,7 +116,7 @@
 ### Finding 3: one refused undo blocks every step under it
 
 - **Severity:** Should fix.
-- **Status:** Fixed in `48606f9`. After a refused undo, the next one steps over that step and names it, in the editor and in the server's `undo`. The editor's message no longer names `restore_backup`.
+- **Status:** Fixed in `48606f9`. After a refused undo, the next one steps over that step and names it, in the editor and in the server's `undo`. The editor's message no longer names `restore_backup`. Since `cfc98cc` a refused redo is stepped over the same way, and since `a923d47` the editor's other messages name the backups folder, not `restore_backup`.
 - **Where:** `src/ZeyoCut.Core/Editing/ProjectSession.cs:204-227`. `Undo` always takes the last step; when `PutBack` refuses (`:379-394`) the step stays on top and nothing can skip or drop it.
 - **What goes wrong:**
     1. In the editor: move `title` (step A), then change the text of `sub` (step B).
@@ -140,7 +146,7 @@
 ### Finding 5: the caption-fade job refuses after any save, which the editor now makes likely
 
 - **Severity:** Should fix. It can wait for 0.2.x.
-- **Status:** Deferred.
+- **Status:** Fixed in `70b5532`. The job refuses only when what the fades are measured on changed: a caption, what covers them, a layer they follow, an asset those use, the order they draw in, the canvas size, the frame rate or the camera; the refusal names it. The direct path (up to 600 frames, with the matte computed) still compares the whole project.
 - **Where:** `src/ZeyoCut.Mcp/Tools/CaptionTools.cs:102`, `:185`, `:193` compare the whole project JSON, which now includes `revision`.
 - **What goes wrong:**
     1. Claude runs `generate_captions behindSubject=auto`. The captions are added and the matte is computed for minutes.
@@ -179,7 +185,7 @@
 ### Finding 6: the frame on screen isn't redrawn when a file changes without a save
 
 - **Severity:** Nice to have.
-- **Status:** Deferred.
+- **Status:** Fixed in `c27de68`. Once a second, while paused, the editor makes the frame's key from the files as they are, and draws the frame again only when no frame is in memory under that key.
 - **Where:** `src/ZeyoCut.Render/Export/FrameKeys.cs:177-187` keeps each file's stamp for the life of the keys. `src/ZeyoCut.Editor/FramePreview.cs:59-63` makes new keys only when asked for a frame of a new project object. Nothing asks again when the server finishes an AI matte.
 - **What goes wrong:**
     1. Claude runs `remove_background` with an AI method. The editor draws the clip with its background, as it should while the matte is computed.
@@ -192,7 +198,7 @@
 ### Finding 7: the project's length can't be changed in the editor
 
 - **Severity:** Nice to have.
-- **Status:** Deferred.
+- **Status:** Fixed in `80a28b3`. The project inspector's Duration is a number field, saved as `update_project` and not over another program's change, and the lanes are shaded past the end.
 - **Where:** `src/ZeyoCut.Editor/MainWindow.xaml.cs:658-674` shows the project's rows as text only. `src/ZeyoCut.Editor/TimelineView.cs:904-906` shades only the ruler past the end.
 - **What goes wrong:**
     - Delete or shorten the last clip and the duration stays, so the export ends with empty frames.
@@ -213,7 +219,7 @@
 ### Finding 8: errors the editor doesn't catch end in a stack-trace dialog
 
 - **Severity:** Should fix (small). It can wait for 0.2.x.
-- **Status:** Fixed in `eadb15e`. IO errors go to the status bar, a project's problems are named there when it opens, and the media list, the asset rows and the proxy jobs tolerate a file outside `assets\`. One line below was wrong: for footage over 2560 px with such a file, the server's `open_project` answered with an error too; it now lists the problem.
+- **Status:** Fixed in `eadb15e`. IO errors go to the status bar, a project's problems are named there when it opens, and the media list, the asset rows and the proxy jobs tolerate a file outside `assets\`. One line below was wrong: for footage over 2560 px with such a file, the server's `open_project` answered with an error too; it now lists the problem. What was left open is fixed in `03c9c4e`, `c3adf67`, `7441d77` and `4756ed0` (see the top).
 - **Where:**
     - `src/ZeyoCut.Core/Editing/EditorDocument.cs:64` and `:123` catch only `ZeyoCutException`; `Refresh` (`:85`) catches nothing.
     - `src/ZeyoCut.Core/Editing/ProjectStore.cs:106` rethrows `IOException` and `UnauthorizedAccessException` after 5 tries. `ProjectLock.cs:44` catches only sharing violations.
@@ -235,7 +241,7 @@
 ### Finding 9: the once-a-second check does work that grows with the project
 
 - **Severity:** Nice to have.
-- **Status:** Deferred.
+- **Status:** Fixed in `f5e354b`, as proposed below: the project is copied only when the check took another program's change, the Recent menu is built when it opens, and the pack-lanes state is worked out once per `Rebuild`.
 - **Where:**
     - `src/ZeyoCut.Core/Editing/EditorDocument.cs:141`: `Take` copies the whole project on every `Refresh`, also when nothing changed.
     - `src/ZeyoCut.Editor/MainWindow.xaml.cs:856-886`: the poll then rebuilds the Recent menu, with up to 10 `File.Exists`.
@@ -256,7 +262,7 @@
 ### Finding 10: saves run on the UI thread
 
 - **Severity:** Nice to have.
-- **Status:** Deferred.
+- **Status:** Fixed in `19c0a58`. Edits, undo and redo are saved one after another on a worker thread, with "Saving…" in the status bar; until they're shown, the window leaves the session alone (the once-a-second check, the undo and redo menu items, Export). Closing the window waits up to 10 s for them, and a clip dropped on the timeline stays drawn where it was dropped until its save is shown. The media importer still saves on the window's thread.
 - **Where:** `src/ZeyoCut.Editor/MainWindow.xaml.cs:1600-1605`. It includes the wait for `project.lock`, up to 5 s with `Thread.Sleep` (`ProjectLock.cs:52`), the backup copy and the flush to disk.
 - **Measured:** 30 to 80 ms for one edit on projects of 0.3 to 1.7 MB, and 95 to 215 ms for a style change to a whole caption track.
 - The window freezes for up to 5 s if another program holds the lock that long. I found no ZeyoCut code that does.
@@ -266,7 +272,7 @@
 ### Finding 11: closing can block the window
 
 - **Severity:** Nice to have.
-- **Status:** Deferred.
+- **Status:** Fixed in `c8fe3f0`: the preview is disposed on a worker thread. The bounded waits when the window closes (3 s for jobs, 5 s for an export) are left.
 - **Where:**
     - `src/ZeyoCut.Editor/FramePreview.cs:122-123` waits up to 5 s for the worker, then for the frame being drawn, with no limit.
     - `src/ZeyoCut.Editor/MainWindow.xaml.cs:368` waits 3 s for jobs.
@@ -295,8 +301,8 @@
 ## 5. Tests
 
 - **Finding 1 got through 565 green tests.** No test runs two writers on one proxy or one sound mix. `ProxyTests` covers one process. **Status:** added with `461a18b` (two proxies, two mixes, two exports to one file).
-- **No test for a job that saves after another program changed the project** (scenario d in PLAN.md). The refusals in `TrackEditor.SaveTrack` and `AddDetected` (`src/ZeyoCut.Core/Editing/TrackEditor.cs:36-76`) and the caption-fade check have none. **Status:** open.
-- **Nothing in `ZeyoCut.Editor.Tests` exercises `MainWindow`:** saving on Enter and on focus loss, the kept-while-typing path of finding 2, cancelling a drag on an outside change, playback, closing. `EditorAcceptanceTests` drives `EditorDocument`, not the window. **Status:** open. The fixes added tests for the code under the window (`InspectorTests`, `PreviewDragTests`), not for the window itself.
+- **No test for a job that saves after another program changed the project** (scenario d in PLAN.md). The refusals in `TrackEditor.SaveTrack` and `AddDetected` (`src/ZeyoCut.Core/Editing/TrackEditor.cs:36-76`) and the caption-fade check have none. **Status:** closed with `8b5a19f` (`track_object`, `reanchor_track` and `detect_and_track` saving after a second session's saves) and `70b5532` (the caption-fade check).
+- **Nothing in `ZeyoCut.Editor.Tests` exercises `MainWindow`:** saving on Enter and on focus loss, the kept-while-typing path of finding 2, cancelling a drag on an outside change, playback, closing. `EditorAcceptanceTests` drives `EditorDocument`, not the window. **Status:** closed with `a432203` (saving on Enter and on focus loss, the kept-while-typing path) and the window tests added with findings 6 to 11 (closing too). Cancelling a timeline drag on an outside change and playback aren't driven from window tests.
 - **Undo:** a refusal is tested. What happens to the steps under a refused one isn't pinned either way (finding 3). **Status:** pinned with `48606f9`.
 - **Backups:** `TheEditorsBackupsDontPushOutTheServers` checks the two groups of 20, not that a copy of the other program's last version survives (finding 4). **Status:** added with `68297ce`.
 - **Solid:** the tests I read assert outcomes, not just that nothing throws. The hammer test checks all 100 edits and every revision. The operations are compared as JSON with what the tools' editors produce. Pack lanes compares draw orders before and after. I found none that would pass with the code wrong.
@@ -310,9 +316,9 @@
 
 ## Can wait for 0.2.x
 
-- Finding 5: compare only the caption and cover layers before adding the fades. **Deferred.**
+- Finding 5: compare only the caption and cover layers before adding the fades. **Fixed** (`70b5532`).
 - Finding 8: catch IO errors in the editor's saves; validate on open. **Fixed** (`eadb15e`).
-- Finding 6: redraw the paused frame when a matte finishes. **Deferred.**
-- Finding 7: a Duration field, and shading past the end on the lanes. **Deferred.**
-- Findings 9 to 12: the once-a-second work, saves off the UI thread, closing without blocking, Ctrl+Z in a field. Finding 12 is **fixed** (`8ae73d9`); findings 9, 10 and 11 are **deferred.**
-- Tests: a job that saves after an outside change, and tests around `MainWindow`'s save paths. **Open.**
+- Finding 6: redraw the paused frame when a matte finishes. **Fixed** (`c27de68`).
+- Finding 7: a Duration field, and shading past the end on the lanes. **Fixed** (`80a28b3`).
+- Findings 9 to 12: the once-a-second work, saves off the UI thread, closing without blocking, Ctrl+Z in a field. All **fixed**: 9 (`f5e354b`), 10 (`19c0a58`), 11 (`c8fe3f0`), 12 (`8ae73d9`).
+- Tests: a job that saves after an outside change, and tests around `MainWindow`'s save paths. **Done** (`8b5a19f`, `a432203`).
