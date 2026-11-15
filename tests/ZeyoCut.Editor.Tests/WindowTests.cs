@@ -65,4 +65,31 @@ public class WindowTests
         TestWindow.Press(window, Key.Left);
         Assert.Equal("00:00:00:00", Text(window, "TimecodeText"));
     });
+
+    [Fact]
+    public void ALongClipIsDrawnAtTheClosestZoom() => TestWindow.Run("window-long-clip", (window, folder) =>
+    {
+        // Two hours (the longest a project can be) at 48 px a frame is 10 million px, past what WPF
+        // lays text out in.
+        var project = TestFiles.Project(duration: 7200);
+        ProjectEditor.AddTextLayer(project, new TextLayerOptions { Id = "title", Text = "A talk", Start = 0, End = 7200 });
+        var directory = Path.Combine(folder, "talk");
+        ProjectSession.Create(directory, project);
+        window.OpenProject(directory);
+
+        var timeline = (TimelineView)window.FindName("Timeline");
+        for (var i = 0; i < 40 && timeline.PixelsPerSecond < 30 * 48; i++)
+        {
+            TestWindow.Press(window, Key.Add);
+        }
+
+        Assert.Equal(30 * 48, timeline.PixelsPerSecond);
+
+        // From its start, from its end and from inside.
+        foreach (var offset in new[] { 0, timeline.MaxHorizontalOffset, timeline.MaxHorizontalOffset / 3 })
+        {
+            timeline.HorizontalOffset = offset;
+            TestWindow.Pump();
+        }
+    });
 }

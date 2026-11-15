@@ -833,6 +833,9 @@ public sealed class TimelineView : FrameworkElement
             right = box.X - 2;
         }
 
+        // The name is laid out no wider than the part of the clip on screen: a long clip zoomed in is
+        // wider than WPF lays text out in.
+        right = Math.Min(right, width - 4);
         var left = Math.Max(rect.X + 5, HeaderWidth + 4);
         if (right - left > 14)
         {
