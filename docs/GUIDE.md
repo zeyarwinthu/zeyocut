@@ -3086,7 +3086,7 @@ captions don't follow later cuts; run generate_captions again after editing (it 
     - the cutout fades out over 0.25 s, finished when such a span starts, and back in over 0.25 s after it ends;
     - spans less than 0.5 s apart join, so the person doesn't flicker over the text;
     - with a clip that is its own subject there is nothing to fade, so a caption it would cover too much draws in front of it for its whole time.
-- **Up to 600 caption frames, with the matte computed,** `auto` answers directly. Otherwise the captions are added at once (behind the person), and a background job (`captions_N`) waits for the matte, measures them and adds the fades as their own undo step. If the project changes in the meantime, the job refuses; run the tool again.
+- **Up to 600 caption frames, with the matte computed,** `auto` answers directly. Otherwise the captions are added at once (behind the person), and a background job (`captions_N`) waits for the matte, measures them and adds the fades as their own undo step. If the captions or what covers them change in the meantime (the cutout, the clip it follows and its footage, a layer they move with, the order they draw in, the canvas size, the frame rate or the camera), the job refuses; run the tool again. An edit to another layer, in the editor or with a tool, doesn't stop it.
 
 The examples use the presenter from [Text behind the subject](#text-behind-the-subject), now talking: a 13 s clip (`presenter`, from the asset `talk`) with a four-sentence transcript.
 
@@ -3104,7 +3104,7 @@ put the captions behind the subject of 'presenter': cutout 'captions_subject' dr
 - the cutout follows the clip that plays 'talk' ('presenter'): its timing, trims, speed, moves, effects and keyframes; its own settings are only name, zIndex, visible and opacity
 - the matte is computed in the background as matte_1: 318 frames of clip 'talk' with Robust Video Matting (MobileNetV3) on the CPU, about 40 s (a rough guess; system_check measures this computer)
 - until it is done, the subject isn't drawn over the text in previews yet (the text shows in front) and exports refuse; poll get_job_status with jobId "matte_1"
-- auto: 191 caption frames are measured in the background as captions_1 once matte_1 is done, and the fades are added as their own undo step (an edit made meanwhile makes it refuse, so run generate_captions again then); until then the captions are behind the subject the whole time; poll get_job_status with jobId "captions_1"
+- auto: 191 caption frames are measured in the background as captions_1 once matte_1 is done, and the fades are added as their own undo step (an edit made meanwhile to the captions or to what covers them makes it refuse, so run generate_captions again then); until then the captions are behind the subject the whole time; poll get_job_status with jobId "captions_1"
 - check it with render_frame (layerId="captions_subject" checkerboard=true shows the subject alone; refine_matte shrinks or softens its edge); text_occlusion measures how much of a caption it covers
 ```
 `bold_center` puts the captions on the presenter's face, so each one is covered too much somewhere and shows in front for its whole time:

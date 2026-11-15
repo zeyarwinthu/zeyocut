@@ -4,6 +4,7 @@ using ZeyoCut.Core;
 using ZeyoCut.Core.Animation;
 using ZeyoCut.Core.Editing;
 using ZeyoCut.Core.Model;
+using ZeyoCut.Core.Serialization;
 using ZeyoCut.Tests.TestSupport;
 
 namespace ZeyoCut.Tests.Core;
@@ -345,5 +346,57 @@ public class CaptionTests
         Assert.Empty(((CutoutLayer)project.FindLayer("captions_subject")!).Opacity.Keyframes);
         Assert.Equal(["auto: the captions aren't shown in any frame, so there was nothing to measure"], CaptionBuilder.Auto(project, result.Subject!, [], 35));
         Assert.Empty(ProjectValidator.Validate(project));
+    }
+
+    [Fact]
+    public void TheFadesAreRefusedOnlyWhenWhatTheyMeasureChanged()
+    {
+        var project = WithTalk();
+        project.Assets.Add(new Asset { Id = "logo", Type = AssetType.Image, File = "assets/logo.png", Width = 8, Height = 8 });
+        ProjectEditor.AddImageLayer(project, new ImageLayerOptions { Id = "badge", Drawings = new Dictionary<string, string> { ["normal"] = "logo" } });
+        ProjectEditor.AddTextLayer(project, new TextLayerOptions { Id = "title", Text = "Title" });
+        var result = CaptionBuilder.Generate(project, Talk(), new CaptionOptions { AssetId = "talk", BehindSubject = BehindSubject.Auto }, null);
+        var first = result.LayerIds[0];
+        Assert.Equal(["captions_subject"], result.Subject!.Cover);
+
+        string? After(Action<Project> edit)
+        {
+            var now = ProjectJson.Clone(project);
+            edit(now);
+            return CaptionBuilder.FadesChanged(project, now, result);
+        }
+
+        // An edit to another layer, or a save that changed nothing but the revision (undo, then redo).
+        Assert.Null(After(p => p.Revision += 2));
+        Assert.Null(After(p => ((TextLayer)p.FindLayer("title")!).X = new AnimatedValue(300)));
+        Assert.Null(After(p => ProjectEditor.AddTextLayer(p, new TextLayerOptions { Id = "note", Text = "Note" })));
+        Assert.Null(After(p => p.Assets.Single(a => a.Id == "logo").Width = 16));
+        Assert.Null(After(p => p.Duration = 20));
+        Assert.Null(After(p => p.BackgroundColor = "#202020"));
+        Assert.Null(After(p =>
+        {
+            var title = p.FindLayer("title")!;
+            p.Layers.Remove(title);
+            p.Layers.Add(title);
+        }));
+
+        // The captions, their group, the cutout over them, the clip it follows and its footage.
+        Assert.Equal($"layer '{first}'", After(p => ((TextLayer)p.FindLayer(first)!).Text = "Hello"));
+        Assert.Equal("layer 'captions'", After(p => ((ImageLayer)p.FindLayer("captions")!).Y = new AnimatedValue(-200)));
+        Assert.Equal("layer 'captions_subject'", After(p => ((CutoutLayer)p.FindLayer("captions_subject")!).Opacity = new AnimatedValue(0.5)));
+        Assert.Equal("layer 'talk'", After(p => ((VideoLayer)p.FindLayer("talk")!).TrimIn = 1));
+        Assert.Equal("asset 'talk'", After(p => p.Assets.Single(a => a.Id == "talk").Width = 1280));
+        Assert.Equal($"layer '{first}'", After(p => ProjectEditor.RemoveLayer(p, first, withChildren: false)));
+
+        // The order they draw in, the canvas, the frame rate and the camera.
+        Assert.Equal("the order of the layers", After(p =>
+        {
+            var cutout = p.FindLayer("captions_subject")!;
+            p.Layers.Remove(cutout);
+            p.Layers.Insert(0, cutout);
+        }));
+        Assert.Equal("the canvas size", After(p => p.Width = 1280));
+        Assert.Equal("the frame rate", After(p => p.Fps = 25));
+        Assert.Equal("the camera", After(p => p.Camera = new Camera { Zoom = new AnimatedValue(2) }));
     }
 }

@@ -124,9 +124,9 @@ public static class CaptionTools
 
         if (mode == BehindSubject.Auto)
         {
-            var job = StartFades(state, result, ProjectJson.Serialize(after), waits.Distinct().ToList(), threshold, frames);
+            var job = StartFades(state, result, after, waits.Distinct().ToList(), threshold, frames);
             var wait = waits.Count > 0 ? $" once {string.Join(", ", waits.Select(w => w.Id).Distinct())} {(waits.Distinct().Count() == 1 ? "is" : "are")} done" : "";
-            lines.Add($"auto: {frames} caption frames are measured in the background as {job.Id}{wait}, and the fades are added as their own undo step (an edit made meanwhile makes it refuse, so run generate_captions again then); until then the captions are behind the subject the whole time; poll get_job_status with jobId \"{job.Id}\"");
+            lines.Add($"auto: {frames} caption frames are measured in the background as {job.Id}{wait}, and the fades are added as their own undo step (an edit made meanwhile to the captions or to what covers them makes it refuse, so run generate_captions again then); until then the captions are behind the subject the whole time; poll get_job_status with jobId \"{job.Id}\"");
         }
 
         return Reply(result, lines, unused);
@@ -156,8 +156,9 @@ public static class CaptionTools
     }
 
     // behindSubject=auto in the background: waits for the mattes, measures the captions and adds the
-    // fades as one undo step, refused if the project changed since the captions were added.
-    private static BackgroundJob StartFades(EditorState state, CaptionResult result, string added, List<BackgroundJob> waits, double threshold, int frames)
+    // fades as one undo step, refused if what they are measured on changed since the captions were
+    // added (CaptionBuilder.FadesChanged); an edit to another layer meanwhile doesn't count.
+    private static BackgroundJob StartFades(EditorState state, CaptionResult result, Project added, List<BackgroundJob> waits, double threshold, int frames)
     {
         var session = state.Session;
         var directory = session.Directory;
@@ -182,17 +183,17 @@ public static class CaptionTools
                     $"the matte isn't computed ({string.Join(", ", pending.Select(MatteFiles.Describe))}{(failed.Count > 0 ? "; " + string.Join("; ", failed) : "")}), so the fades weren't added; run generate_captions again");
             }
 
-            if (ProjectJson.Serialize(project) != added)
+            if (CaptionBuilder.FadesChanged(added, project, result) is { } changed)
             {
-                throw new ZeyoCutException("the project changed after the captions were added, so the fades weren't added (the captions stay behind the subject the whole time); run generate_captions again");
+                throw new ZeyoCutException($"{changed} changed after the captions were added, so the fades weren't added (the captions stay behind the subject the whole time); run generate_captions again");
             }
 
             var measured = Measure(state, directory, project, result, p => job.Report(p, "measuring the captions"), ct);
             var lines = session.Mutate("generate_captions auto fades", p =>
             {
-                if (ProjectJson.Serialize(p) != added)
+                if (CaptionBuilder.FadesChanged(added, p, result) is { } changed)
                 {
-                    throw new ZeyoCutException("the project changed while the captions were measured, so the fades weren't added (the captions stay behind the subject the whole time); run generate_captions again");
+                    throw new ZeyoCutException($"{changed} changed while the captions were measured, so the fades weren't added (the captions stay behind the subject the whole time); run generate_captions again");
                 }
 
                 return CaptionBuilder.Auto(p, subject, measured, threshold);

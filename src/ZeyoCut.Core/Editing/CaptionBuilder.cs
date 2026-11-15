@@ -356,6 +356,58 @@ public static class CaptionBuilder
         return [$"auto: {found}; {names} would be covered more than {Num(threshold)}%, so {(front.Count == 1 ? "it draws" : "they draw")} in front of {shown} (a caption can't fade there, since the subject is its own layer); the other captions stay behind it"];
     }
 
+    // What the behindSubject=auto fades are measured on that differs between the project the captions
+    // were added to and the project now: a caption, what covers them, a layer they follow (parents,
+    // the clips a cutout follows), an asset those use, the order they draw in, the canvas size, the
+    // frame rate or the camera. Null when none of it changed, as after an edit to another layer or a
+    // save that changed nothing but the revision.
+    public static string? FadesChanged(Project added, Project now, CaptionResult result)
+    {
+        var subject = result.Subject!;
+        var measured = new HashSet<string>(StringComparer.Ordinal);
+        var pending = new Stack<string>([.. result.LayerIds, .. subject.Cover, .. subject.Clips]);
+        while (pending.TryPop(out var id))
+        {
+            if (!measured.Add(id))
+            {
+                continue;
+            }
+
+            foreach (var layer in new[] { added.FindLayer(id), now.FindLayer(id) }.OfType<Layer>())
+            {
+                if (layer.ParentId is { } parent)
+                {
+                    pending.Push(parent);
+                }
+
+                if (layer is CutoutLayer cutout)
+                {
+                    cutout.Sources.ForEach(pending.Push);
+                }
+            }
+        }
+
+        foreach (var delta in ProjectDiff.Deltas(added, now))
+        {
+            var changed = delta.Kind switch
+            {
+                "settings" when delta.Id is "width" or "height" => "the canvas size",
+                "settings" when delta.Id == "fps" => "the frame rate",
+                "camera" => "the camera",
+                "layer" when measured.Contains(delta.Id) => $"layer '{delta.Id}'",
+                "asset" when ProjectChecker.Users(added, delta.Id).Concat(ProjectChecker.Users(now, delta.Id)).Any(measured.Contains) => $"asset '{delta.Id}'",
+                _ => null,
+            };
+            if (changed is not null)
+            {
+                return changed;
+            }
+        }
+
+        var order = added.Layers.Select(l => l.Id).Where(measured.Contains);
+        return order.SequenceEqual(now.Layers.Select(l => l.Id).Where(measured.Contains)) ? null : "the order of the layers";
+    }
+
     // The spans where some caption is covered more than the threshold: runs of such frames, joined
     // when less than MergeGap apart.
     public static List<FrontSpan> FrontSpans(IReadOnlyList<CaptionCover> over, int fps, double duration)

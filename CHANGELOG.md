@@ -94,6 +94,9 @@ when they open.
 - `open_project` on a project whose footage over 2560 px names a file outside `assets\` lists that
   as a problem, as for any other asset. Before, the reply was an error, although the project had
   been opened.
+- `generate_captions behindSubject=auto` adds its fades after an edit made meanwhile to another
+  layer, in the editor or with a tool. Only a change to the captions or to what covers them makes
+  its background job refuse. Before, any save did, even one that changed nothing.
 
 - A release's `SHA256SUMS.txt` has Unix line endings, so `sha256sum -c` can check the downloads too,
   not only PowerShell.

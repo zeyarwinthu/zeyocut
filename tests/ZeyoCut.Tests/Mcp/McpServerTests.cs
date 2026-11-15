@@ -1292,7 +1292,10 @@ public class McpServerTests
         var auto = await CallOk(client, "generate_captions", new() { ["assetId"] = "screen2", ["behindSubject"] = "auto" }, ct);
         Assert.Contains("\nput the captions behind the subject of 'talk': cutout 'captions_subject' draws the subject again above them, cut out with aiVideo (zIndex ", auto);
         Assert.Contains("\n- the matte is computed in the background as matte_3: 10 frames of clip 'screen2' with Robust Video Matting (MobileNetV3) on the CPU, about 2 s (a rough guess; system_check measures this computer)\n", auto);
-        Assert.Matches(@"\n- auto: \d+ caption frames are measured in the background as captions_1 once matte_3 is done, and the fades are added as their own undo step \(an edit made meanwhile makes it refuse, so run generate_captions again then\); until then the captions are behind the subject the whole time; poll get_job_status with jobId ""captions_1""\n", auto);
+        Assert.Matches(@"\n- auto: \d+ caption frames are measured in the background as captions_1 once matte_3 is done, and the fades are added as their own undo step \(an edit made meanwhile to the captions or to what covers them makes it refuse, so run generate_captions again then\); until then the captions are behind the subject the whole time; poll get_job_status with jobId ""captions_1""\n", auto);
+
+        // An edit to another layer meanwhile (as in the editor) doesn't stop the fades.
+        await CallOk(client, "update_layer", new() { ["layerId"] = "label", ["changes"] = new Dictionary<string, object?> { ["x"] = 10 } }, ct);
         var fades = await Finished("captions_1");
         Assert.Contains("captions_1: completed", fades);
         Assert.Contains("auto: the subject covers up to ", fades);
@@ -1302,11 +1305,12 @@ public class McpServerTests
         var meanwhile = await CallOk(client, "generate_captions", new() { ["assetId"] = "screen3", ["behindSubject"] = "auto", ["groupId"] = "subs" }, ct);
         Assert.Contains("cutout 'subs_subject'", meanwhile);
         Assert.Contains("as captions_2 once matte_4 is done", meanwhile);
-        await CallOk(client, "update_layer", new() { ["layerId"] = "label", ["changes"] = new Dictionary<string, object?> { ["x"] = 10 } }, ct);
+        await CallOk(client, "update_layer", new() { ["layerId"] = "subs_1", ["changes"] = new Dictionary<string, object?> { ["x"] = 10 } }, ct);
         var refusedFades = await Finished("captions_2");
         Assert.Contains("failed", refusedFades);
+        Assert.Contains("layer 'subs_1' changed ", refusedFades);
         Assert.Contains("so the fades weren't added (the captions stay behind the subject the whole time); run generate_captions again", refusedFades);
-        Assert.StartsWith("undid: update_layer label (", await CallOk(client, "undo", new(), ct));
+        Assert.StartsWith("undid: update_layer subs_1 (", await CallOk(client, "undo", new(), ct));
         var direct = await CallOk(client, "generate_captions", new() { ["assetId"] = "screen3", ["behindSubject"] = "auto", ["groupId"] = "subs" }, ct);
         Assert.Matches(@"\n- clip 'screen3': the matte is already computed: assets/screen3\.matte-aivideo-[0-9a-f]{8}\.mkv\n- auto: the subject covers up to ", direct);
         Assert.DoesNotContain("get_job_status", direct);
