@@ -286,6 +286,93 @@ public class WindowTests
 
     private static TextLayer Title(string directory) => (TextLayer)ProjectStore.Load(directory).FindLayer("title")!;
 
+    // A title from 0 to 1 s in a project 2 s long, open with the title selected: the timeline, and the
+    // point in the middle of the title's lane at a time.
+    private static (string Directory, TimelineView Timeline, Func<double, Point> At) ShortTitle(MainWindow window, string folder)
+    {
+        var project = TestFiles.Project();
+        ProjectEditor.AddTextLayer(project, new TextLayerOptions { Id = "title", Text = "Hi", Start = 0, End = 1 });
+        var directory = Path.Combine(folder, "short-title");
+        ProjectSession.Create(directory, project);
+        window.OpenProject(directory);
+        window.SelectLayer("title");
+        TestWindow.Pump();
+        var timeline = (TimelineView)window.FindName("Timeline");
+        Assert.Contains(timeline.Lanes[0].Clips, c => c.LayerId == "title");
+        return (directory, timeline, time => new Point(
+            TimelineView.HeaderWidth + time * timeline.PixelsPerSecond - timeline.HorizontalOffset,
+            TimelineView.RulerHeight + TimelineView.LaneHeight(timeline.Lanes[0]) / 2));
+    }
+
+    // A clip being dragged when another program moves it is let go of: letting go of the mouse then
+    // saves nothing, and the other program's change stays.
+    [Fact]
+    public void AClipBeingDraggedIsLetGoWhenAnotherProgramMovesIt() => TestWindow.Run("window-drag-overtaken", (window, folder) =>
+    {
+        var (directory, timeline, at) = ShortTitle(window, folder);
+        timeline.Press(at(0.5));
+        timeline.MoveTo(at(1), pressed: true);
+        Assert.True(timeline.Dragging);
+
+        ProjectSession.Open(directory).Mutate("update_layer title", p =>
+        {
+            var title = p.FindLayer("title")!;
+            (title.Start, title.End) = (0.25, 1.25);
+            return 0;
+        });
+        for (var i = 0; i < 300 && timeline.Dragging; i++)
+        {
+            TestWindow.Pump(10);
+        }
+
+        Assert.False(timeline.Dragging);
+        Assert.StartsWith("Another program saved: ", Text(window, "MessageText"));
+        timeline.MoveTo(at(1.5), pressed: true);
+        timeline.Release();
+        WaitForSaves(window);
+        Assert.Equal((0.25, 2), (Title(directory).Start, ProjectStore.Load(directory).Revision));
+        Assert.Equal("Saved · revision 2", Text(window, "SaveStatus"));
+    });
+
+    // A clip let go while another program is saving stays drawn as it was while dragged (faded where
+    // it was, outlined where it goes) until its edit is saved after that, then is drawn where it went.
+    [Fact]
+    public void ADroppedClipIsDrawnWhereItWentWhileItsBeingSaved() => TestWindow.Run("window-drag-landing", (window, folder) =>
+    {
+        var (directory, timeline, at) = ShortTitle(window, folder);
+        Color Pixel(double time)
+        {
+            var bitmap = new RenderTargetBitmap((int)timeline.ActualWidth, (int)timeline.ActualHeight, 96, 96, PixelFormats.Pbgra32);
+            bitmap.Render(timeline);
+            var point = at(time);
+            var pixel = new byte[4];
+            bitmap.CopyPixels(new Int32Rect((int)point.X, (int)point.Y, 1, 1), pixel, 4, 0);
+            return Color.FromArgb(pixel[3], pixel[2], pixel[1], pixel[0]);
+        }
+
+        var (clip, empty) = (Pixel(0.75), Pixel(1.75));
+        Assert.NotEqual(clip, empty);
+
+        // Dragged half a second later, to 0.5 to 1.5 s, while another program saves.
+        var held = ProjectLock.Acquire(directory, TimeSpan.FromSeconds(1));
+        timeline.Press(at(0.5));
+        timeline.MoveTo(at(1), pressed: true);
+        var (goes, was) = (Pixel(1.25), Pixel(0.25));
+        Assert.NotEqual(empty, goes);
+        Assert.NotEqual(clip, was);
+
+        timeline.Release();
+        TestWindow.Pump(300);
+        Assert.Equal("Saving…", Text(window, "SaveStatus"));
+        Assert.Equal((goes, was), (Pixel(1.25), Pixel(0.25)));
+
+        held.Dispose();
+        WaitForSaves(window);
+        Assert.Equal(0.5, Title(directory).Start);
+        Assert.Equal("Saved · revision 2", Text(window, "SaveStatus"));
+        Assert.Equal((clip, empty), (Pixel(1.25), Pixel(0.25)));
+    });
+
     [Fact]
     public void AFieldIsSavedOnEnterAndWhenTheKeyboardLeavesIt() => TestWindow.Run("window-fields", (window, folder) =>
     {

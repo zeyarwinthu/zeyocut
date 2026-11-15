@@ -294,9 +294,16 @@ public sealed class TimelineView : FrameworkElement
     protected override void OnMouseLeftButtonDown(MouseButtonEventArgs e)
     {
         base.OnMouseLeftButtonDown(e);
-        Focus();
-        var point = e.GetPosition(this);
         e.Handled = true;
+        Press(e.GetPosition(this));
+    }
+
+    // What pressing the left button at a point, moving the mouse (with the button held or not) and
+    // letting go of it do. The mouse's events call them, and so can a test: WPF takes an event's
+    // position and buttons from the real mouse.
+    public void Press(Point point)
+    {
+        Focus();
         if (point.X < HeaderWidth)
         {
             return;
@@ -350,7 +357,11 @@ public sealed class TimelineView : FrameworkElement
     protected override void OnMouseMove(MouseEventArgs e)
     {
         base.OnMouseMove(e);
-        var point = e.GetPosition(this);
+        MoveTo(e.GetPosition(this), e.LeftButton == MouseButtonState.Pressed);
+    }
+
+    public void MoveTo(Point point, bool pressed)
+    {
         if (_scrubbing)
         {
             SeekTo(point.X);
@@ -358,7 +369,7 @@ public sealed class TimelineView : FrameworkElement
             return;
         }
 
-        if (_drag is { } drag && e.LeftButton == MouseButtonState.Pressed)
+        if (_drag is { } drag && pressed)
         {
             if (!drag.Active && Math.Abs(point.X - drag.Pressed.X) < DragThreshold && Math.Abs(point.Y - drag.Pressed.Y) < DragThreshold)
             {
@@ -386,6 +397,11 @@ public sealed class TimelineView : FrameworkElement
     {
         base.OnMouseLeftButtonUp(e);
         e.Handled = true;
+        Release();
+    }
+
+    public void Release()
+    {
         if (_scrubbing)
         {
             _scrubbing = false;
