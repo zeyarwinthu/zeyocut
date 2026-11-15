@@ -43,10 +43,11 @@ when they open.
   is open in one editor window at a time. Held at the timeline's edge, a drag or a scrub scrolls it,
   and clicking into an animated value or its diamond while playing stops the playback first. A
   change that can't be saved (another program holds `project.json`, or its folder is read-only or
-  gone) isn't made, and the status bar gives the reason. A `project.json` with problems, such as an
-  asset whose file is outside `assets\`, opens with the problems named in the status bar. The
-  editor keeps its own settings in `%LOCALAPPDATA%\ZeyoCut\editor.json` (`ZEYOCUT_EDITOR_SETTINGS`
-  names another file). The editor guide (`docs/editor.md`) shows it with screenshots.
+  gone) isn't made, and the status bar gives the reason. An error the editor didn't expect is shown
+  in plain words, with its details in `editor-errors.log` in the log folder. A `project.json` with
+  problems, such as an asset whose file is outside `assets\`, opens with the problems named in the
+  status bar. The editor keeps its own settings in `%LOCALAPPDATA%\ZeyoCut\editor.json`
+  (`ZEYOCUT_EDITOR_SETTINGS` names another file). The editor guide (`docs/editor.md`) shows it with screenshots.
 - **`open_in_editor`:** opens a project (by default the open one) in the editor on the user's
   computer, so they can fine-tune it while Claude keeps working; a project already open in the editor
   comes to the front. The editor is `ZeyoCut.Editor.exe` next to the server, or the one the new

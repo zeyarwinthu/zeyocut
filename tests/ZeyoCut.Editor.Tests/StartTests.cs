@@ -4,9 +4,53 @@ using ZeyoCut.Core.Editing;
 
 namespace ZeyoCut.Editor.Tests;
 
-// What the start page lists, and the editor's own settings file.
+// What the start page lists, the editor's own settings file, and what it says of an error.
 public class StartTests
 {
+    [Fact]
+    public void AnErrorNothingCaughtIsSaidInPlainWordsWithItsDetailsInTheLog()
+    {
+        var folder = TestFiles.NewFolder("error-log");
+        var error = Thrown(new InvalidOperationException("the frame list is empty"));
+        var logs = Path.Combine(folder, "logs");
+        var log = Path.Combine(logs, App.ErrorLogName);
+
+        Assert.Equal(
+            $"Something went wrong in the editor: the frame list is empty\n\nYour changes before it are saved in project.json. The details are in {log}.",
+            App.Describe(error, logs));
+        var written = File.ReadAllText(log);
+        Assert.Contains("System.InvalidOperationException: the frame list is empty", written);
+        Assert.Contains(nameof(Thrown), written);
+
+        // The next one is added to the same file.
+        App.Describe(Thrown(new IOException("the disk is full")), logs);
+        written = File.ReadAllText(log);
+        Assert.Contains("the frame list is empty", written);
+        Assert.Contains("System.IO.IOException: the disk is full", written);
+
+        // Where the log can't be written (here a file is where its folder would be), or before the
+        // settings name the folder, the details are shown.
+        var blocked = Path.Combine(folder, "blocked");
+        File.WriteAllText(blocked, "");
+        foreach (var said in new[] { App.Describe(error, blocked), App.Describe(error, null) })
+        {
+            Assert.StartsWith("Something went wrong in the editor: the frame list is empty\n\nYour changes before it are saved in project.json.\n\nDetails:\nSystem.InvalidOperationException", said);
+            Assert.Contains(nameof(Thrown), said);
+        }
+    }
+
+    private static Exception Thrown(Exception error)
+    {
+        try
+        {
+            throw error;
+        }
+        catch (Exception caught)
+        {
+            return caught;
+        }
+    }
+
     [Fact]
     public void TheProjectsFolderIsListedWithTheOneSavedLastFirst()
     {
