@@ -81,6 +81,12 @@ public class WindowTests
         return null;
     }
 
+    // The editor's own start-up (App.OnStartup) doesn't run in the tests: it would show a window on
+    // screen with the user's settings, and take the test runner's arguments for a project to open.
+    [Fact]
+    public void TheTestsWindowIsTheOnlyOne() => TestWindow.Run("window-only", (window, folder) =>
+        Assert.Same(window, Assert.Single(Application.Current.Windows.OfType<Window>())));
+
     [Fact]
     public void AProjectTheWindowCantShowLeavesItUsable() => TestWindow.Run("window-cant-show", (window, folder) =>
     {

@@ -9,8 +9,8 @@ using ZeyoCut.Core;
 namespace ZeyoCut.Editor.Tests;
 
 // The editor's window for a test, shown off screen and never activated. One thread runs WPF for
-// every such test, with the editor's App and so its styles, and a test runs on that thread inside
-// the window's own message loop. Tests that use it must not run at once: keep them in one class.
+// every such test, with the editor's styles, and a test runs on that thread inside the window's
+// own message loop. Tests that use it must not run at once: keep them in one class.
 public static class TestWindow
 {
     private static readonly Lazy<Dispatcher> Ui = new(Start);
@@ -117,10 +117,14 @@ public static class TestWindow
         {
             try
             {
-                // App.xaml closes the app with its main window; here every test closes its own.
-                var app = new App();
-                app.InitializeComponent();
-                app.ShutdownMode = ShutdownMode.OnExplicitShutdown;
+                // The styles App.xaml holds, on an application that every test closes its own window
+                // in. Not the editor's App: WPF runs its start-up once this thread's dispatcher starts,
+                // and it would show a window with the user's settings.
+                _ = new Application
+                {
+                    ShutdownMode = ShutdownMode.OnExplicitShutdown,
+                    Resources = new ResourceDictionary { Source = new Uri("pack://application:,,,/ZeyoCut.Editor;component/Theme.xaml") },
+                };
                 started.SetResult(Dispatcher.CurrentDispatcher);
             }
             catch (Exception ex)
