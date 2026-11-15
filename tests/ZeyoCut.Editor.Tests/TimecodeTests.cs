@@ -11,6 +11,7 @@ public class TimecodeTests
     [InlineData(3661 * 30 + 5, 30, "01:01:01:05")]
     [InlineData(50, 25, "00:00:02:00")]
     [InlineData(119, 60, "00:00:01:59")]
+    [InlineData(15, 0, "00:00:15:00")]
     public void TimecodeCountsFramesWithinTheSecond(int frame, int fps, string expected) => Assert.Equal(expected, Timecode.Of(frame, fps));
 
     [Theory]

@@ -2,6 +2,7 @@
 
 using System.Text.Json.Nodes;
 using System.Windows.Controls;
+using System.Windows.Input;
 using ZeyoCut.Core.Editing;
 using ZeyoCut.Core.Model;
 
@@ -48,5 +49,20 @@ public class WindowTests
         ((ListBox)window.FindName("MediaList")).SelectedIndex = 0;
         TestWindow.Pump();
         Assert.Equal("IMAGE ASSET", Text(window, "InspectorTitle"));
+    });
+
+    [Fact]
+    public void AProjectWhoseFrameRateIsZeroOpensWithTheProblemNamed() => TestWindow.Run("window-fps-0", (window, folder) =>
+    {
+        window.OpenProject(Saved(folder, "broken", p => p["fps"] = 0));
+        Assert.Equal("broken — ZeyoCut Editor", window.Title);
+        Assert.Equal("project.json has a problem, and edits aren't saved until it's fixed: fps must be between 1 and 120 (got 0)", Text(window, "SaveStatus"));
+        Assert.Equal("00:00:00:00", Text(window, "TimecodeText"));
+
+        // It has one frame to step through.
+        TestWindow.Press(window, Key.Right);
+        TestWindow.Press(window, Key.End);
+        TestWindow.Press(window, Key.Left);
+        Assert.Equal("00:00:00:00", Text(window, "TimecodeText"));
     });
 }

@@ -6,9 +6,11 @@ namespace ZeyoCut.Editor;
 
 public static class Timecode
 {
-    // HH:MM:SS:FF, FF being the frame within its second.
+    // HH:MM:SS:FF, FF being the frame within its second. A frame rate under 1 (in a project.json
+    // with that problem) counts as 1.
     public static string Of(int frame, int fps)
     {
+        fps = Math.Max(1, fps);
         var seconds = frame / fps;
         return string.Create(CultureInfo.InvariantCulture, $"{seconds / 3600:00}:{seconds / 60 % 60:00}:{seconds % 60:00}:{frame % fps:00}");
     }
