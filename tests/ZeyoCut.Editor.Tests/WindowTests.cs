@@ -3,6 +3,7 @@
 using System.Text.Json.Nodes;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Media.Imaging;
 using ZeyoCut.Core.Editing;
 using ZeyoCut.Core.Model;
 
@@ -64,6 +65,45 @@ public class WindowTests
         TestWindow.Press(window, Key.End);
         TestWindow.Press(window, Key.Left);
         Assert.Equal("00:00:00:00", Text(window, "TimecodeText"));
+    });
+
+    [Fact]
+    public void AMatteFinishedWithoutASaveIsShownWhilePaused() => TestWindow.Run("window-matte", (window, folder) =>
+    {
+        var directory = Path.Combine(folder, "matte");
+        var matte = TestFiles.PendingMatte(directory);
+        window.OpenProject(directory);
+
+        byte[] Shown()
+        {
+            var bitmap = (WriteableBitmap)((Image)window.FindName("PreviewImage")).Source;
+            var pixels = new byte[bitmap.PixelWidth * bitmap.PixelHeight * 4];
+            bitmap.CopyPixels(pixels, bitmap.PixelWidth * 4, 0);
+            return pixels;
+        }
+
+        bool Drawn() => Text(window, "RenderText").Length > 0;
+        for (var i = 0; i < 500 && !Drawn(); i++)
+        {
+            TestWindow.Pump(10);
+        }
+
+        Assert.True(Drawn());
+        Assert.False(TestFiles.OnlyBackground(Shown()));
+
+        // The server computes the matte; the paused frame shows it within a few seconds.
+        ZeyoCut.Render.Pixels.SaveGray(new byte[64 * 64], 64, 64, matte);
+        for (var i = 0; i < 50 && !TestFiles.OnlyBackground(Shown()); i++)
+        {
+            TestWindow.Pump(100);
+        }
+
+        Assert.True(TestFiles.OnlyBackground(Shown()));
+
+        // Nothing changed since: it isn't asked for again.
+        var shown = Text(window, "RenderText");
+        TestWindow.Pump(2500);
+        Assert.Equal(shown, Text(window, "RenderText"));
     });
 
     [Fact]

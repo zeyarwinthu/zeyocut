@@ -152,6 +152,8 @@ public partial class MainWindow : Window
             {
                 TakeOutsideChanges();
             }
+
+            RedrawChangedFiles();
         }, Dispatcher);
         _ticker = new DispatcherTimer(TimeSpan.FromMilliseconds(250), DispatcherPriority.Background, (_, _) => Tick(), Dispatcher);
         ShowStartPage();
@@ -1070,6 +1072,23 @@ public partial class MainWindow : Window
 
         _preview.Request(_preview.Source(_document.View, 1), _frame);
         _drawingSince ??= DateTime.UtcNow;
+    }
+
+    // The paused frame again when a file it shows changed without a save (a matte the server
+    // finished): its key is made from the files as they are now, and unless a frame is in memory
+    // under it, the frame is drawn again. Not while playing, dragging or drawing a frame.
+    private void RedrawChangedFiles()
+    {
+        if (_document is null || _preview is null || _playing || _drag is not null || _drawingSince is not null || PreviewImage.Visibility != Visibility.Visible)
+        {
+            return;
+        }
+
+        _preview.FilesChanged();
+        if (_preview.Cached(_preview.Source(_document.View, 1), _frame) is null)
+        {
+            RequestFrame();
+        }
     }
 
     private void ShowPosition()

@@ -71,6 +71,11 @@ public sealed class FramePreview : IDisposable
     // Frames drawn before a proxy was made read the original footage; after it, they're drawn again.
     public void ProxiesChanged() => _proxies++;
 
+    // A file the frames show may have changed without a save (a matte the server finished): the next
+    // Source reads the files again, so a frame that shows a changed one gets a key of its own and is
+    // drawn again, and the others keep theirs.
+    public void FilesChanged() => _keysOf = null;
+
     // Asks for a frame, in place of any frame not started yet.
     public void Request(PreviewSource source, int frame)
     {

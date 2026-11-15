@@ -56,6 +56,30 @@ public class PreviewTests
     }
 
     [Fact]
+    public void AMatteFinishedWithoutASaveIsDrawnOnceTheFilesAreReadAgain()
+    {
+        var folder = Path.Combine(TestFiles.NewFolder("preview-matte"), "project");
+        var matte = TestFiles.PendingMatte(folder);
+        var project = ProjectStore.Load(folder);
+        using var preview = new FramePreview(folder, () => throw new ZeyoCutException("no FFmpeg needed"), _ => { });
+
+        // Until the matte is computed, the picture is drawn with its background.
+        var before = preview.Render(preview.Source(project, 1), 0);
+        Assert.False(TestFiles.OnlyBackground(before.Pixels!));
+
+        // The server computes it (all background): project.json doesn't change.
+        ZeyoCut.Render.Pixels.SaveGray(new byte[64 * 64], 64, 64, matte);
+        preview.FilesChanged();
+        var after = preview.Render(preview.Source(project, 1), 0);
+        Assert.False(after.Cached);
+        Assert.True(TestFiles.OnlyBackground(after.Pixels!));
+
+        // Nothing changed since: the frame comes from memory.
+        preview.FilesChanged();
+        Assert.True(preview.Render(preview.Source(project, 1), 0).Cached);
+    }
+
+    [Fact]
     public void AFrameThatCantBeDrawnSaysWhy()
     {
         var project = TestFiles.Project();

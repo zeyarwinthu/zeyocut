@@ -52,6 +52,24 @@ public static class TestFiles
         return path;
     }
 
+    // A project of a 64 px orange picture, layer 'logo', whose aiImage matte isn't computed yet, saved
+    // in directory. Returns the path the matte is computed to.
+    public static string PendingMatte(string directory)
+    {
+        var project = Project();
+        var asset = new Asset { Id = "logo", Type = AssetType.Image, File = "assets/logo.png", Width = 64, Height = 64 };
+        project.Assets.Add(asset);
+        ProjectEditor.AddImageLayer(project, new ImageLayerOptions { Id = "logo", Drawings = new Dictionary<string, string> { ["normal"] = "logo" } });
+        var matte = MatteEditor.Build(MatteEditor.GetMattable(project, "logo"), MatteMethod.AiImage, new MatteValues(null, null, null, null));
+        MatteEditor.Set(project, "logo", matte);
+        ProjectSession.Create(directory, project);
+        Png(Path.Combine(directory, ProjectStore.AssetsFolder, "logo.png"), 64, 64);
+        return MatteFiles.CachePath(directory, asset, matte);
+    }
+
+    // Whether a frame's BGRA pixels are all Project's background, #202020.
+    public static bool OnlyBackground(byte[] pixels) => pixels.Chunk(4).All(p => p is [0x20, 0x20, 0x20, 0xFF]);
+
     public static FfmpegPaths Ffmpeg()
     {
         Assert.SkipWhen(FfmpegPaths.Value is null, "FFmpeg not found (install it or set FFMPEG_PATH); skipping");

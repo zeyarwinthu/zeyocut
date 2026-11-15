@@ -37,8 +37,10 @@ when they open.
   strength, padding, feather, hold frames and fill. A video's crop is set by its sides, keeping
   what's left of the picture in place. A click in the preview selects the layer drawn on top there,
   a child layer too, and dragging moves it, redrawn as it goes and saved on release; Shift keeps it
-  on one axis and Escape puts it back. The Export view renders the project as `start_export` does,
-  with presets, language versions, progress, stop and show in folder, and lists the exports folder.
+  on one axis and Escape puts it back. A paused frame is drawn again when a file it shows changes
+  without a save, such as a matte the server finishes. The Export view renders the project as
+  `start_export` does, with presets, language versions, progress, stop and show in folder, and
+  lists the exports folder.
   The Assistant view shows the revision and the 20 most recent saves, yours and Claude's. A project
   is open in one editor window at a time. Held at the timeline's edge, a drag or a scrub scrolls it,
   and clicking into an animated value or its diamond while playing stops the playback first. A
