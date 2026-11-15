@@ -4,6 +4,7 @@ using System.Text.Json.Nodes;
 using ZeyoCut.Core;
 using ZeyoCut.Core.Editing;
 using ZeyoCut.Core.Model;
+using ZeyoCut.Render.Export;
 using ZeyoCut.Tests.TestSupport;
 
 namespace ZeyoCut.Tests.Core;
@@ -233,6 +234,100 @@ public class EditorDocumentTests
         Assert.Equal("nothing to undo: 'update_layer music' can't be undone on top of another program's changes", editor.Status);
         Assert.True(editor.Redo());
         Assert.Equal("Saved · revision 6", editor.Status);
+    }
+
+    [Fact]
+    public void ASaveThatCantBeWrittenSaysWhyInTheStatus()
+    {
+        var (_, editor, directory) = Open("editor-io-save");
+        Assert.True(editor.Apply(new TrimLayerOperation("clip_2", null, 7)));
+
+        // Another program has project.json open and doesn't let it be replaced.
+        using (new FileStream(Path.Combine(directory, ProjectStore.ProjectFileName), FileMode.Open, FileAccess.Read, FileShare.Read))
+        {
+            Assert.False(editor.Apply(new MoveLayerOperation("title", 1)));
+            Assert.Matches("^move_layer title wasn't saved: .+", editor.Status);
+            Assert.Null(editor.Summary);
+            Assert.False(editor.Undo());
+            Assert.Matches("^can't undo: .+", editor.Status);
+            Assert.False(editor.Refresh());
+        }
+
+        Assert.Equal(2, ProjectStore.Load(directory).Revision);
+        Assert.Equal((0.0, 7.0), (editor.View.FindLayer("title")!.Start, Assert.IsType<VideoLayer>(editor.View.FindLayer("clip_2")).TrimOut));
+
+        // Once it lets go, the same edits are saved.
+        Assert.True(editor.Apply(new MoveLayerOperation("title", 1)));
+        Assert.Equal("Saved · revision 3", editor.Status);
+        Assert.True(editor.Undo());
+        Assert.True(editor.Undo());
+        Assert.Equal((0.0, 8.0), (Saved<TextLayer>(directory, "title").Start, Saved<VideoLayer>(directory, "clip_2").TrimOut));
+
+        // The project's folder has gone.
+        Directory.Delete(directory, recursive: true);
+        Assert.False(editor.Apply(new MoveLayerOperation("title", 2)));
+        Assert.Matches("^move_layer title wasn't saved: .+", editor.Status);
+        Assert.False(editor.Redo());
+        Assert.Matches("^can't redo: .+", editor.Status);
+    }
+
+    [Fact]
+    public void ACheckForAnotherProgramsChangesThatFailsSaysWhyInTheStatus()
+    {
+        var (server, editor, directory) = Open("editor-io-refresh");
+        server.Mutate("update_layer music", p => ProjectEditor.UpdateLayer(p, "music", new JsonObject { ["volume"] = 0.3 }));
+
+        // The backups folder, which names the other program's edits, can't be listed: it is a
+        // junction to a folder that has gone.
+        var backups = ProjectBackups.Folder(directory);
+        var gone = Path.Combine(directory, "gone");
+        Directory.Move(backups, backups + "-kept");
+        Directory.CreateDirectory(gone);
+        var made = ProcessRunner.Run("cmd.exe", ["/c", "mklink", "/J", backups, gone], TimeSpan.FromSeconds(30));
+        Assert.SkipWhen(made.ExitCode != 0 || !Directory.Exists(backups), $"couldn't make a junction: {made.StandardError}");
+        Directory.Delete(gone);
+        try
+        {
+            Assert.False(editor.Refresh());
+            Assert.Matches("^Couldn't check project.json for another program's changes: .+", editor.Status);
+            Assert.Equal(0.8, Assert.IsType<AudioLayer>(editor.View.FindLayer("music")).Volume);
+            Assert.False(editor.Apply(new MoveLayerOperation("title", 1)));
+            Assert.Matches("^move_layer title wasn't saved: .+", editor.Status);
+        }
+        finally
+        {
+            Directory.Delete(backups);
+            Directory.Move(backups + "-kept", backups);
+        }
+
+        // With the folder back, the other program's change is taken.
+        Assert.True(editor.Refresh());
+        Assert.Equal("Saved · revision 2", editor.Status);
+        Assert.Equal(0.3, Assert.IsType<AudioLayer>(editor.View.FindLayer("music")).Volume);
+        Assert.Equal(["update_layer music"], editor.TakeOutsideChanges()!.Edits);
+    }
+
+    [Fact]
+    public void AProjectWithProblemsOpensAndItsStatusNamesThem()
+    {
+        var directory = TestPaths.NewDirectory("editor-problems");
+        ProjectSession.Create(directory, TestProjects.Footage());
+        var file = Path.Combine(directory, ProjectStore.ProjectFileName);
+        File.WriteAllText(file, File.ReadAllText(file).Replace("assets/clip.mp4", "../elsewhere/clip.mp4", StringComparison.Ordinal));
+        var editor = EditorDocument.Open(directory);
+        Assert.Equal(
+            "project.json has a problem, and edits aren't saved until it's fixed: asset 'clip': file '../elsewhere/clip.mp4' must be a file in the project's assets folder",
+            editor.Status);
+        Assert.Equal(5, editor.View.Layers.Count);
+        Assert.False(editor.Apply(new MoveLayerOperation("title", 1)));
+        Assert.Equal("move_layer title wasn't saved: asset 'clip': file '../elsewhere/clip.mp4' must be a file in the project's assets folder", editor.Status);
+
+        // More than three are counted, and the first three named, a line each.
+        File.WriteAllText(file, File.ReadAllText(file).Replace("assets/music.wav", "C:/elsewhere/music.wav", StringComparison.Ordinal).Replace("\"fps\": 30", "\"fps\": 0", StringComparison.Ordinal)
+            .Replace("\"backgroundColor\": \"#FFFFFF\"", "\"backgroundColor\": \"white\"", StringComparison.Ordinal));
+        var problems = ProjectValidator.Validate(ProjectStore.Load(directory));
+        Assert.Equal(4, problems.Count);
+        Assert.Equal($"project.json has 4 problems, and edits aren't saved until they're fixed:\n- {string.Join("\n- ", problems.Take(3))}\n- and 1 more", EditorDocument.Open(directory).Status);
     }
 
     [Fact]

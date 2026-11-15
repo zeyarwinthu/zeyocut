@@ -29,6 +29,19 @@ public class ProxyTests
     }
 
     [Fact]
+    public void FootageWhoseFileIsOutsideTheProjectGetsNoProxyJob()
+    {
+        var directory = TestPaths.NewDirectory("proxy-outside");
+        var session = ProjectSession.Create(directory, TestProjects.Empty());
+        var file = Path.Combine(directory, ProjectStore.ProjectFileName);
+        var asset = "\"assets\": [{ \"id\": \"big\", \"type\": \"video\", \"file\": \"../elsewhere/big.mp4\", \"width\": 3840, \"height\": 2160 }]";
+        File.WriteAllText(file, File.ReadAllText(file).Replace("\"assets\": []", asset, StringComparison.Ordinal));
+        session.Sync();
+        Assert.True(Proxies.Wanted(session.Read(p => p.Assets.Single())));
+        Assert.Equal("", new ProxyJobs(new ZeyoCut.Render.Jobs.JobManager(), () => throw new InvalidOperationException()).Start(session));
+    }
+
+    [Fact]
     public void FootageOver2560PxGetsAProxyWithEveryFrameAtItsTime()
     {
         var ffmpeg = Ffmpeg.Require();

@@ -416,6 +416,28 @@ public class InspectorTests
     }
 
     [Fact]
+    public void AnAssetWhoseFileIsOutsideTheProjectIsListedAndShownAsSuch()
+    {
+        var folder = TestFiles.NewFolder("media-outside");
+        var project = Footage();
+        var outside = new Asset { Id = "big", Type = AssetType.Video, File = "../elsewhere/big.mp4", Width = 3840, Height = 2160, Duration = 4 };
+        project.Assets.Add(outside);
+
+        var item = MainWindow.Item(folder, outside);
+        Assert.Equal(("big", "VIDEO", "not a file in the project's assets folder: ../elsewhere/big.mp4", true), (item.Id, item.Kind, item.Details, item.Missing));
+        var rows = MainWindow.AssetRows(folder, project, outside).ToDictionary(r => r.Key, r => r.Value);
+        Assert.Equal("../elsewhere/big.mp4 (not a file in the project's assets folder)", rows["File"]);
+        Assert.Equal("3840 × 2160", rows["Resolution"]);
+        Assert.False(rows.ContainsKey("Size"));
+        Assert.False(rows.ContainsKey("Preview proxy"));
+
+        // A file in the assets folder that isn't there is missing, as ever.
+        var missing = project.FindAsset("clip")!;
+        Assert.Equal(("file missing: assets/clip.mp4", true), (MainWindow.Item(folder, missing).Details, MainWindow.Item(folder, missing).Missing));
+        Assert.Equal("assets/clip.mp4 (missing)", MainWindow.AssetRows(folder, project, missing).First(r => r.Key == "File").Value);
+    }
+
+    [Fact]
     public void UndoAndRedoKeysPressedInAFieldAreNotTheProjects()
     {
         const ModifierKeys control = ModifierKeys.Control;

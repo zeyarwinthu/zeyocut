@@ -603,8 +603,14 @@ public partial class MainWindow : Window
         }
     }
 
-    private static MediaItem Item(string directory, Asset asset)
+    public static MediaItem Item(string directory, Asset asset)
     {
+        // A project.json from elsewhere can name a file outside assets\: it's listed, and never read.
+        if (!ProjectStore.IsAssetFile(asset.File))
+        {
+            return new MediaItem(asset.Id, Kind(asset), Badge(asset), $"not a file in the project's {ProjectStore.AssetsFolder} folder: {asset.File}", true);
+        }
+
         var path = ProjectStore.AssetPath(directory, asset);
         if (!File.Exists(path))
         {
@@ -843,19 +849,19 @@ public partial class MainWindow : Window
 
         return true;
     }
-    private static List<KeyValuePair<string, string>> AssetRows(string directory, Project project, Asset asset)
+    public static List<KeyValuePair<string, string>> AssetRows(string directory, Project project, Asset asset)
     {
-        var path = ProjectStore.AssetPath(directory, asset);
+        var path = ProjectStore.IsAssetFile(asset.File) ? ProjectStore.AssetPath(directory, asset) : null;
         var exists = File.Exists(path);
         var rows = new List<KeyValuePair<string, string>>
         {
             new("Id", asset.Id),
             new("Type", EnumNames.ToName(asset.Type)),
-            new("File", exists ? asset.File : $"{asset.File} (missing)"),
+            new("File", exists ? asset.File : path is null ? $"{asset.File} (not a file in the project's {ProjectStore.AssetsFolder} folder)" : $"{asset.File} (missing)"),
         };
         if (exists)
         {
-            rows.Add(new("Size", Megabytes(new FileInfo(path).Length)));
+            rows.Add(new("Size", Megabytes(new FileInfo(path!).Length)));
         }
 
         if (asset.Width is { } width && asset.Height is { } height)
@@ -903,7 +909,7 @@ public partial class MainWindow : Window
             rows.Add(new("Normalized", normalized));
         }
 
-        if (asset.Type == AssetType.Video)
+        if (asset.Type == AssetType.Video && path is not null)
         {
             rows.Add(new("Preview proxy", !Proxies.Wanted(asset)
                 ? $"not needed ({Proxies.Above} px or less)"

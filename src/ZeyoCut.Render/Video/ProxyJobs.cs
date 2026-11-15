@@ -27,7 +27,7 @@ public sealed class ProxyJobs(JobManager jobs, Func<FfmpegPaths> ffmpeg)
     {
         var directory = session.Directory;
         var missing = session.Read(p => p.Assets.Where(a => Proxies.Wanted(a) && (assetIds is null || assetIds.Contains(a.Id))).ToList())
-            .Where(a => File.Exists(ProjectStore.AssetPath(directory, a)) && Proxies.Ready(directory, a) is null)
+            .Where(a => ProjectStore.IsAssetFile(a.File) && File.Exists(ProjectStore.AssetPath(directory, a)) && Proxies.Ready(directory, a) is null)
             .ToList();
         if (missing.Count == 0)
         {

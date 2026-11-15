@@ -2538,6 +2538,25 @@ public class McpServerTests
     }
 
     [Fact]
+    public async Task ServerOpensAProjectWhoseFootageIsOutsideItAndListsTheProblem()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var root = TestPaths.NewDirectory("mcp-open-outside");
+        var projects = Path.Combine(root, "projects");
+        var project = TestProjects.Empty();
+        project.Assets.Add(new ZeyoCut.Core.Model.Asset { Id = "big", Type = ZeyoCut.Core.Model.AssetType.Video, File = "assets/big.mp4", Width = 3840, Height = 2160, FrameRate = "30", FrameCount = 90, Duration = 3 });
+        ZeyoCut.Core.Editing.ProjectSession.Create(Path.Combine(projects, "outside"), project);
+        var file = Path.Combine(projects, "outside", "project.json");
+        File.WriteAllText(file, File.ReadAllText(file).Replace("assets/big.mp4", "../elsewhere/big.mp4", StringComparison.Ordinal));
+        await using var client = await StartServer(root, projects, Path.Combine(root, "logs"), ct);
+
+        // Footage over 2560 px gets a proxy when a project opens: not this one, whose file is never read.
+        var opened = await CallOk(client, "open_project", new() { ["nameOrPath"] = "outside" }, ct);
+        Assert.Contains("project.json problem: asset 'big': file '../elsewhere/big.mp4' must be a file in the project's assets folder", opened);
+        Assert.DoesNotContain("proxy", opened);
+    }
+
+    [Fact]
     public async Task ServerKeepsBackupsAndRestoresOne()
     {
         var ct = TestContext.Current.CancellationToken;

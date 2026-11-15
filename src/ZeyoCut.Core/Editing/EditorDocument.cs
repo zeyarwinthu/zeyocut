@@ -15,6 +15,10 @@ namespace ZeyoCut.Core.Editing;
 // that version, so you see what the other program did before you try again. An edit built from an
 // earlier View (a field typed in, a drag begun before the other program's change was shown) says so,
 // and is dropped the same way.
+//
+// A file or folder that can't be read or written (held by another program, read-only, gone) doesn't
+// throw: nothing is saved and Status gives the reason. Status also names the problems a project has
+// when it is opened.
 public sealed class EditorDocument
 {
     private readonly List<OutsideChange> _outside = [];
@@ -25,12 +29,14 @@ public sealed class EditorDocument
     private readonly Dictionary<string, (int Change, IReadOnlyList<string> Edits)> _changedBy = new(StringComparer.Ordinal);
     private int _changes;
 
+    private const int ProblemsNamed = 3;
+
     private EditorDocument(ProjectSession session)
     {
         Session = session;
         View = session.Snapshot();
         _cameAfter.Add(View, new StrongBox<int>(0));
-        Status = Saved();
+        Status = Problems(ProjectValidator.Validate(View)) ?? Saved();
     }
 
     public ProjectSession Session { get; }
@@ -75,7 +81,7 @@ public sealed class EditorDocument
                 return operation.Apply(project);
             });
         }
-        catch (ZeyoCutException ex)
+        catch (Exception ex) when (ex is ZeyoCutException or IOException or UnauthorizedAccessException)
         {
             Take();
             Summary = null;
@@ -116,7 +122,17 @@ public sealed class EditorDocument
     // Takes what another program saved since; true when View changed.
     public bool Refresh()
     {
-        var took = Session.Sync();
+        bool took;
+        try
+        {
+            took = Session.Sync();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            Status = $"Couldn't check {ProjectStore.ProjectFileName} for another program's changes: {ex.Message}";
+            return false;
+        }
+
         var problem = Take();
         if (problem is not null)
         {
@@ -159,7 +175,7 @@ public sealed class EditorDocument
         {
             action();
         }
-        catch (ZeyoCutException ex)
+        catch (Exception ex) when (ex is ZeyoCutException or IOException or UnauthorizedAccessException)
         {
             Take();
             Status = ex.Message.StartsWith($"can't {verb}", StringComparison.Ordinal) || ex.Message.StartsWith("nothing to", StringComparison.Ordinal)
@@ -202,4 +218,15 @@ public sealed class EditorDocument
     }
 
     private string Saved() => $"Saved · revision {View.Revision}";
+
+    // The problems a project has as it is opened: one on the line, more on a line each as the
+    // validator lists them. Null when it has none.
+    private static string? Problems(List<string> problems) => problems.Count switch
+    {
+        0 => null,
+        1 => $"{ProjectStore.ProjectFileName} has a problem, and edits aren't saved until it's fixed: {problems[0]}",
+        _ => $"{ProjectStore.ProjectFileName} has {problems.Count} problems, and edits aren't saved until they're fixed:\n- "
+            + string.Join("\n- ", problems.Take(ProblemsNamed))
+            + (problems.Count > ProblemsNamed ? $"\n- and {problems.Count - ProblemsNamed} more" : ""),
+    };
 }

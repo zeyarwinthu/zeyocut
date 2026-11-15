@@ -41,7 +41,10 @@ when they open.
   with presets, language versions, progress, stop and show in folder, and lists the exports folder.
   The Assistant view shows the revision and the 20 most recent saves, yours and Claude's. A project
   is open in one editor window at a time. Held at the timeline's edge, a drag or a scrub scrolls it,
-  and clicking into an animated value or its diamond while playing stops the playback first. The
+  and clicking into an animated value or its diamond while playing stops the playback first. A
+  change that can't be saved (another program holds `project.json`, or its folder is read-only or
+  gone) isn't made, and the status bar gives the reason. A `project.json` with problems, such as an
+  asset whose file is outside `assets\`, opens with the problems named in the status bar. The
   editor keeps its own settings in `%LOCALAPPDATA%\ZeyoCut\editor.json` (`ZEYOCUT_EDITOR_SETTINGS`
   names another file). The editor guide (`docs/editor.md`) shows it with screenshots.
 - **`open_in_editor`:** opens a project (by default the open one) in the editor on the user's
@@ -86,6 +89,9 @@ when they open.
   and the editor, or two servers) no longer leave a damaged file or fail: each writes a partial file
   of its own, and a proxy or mix the other finished first is kept. Before, a proxy made this way
   could have most of its frames unreadable, and previews and `track_object` went on reading it.
+- `open_project` on a project whose footage over 2560 px names a file outside `assets\` lists that
+  as a problem, as for any other asset. Before, the reply was an error, although the project had
+  been opened.
 
 - A release's `SHA256SUMS.txt` has Unix line endings, so `sha256sum -c` can check the downloads too,
   not only PowerShell.

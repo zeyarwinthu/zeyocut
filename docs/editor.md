@@ -17,6 +17,8 @@ It imports media, plays the edit with its sound, moves, trims and splits clips o
 
 A project is open in one window at a time: opening it again brings that window to the front.
 
+A `project.json` with problems still opens, such as one edited by hand whose asset names a file outside `assets\`. The status bar names the problems and the media list marks those files; changes and exports are refused until they're fixed.
+
 The window has three views, switched at the top or with Ctrl+1, Ctrl+2 and Ctrl+3: **Assistant**, **Edit** and **Export**.
 
 ## Media
@@ -102,6 +104,7 @@ It shows the progress, Stop ends it, and Show in folder opens File Explorer on t
 ## Working with the model
 
 - **Every change is saved at once**, as one step that Ctrl+Z undoes and Ctrl+Y redoes. The status bar shows "Saved · revision N" and what the last change did; there's no Save button.
+- When a change can't be saved, because another program holds `project.json` or its folder is read-only or gone, the change isn't made and the status bar says why. Make it again once the file can be written.
 - When the server saves the project, the editor shows the new version and says what changed. The server's next reply lists what the editor changed. Undo on either side takes back only its own changes. See [Saving alongside another program](project-format.md#saving-alongside-another-program).
 - Ctrl+Z can't take back your change to a layer the server changed after it: that would throw the server's change away, and the status bar says so. The next Ctrl+Z steps over that change, which stays as it is, undoes the one before it and names the one it stepped over.
 - A change you began before the server's isn't saved over it. If the server changes a layer while you're typing in one of its fields or dragging it, your change isn't saved and the status bar says "Your change wasn't saved: another program changed '…' first". What you typed stays in the field: Enter saves it over the server's change, Escape drops it.
