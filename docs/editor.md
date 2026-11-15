@@ -54,13 +54,14 @@ There's a lane for each draw level (`zIndex`) of video, images and text, the hig
 - Clips snap to clip edges, the playhead and markers. The Snap button turns it off.
 - S (or Ctrl+B) splits the selected clip at the playhead, and Delete removes it with its child layers (a child layer selected in the preview is removed with its own children). Right-click a clip for these, for Hide and Show (Mute and Unmute for sound), and to turn a video's own sound off or on.
 - Click or drag in the ruler to move the playhead. ↑ and ↓ jump to the previous and next clip edge.
+- The ruler and the lanes are shaded past the project's end: the export stops there, so what runs past it is cut. The project's Duration in the inspector moves the end.
 - The selected clip shows its layer's keyframes as white diamonds along its bottom edge. Click one to move the playhead there; Alt+← and Alt+→ jump to the previous and next.
 - Ctrl+wheel or −/+ zooms, and Shift+Z fits the whole video. The wheel scrolls the lanes, and Shift+wheel scrolls in time.
 - **Pack lanes** puts layers that never show at the same time on shared levels, so clips the model added one at a time stop taking a lane each. Every frame looks as before. When it can't save a lane, the button is off.
 
 ## The inspector
 
-The inspector shows the selected clip and changes it.
+The inspector shows the selected clip and changes it. With nothing selected, it shows the project: its Duration is changed there, as `update_project` changes it, and the rest is shown.
 
 - **Clip:** Start, End and Length move and trim it; Draw level is its `zIndex`; Shown hides it (Muted for sound). A video's speed is shown; ask the model to change it.
 - **Sound:** a video has Sound on, and sound has its role, volume and fades.

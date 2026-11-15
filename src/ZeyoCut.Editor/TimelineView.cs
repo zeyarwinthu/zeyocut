@@ -734,6 +734,10 @@ public sealed class TimelineView : FrameworkElement
             }
         }
 
+        // Past the project's end, where the export has stopped.
+        var end = Math.Round(HeaderWidth + scale.XOf(_duration)) + 0.5;
+        dc.DrawRectangle(PastEndBrush, null, new Rect(end, RulerHeight, Math.Max(0, width - end), height - RulerHeight));
+
         // Where the dragged clip goes.
         if (drag is not null)
         {

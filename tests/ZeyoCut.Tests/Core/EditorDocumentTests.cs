@@ -50,6 +50,26 @@ public class EditorDocumentTests
         Assert.Equal(["editor redo trim_layer clip_2", "editor undo trim_layer clip_2", "editor trim_layer clip_2"], ProjectBackups.List(directory).Select(b => b.Before));
     }
 
+    [Fact]
+    public void TheProjectsLengthIsSetUnlessAnotherProgramChangedItFirst()
+    {
+        var (server, editor, directory) = Open("editor-duration");
+        var shown = editor.View.Duration;
+        Assert.True(editor.Apply(new SetDurationOperation(6, shown)));
+        Assert.Equal("duration 8s → 6s", editor.Summary);
+        Assert.Equal(6, ProjectStore.Load(directory).Duration);
+        Assert.Equal("editor update_project", ProjectBackups.List(directory)[0].Before);
+        Assert.True(editor.Undo());
+        Assert.Equal(8, ProjectStore.Load(directory).Duration);
+
+        // A length typed before another program changed it isn't saved over that.
+        server.Mutate("update_project", p => ProjectEditor.UpdateProject(p, new ProjectOptions { Duration = 10 }));
+        Assert.False(editor.Apply(new SetDurationOperation(6, shown)));
+        Assert.Equal("update_project wasn't saved: another program changed the project's length to 10s first", editor.Status);
+        Assert.Equal(10, ProjectStore.Load(directory).Duration);
+        Assert.Equal(10, editor.View.Duration);
+    }
+
     // (a) Claude edits while the editor has nothing in hand.
     [Fact]
     public void TheEditorTakesWhatTheServerSaved()

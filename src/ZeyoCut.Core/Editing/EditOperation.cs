@@ -177,6 +177,25 @@ public sealed record ReorderLayerOperation(string LayerId, int ZIndex, bool Inse
     public override string Apply(Project project) => ProjectEditor.Reorder(project, LayerId, ZIndex, Insert);
 }
 
+// The project's length, as update_project sets it. Shown is the length the field showed: when
+// another program changed it since, it isn't set over that change.
+public sealed record SetDurationOperation(double Duration, double Shown) : EditOperation
+{
+    public override string Label => "update_project";
+
+    public override IReadOnlyList<string> Layers => [];
+
+    public override string Apply(Project project)
+    {
+        if (project.Duration != Shown)
+        {
+            throw new ZeyoCutException($"another program changed the project's length to {Num(project.Duration)}s first");
+        }
+
+        return string.Join("; ", ProjectEditor.UpdateProject(project, new ProjectOptions { Duration = Duration }).Changes);
+    }
+}
+
 // Puts layers that never show at the same time on shared draw levels (ProjectEditor.PackLanes).
 public sealed record PackLanesOperation : EditOperation
 {

@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: MIT
 
 using System.Text.Json.Nodes;
+using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using ZeyoCut.Core.Editing;
 using ZeyoCut.Core.Model;
@@ -37,6 +39,29 @@ public class WindowTests
     }
 
     private static string Text(MainWindow window, string name) => ((TextBlock)window.FindName(name)).Text;
+
+    // The inspector's text box for a field.
+    private static TextBox Field(MainWindow window, string label)
+    {
+        TestWindow.Pump();
+        var list = (ItemsControl)window.FindName("InspectorList");
+        var field = list.Items.OfType<InspectorField>().Single(f => f.Label == label);
+        return Descendant<TextBox>((DependencyObject)list.ItemContainerGenerator.ContainerFromItem(field))!;
+    }
+
+    private static T? Descendant<T>(DependencyObject parent) where T : DependencyObject
+    {
+        for (var i = 0; i < VisualTreeHelper.GetChildrenCount(parent); i++)
+        {
+            var child = VisualTreeHelper.GetChild(parent, i);
+            if ((child as T ?? Descendant<T>(child)) is { } found)
+            {
+                return found;
+            }
+        }
+
+        return null;
+    }
 
     [Fact]
     public void AProjectTheWindowCantShowLeavesItUsable() => TestWindow.Run("window-cant-show", (window, folder) =>
@@ -104,6 +129,64 @@ public class WindowTests
         var shown = Text(window, "RenderText");
         TestWindow.Pump(2500);
         Assert.Equal(shown, Text(window, "RenderText"));
+    });
+
+    [Fact]
+    public void TheProjectsLengthIsTypedInTheInspectorAndTheLanesPastItAreShaded() => TestWindow.Run("window-duration", (window, folder) =>
+    {
+        // A picture from 0 to 2 s in a project 1 s long.
+        var project = TestFiles.Project(duration: 1);
+        project.Assets.Add(new Asset { Id = "logo", Type = AssetType.Image, File = "assets/logo.png", Width = 8, Height = 8 });
+        ProjectEditor.AddImageLayer(project, new ImageLayerOptions { Id = "logo", Drawings = new Dictionary<string, string> { ["normal"] = "logo" }, Start = 0, End = 2 });
+        var directory = Path.Combine(folder, "short");
+        ProjectSession.Create(directory, project);
+        TestFiles.Png(Path.Combine(directory, ProjectStore.AssetsFolder, "logo.png"), 8, 8);
+        window.OpenProject(directory);
+
+        // Zoomed in, the timeline scrolled to show the second before the end (1 s) and after it: the
+        // picture's color just before the end, and past it.
+        var timeline = (TimelineView)window.FindName("Timeline");
+        TestWindow.Pump();
+        TestWindow.Press(window, Key.Add);
+        (Color Before, Color Past) Picture()
+        {
+            var span = (timeline.ActualWidth - TimelineView.HeaderWidth) / timeline.PixelsPerSecond;
+            timeline.HorizontalOffset = (1 - span / 3) * timeline.PixelsPerSecond;
+            TestWindow.Pump();
+            var bitmap = new RenderTargetBitmap((int)timeline.ActualWidth, (int)timeline.ActualHeight, 96, 96, PixelFormats.Pbgra32);
+            bitmap.Render(timeline);
+            Color At(double time)
+            {
+                var pixel = new byte[4];
+                var x = (int)(TimelineView.HeaderWidth + time * timeline.PixelsPerSecond - timeline.HorizontalOffset);
+                bitmap.CopyPixels(new Int32Rect(x, (int)TimelineView.RulerHeight + 20, 1, 1), pixel, 4, 0);
+                return Color.FromArgb(pixel[3], pixel[2], pixel[1], pixel[0]);
+            }
+
+            return (At(1 - span / 6), At(1 + span / 3));
+        }
+
+        // Past the end, the lane is shaded as the ruler is.
+        var (before, past) = Picture();
+        Assert.True(past.R + past.G + past.B < before.R + before.G + before.B, $"past the end {past}, before it {before}");
+
+        // Two seconds typed in the project's Duration: the picture isn't past the end anymore.
+        var box = Field(window, "Duration");
+        Assert.Equal("1", box.Text);
+        box.Text = "2";
+        TestWindow.Press(box, Key.Return);
+        Assert.Equal(2, ProjectStore.Load(directory).Duration);
+        Assert.Equal("duration 1s → 2s", Text(window, "MessageText"));
+        Assert.Equal("Saved · revision 2", Text(window, "SaveStatus"));
+        (before, past) = Picture();
+        Assert.Equal(before, past);
+
+        // A length that can't be is named, and nothing is saved.
+        box = Field(window, "Duration");
+        box.Text = "0";
+        TestWindow.Press(box, Key.Return);
+        Assert.Equal("Duration must be more than 0 (got 0)", Text(window, "MessageText"));
+        Assert.Equal(2, ProjectStore.Load(directory).Duration);
     });
 
     [Fact]

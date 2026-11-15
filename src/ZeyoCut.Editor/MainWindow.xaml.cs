@@ -711,7 +711,6 @@ public partial class MainWindow : Window
             new("Folder", document.Session.Directory),
             new("Canvas", $"{project.Width} × {project.Height}"),
             new("Frame rate", $"{project.Fps} fps"),
-            new("Duration", $"{Number(project.Duration)} s ({_frames} frames)"),
             new("Background", project.BackgroundColor),
             new("Layers", project.Layers.Count.ToString(CultureInfo.InvariantCulture)),
             new("Assets", project.Assets.Count.ToString(CultureInfo.InvariantCulture)),
@@ -719,7 +718,11 @@ public partial class MainWindow : Window
             new("Revision", document.Revision.ToString(CultureInfo.InvariantCulture)),
             new("Last saved", File.GetLastWriteTime(file).ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture)),
         ];
-        return Info(rows);
+        var fields = Info(rows);
+        fields.Insert(4, new InspectorField("Duration", FieldKind.Number, Number(project.Duration),
+            text => new SetDurationOperation(InspectorFields.Parse(text, "Duration", above: 0, max: 7200), project.Duration),
+            Unit: "s", Tip: $"{_frames} frames. The export ends here, and what runs past it is cut"));
+        return fields;
     }
 
     private static List<InspectorField> Info(IEnumerable<KeyValuePair<string, string>> rows) =>

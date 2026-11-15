@@ -40,10 +40,11 @@ when they open.
   on one axis and Escape puts it back. A paused frame is drawn again when a file it shows changes
   without a save, such as a matte the server finishes. The Export view renders the project as
   `start_export` does, with presets, language versions, progress, stop and show in folder, and
-  lists the exports folder.
-  The Assistant view shows the revision and the 20 most recent saves, yours and Claude's. A project
-  is open in one editor window at a time. Held at the timeline's edge, a drag or a scrub scrolls it,
-  and clicking into an animated value or its diamond while playing stops the playback first. A
+  lists the exports folder. The project's Duration is set in the inspector, and the lanes are
+  shaded past the end, as the ruler is. The Assistant view shows the revision and the 20 most
+  recent saves, yours and Claude's. A project is open in one editor window at a time. Held at the
+  timeline's edge, a drag or a scrub scrolls it, and clicking into an animated value or its diamond
+  while playing stops the playback first. A
   change that can't be saved (another program holds `project.json`, or its folder is read-only or
   gone) isn't made, and the status bar gives the reason. An error the editor didn't expect is shown
   in plain words, with its details in `editor-errors.log` in the log folder. A `project.json` with
