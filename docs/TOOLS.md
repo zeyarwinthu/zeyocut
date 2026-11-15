@@ -753,7 +753,7 @@ Check how well the redactions hide their tracks; changes nothing. For each track
 
 ### `redo`
 
-Redo the last undone change.
+Redo the last undone change. When another program (such as the editor) has saved since, it's refused when that program changed the same layers or settings since the undo. After such a refusal, the next redo steps over that change, which stays undone, and redoes the one undone before it; the reply names the change it stepped over.
 
 No parameters.
 

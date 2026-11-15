@@ -99,7 +99,7 @@ public sealed class EditorDocument
         return true;
     }
 
-    // After an undo that was refused, the next one steps over that step, and Status names it.
+    // After an undo or a redo that was refused, the next one steps over that step, and Status names it.
     public bool Undo()
     {
         var label = "";
@@ -117,7 +117,22 @@ public sealed class EditorDocument
         return true;
     }
 
-    public bool Redo() => Run("redo", () => Session.Redo());
+    public bool Redo()
+    {
+        var label = "";
+        IReadOnlyList<string> over = [];
+        if (!Run("redo", () => label = Session.Redo(out over)))
+        {
+            return false;
+        }
+
+        if (over.Count > 0)
+        {
+            Status = $"Redid '{label}' and stepped over {string.Join(", ", over.Select(l => $"'{l}'"))}, which can't be redone on top of another program's changes. {Saved()}";
+        }
+
+        return true;
+    }
 
     // Takes what another program saved since; true when View changed.
     public bool Refresh()

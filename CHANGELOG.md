@@ -61,7 +61,7 @@ when they open.
   what each step changed, and the other program's changes stay. They're refused, with the items
   named, when the other program changed the same layers or settings since. After a refused `undo`,
   the next one (Ctrl+Z in the editor too) steps over that step, which stays as it is, undoes the
-  step before it and names the one it stepped over.
+  step before it and names the one it stepped over; `redo` steps over a refused step the same way.
 - **`trim_layer`:** trims a layer's start, end or both, as dragging the edge of a clip does. Trimming
   in cuts the layer and its children shorter; trimming out shows more, as far as a clip's source
   goes. Fades stay at the new edges.

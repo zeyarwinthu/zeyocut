@@ -14,14 +14,15 @@ namespace ZeyoCut.Core.Editing;
 // Undo and redo put back what a step changed. When no other program saved since, that is the
 // whole project as it was; after another program's change it is only the items the step changed,
 // so the other change stays, and it's refused when another program changed one of those items.
-// The next undo steps over a step refused that way, and takes back the one before it.
+// The next undo steps over a step refused that way, and takes back the one before it; redo
+// does the same with the steps that were undone.
 public sealed class ProjectSession
 {
     public const int MaxUndo = 200;
 
     private readonly object _gate = new();
     private readonly LinkedList<Step> _undo = new();
-    private readonly Stack<Step> _redo = new();
+    private readonly LinkedList<Step> _redo = new();
     private readonly List<OutsideChange> _outside = [];
 
     // The changes other programs saved, for History, newest last, and how many there have been.
@@ -245,7 +246,7 @@ public sealed class ProjectSession
                 var current = ProjectJson.Serialize(_project);
                 Save(held, put, $"undo {step.Label}");
                 _undo.Remove(node);
-                _redo.Push(step with { Json = current, Outside = _outsideCount, Revision = _project.Revision, Refused = false });
+                _redo.AddLast(step with { Json = current, Outside = _outsideCount, Revision = _project.Revision, Refused = false });
                 steppedOver = over.Select(s => s.Label).ToList();
                 return step.Label;
             }
@@ -256,7 +257,11 @@ public sealed class ProjectSession
         }
     }
 
-    public string Redo()
+    public string Redo() => Redo(out _);
+
+    // As with undo: a step whose redo was refused before, and still would be, is stepped over. It
+    // stays undone, and the step undone before it is redone.
+    public string Redo(out IReadOnlyList<string> steppedOver)
     {
         lock (_gate)
         {
@@ -267,17 +272,42 @@ public sealed class ProjectSession
 
             using var held = ProjectLock.Acquire(Directory, LockTimeout);
             CatchUp(overwriteUnreadable: false);
-            if (_redo.Count == 0)
+            var over = new List<Step>();
+            for (var node = _redo.Last; node is not null; node = node.Previous)
             {
-                throw new ZeyoCutException("nothing to redo");
+                var step = node.Value;
+                Project put;
+                try
+                {
+                    put = PutBack(step, backwards: false, over);
+                }
+                catch (ZeyoCutException) when (step.Refused)
+                {
+                    over.Add(step);
+                    continue;
+                }
+                catch (ZeyoCutException ex)
+                {
+                    node.Value = step with { Refused = true };
+                    if (node.Previous is null)
+                    {
+                        throw;
+                    }
+
+                    throw new ZeyoCutException($"{ex.Message}. The next redo steps over this step and goes on to the one after it", ex);
+                }
+
+                var current = ProjectJson.Serialize(_project);
+                Save(held, put, $"redo {step.Label}");
+                _redo.Remove(node);
+                AddStep(step with { Json = current, Outside = _outsideCount, Revision = _project.Revision, Refused = false });
+                steppedOver = over.Select(s => s.Label).ToList();
+                return step.Label;
             }
 
-            var step = _redo.Peek();
-            var current = ProjectJson.Serialize(_project);
-            Save(held, PutBack(step, backwards: false, []), $"redo {step.Label}");
-            _redo.Pop();
-            AddStep(step with { Json = current, Outside = _outsideCount, Revision = _project.Revision });
-            return step.Label;
+            throw new ZeyoCutException(over.Count == 0
+                ? "nothing to redo"
+                : $"nothing to redo: {And(over.Select(s => $"'{s.Label}'").ToList())} can't be redone on top of another program's changes");
         }
     }
 
@@ -397,7 +427,7 @@ public sealed class ProjectSession
 
     // What undo (backwards) or redo of a step saves. With no change from another program since,
     // it's the whole project the step kept; otherwise the open project with the step's items put
-    // back, refused when another program changed one of them, or a later step that this undo
+    // back, refused when another program changed one of them, or a step that this undo or redo
     // stepped over ('over') did.
     private Project PutBack(Step step, bool backwards, IReadOnlyList<Step> over)
     {
@@ -413,11 +443,13 @@ public sealed class ProjectSession
         var backups = _program.Length > 0 ? "" : $". restore_backup lists the copies of {ProjectStore.ProjectFileName} kept before each save";
         if (conflicts.Count > 0)
         {
-            var theirs = conflicts.Where(c => LeftBy(over, c) is null).ToList();
+            var theirs = conflicts.Where(c => LeftBy(over, c, backwards) is null).ToList();
             if (theirs.Count == 0)
             {
-                throw new ZeyoCutException($"can't {verb} '{step.Label}': '{LeftBy(over, conflicts[0])!.Label}', a later step that was stepped over, changed {conflicts[0].Describe()} too, "
-                    + $"and undoing '{step.Label}' would throw that change away{backups}");
+                var left = LeftBy(over, conflicts[0], backwards)!.Label;
+                throw new ZeyoCutException(backwards
+                    ? $"can't undo '{step.Label}': '{left}', a later step that was stepped over, changed {conflicts[0].Describe()} too, and undoing '{step.Label}' would throw that change away{backups}"
+                    : $"can't redo '{step.Label}': '{left}', an earlier step that was stepped over, changed {conflicts[0].Describe()} too, and '{step.Label}' was made on top of that change{backups}");
             }
 
             conflicts = theirs;
@@ -450,9 +482,9 @@ public sealed class ProjectSession
     }
 
     // The stepped-over step that left an item as it is now, if one did: then that step changed
-    // it, not another program.
-    private Step? LeftBy(IReadOnlyList<Step> over, ItemDelta item) =>
-        over.FirstOrDefault(s => s.Changes.Any(d => d.Kind == item.Kind && d.Id == item.Id && ProjectDiff.Conflicts(_project, [d], backwards: true).Count == 0));
+    // it (undo) or would have (redo, where the item is as that step found it), not another program.
+    private Step? LeftBy(IReadOnlyList<Step> over, ItemDelta item, bool backwards) =>
+        over.FirstOrDefault(s => s.Changes.Any(d => d.Kind == item.Kind && d.Id == item.Id && ProjectDiff.Conflicts(_project, [d], backwards).Count == 0));
 
     private static string And(List<string> items) =>
         items.Count == 1 ? items[0] : string.Join(", ", items[..^1]) + " and " + items[^1];
@@ -574,7 +606,8 @@ public sealed class ProjectSession
     // One step undo can take back (or redo put back): its label, the whole project.json it puts
     // back when no other program saved since (the version before the step; for redo, the one
     // before the undo), the items it changed, how many outside changes had come by then, and the
-    // revision it saved. Refused: an undo of it was refused, so the next one steps over it.
+    // revision it saved. Refused: an undo of it (or, once undone, a redo) was refused, so the next
+    // one steps over it.
     private sealed record Step(string Label, string Json, IReadOnlyList<ItemDelta> Changes, int Outside, long Revision, bool Refused = false);
 }
 

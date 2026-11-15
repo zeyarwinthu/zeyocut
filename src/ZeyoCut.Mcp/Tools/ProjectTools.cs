@@ -187,12 +187,13 @@ public static class ProjectTools
     });
 
     [McpServerTool(Name = "redo")]
-    [Description("Redo the last undone change.")]
+    [Description("Redo the last undone change. When another program (such as the editor) has saved since, it's refused when that program changed the same layers or settings since the undo. After such a refusal, the next redo steps over that change, which stays undone, and redoes the one undone before it; the reply names the change it stepped over.")]
     public static string Redo(EditorState state) => Guard(() =>
     {
         var session = state.Session;
-        var label = session.Redo();
-        return $"redid: {label} ({session.UndoCount} undo step(s), {session.RedoCount} more redo step(s))";
+        var label = session.Redo(out var over);
+        var stepped = over.Count == 0 ? "" : $". Stepped over {string.Join(", ", over.Select(l => $"'{l}'"))}, which can't be redone on top of another program's changes";
+        return $"redid: {label} ({session.UndoCount} undo step(s), {session.RedoCount} more redo step(s)){stepped}";
     });
 
     [McpServerTool(Name = "restore_backup")]

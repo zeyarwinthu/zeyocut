@@ -314,6 +314,8 @@ After a refused `undo`, the next one steps over that step: it stays as it is, th
 undid: update_layer title (3 more undo step(s), 1 redo step(s)). Stepped over 'update_layer sub', which can't be undone on top of another program's changes
 ```
 
+`redo` steps over a refused step in the same way: the step stays undone, the one undone before it is redone, and the reply names the step it stepped over.
+
 Here the project has three text layers, and the editor saved three edits between two calls. The next call, `list_layers`, starts with a note:
 
 ```text

@@ -237,6 +237,34 @@ public class EditorDocumentTests
     }
 
     [Fact]
+    public void TheRedoAfterARefusedOneStepsOverThatStepAndSaysSo()
+    {
+        var (server, editor, directory) = Open("editor-redo-step-over");
+        Assert.True(editor.Apply(new UpdateLayerOperation("music", new JsonObject { ["volume"] = 0.3 })));
+        Assert.True(editor.Apply(new MoveLayerOperation("title", 1)));
+        Assert.True(editor.Undo());
+        Assert.True(editor.Undo());
+        server.Mutate("update_layer music", p => ProjectEditor.UpdateLayer(p, "music", new JsonObject { ["fadeIn"] = 1 }));
+
+        Assert.False(editor.Redo());
+        Assert.Equal(
+            "can't redo 'update_layer music': another program changed layer 'music' since it was undone (saved: update_layer music), and redoing it would throw that change away. "
+            + "The next redo steps over this step and goes on to the one after it",
+            editor.Status);
+
+        Assert.True(editor.Redo());
+        Assert.Equal("Redid 'move_layer title' and stepped over 'update_layer music', which can't be redone on top of another program's changes. Saved · revision 7", editor.Status);
+        Assert.Equal(1, editor.View.FindLayer("title")!.Start);
+        var music = Saved<AudioLayer>(directory, "music");
+        Assert.Equal((0.8, 1.0), (music.Volume, music.FadeIn));
+
+        Assert.False(editor.Redo());
+        Assert.Equal("nothing to redo: 'update_layer music' can't be redone on top of another program's changes", editor.Status);
+        Assert.True(editor.Undo());
+        Assert.Equal("Saved · revision 8", editor.Status);
+    }
+
+    [Fact]
     public void ASaveThatCantBeWrittenSaysWhyInTheStatus()
     {
         var (_, editor, directory) = Open("editor-io-save");
