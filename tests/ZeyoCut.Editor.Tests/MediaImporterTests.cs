@@ -16,7 +16,8 @@ public class MediaImporterTests
         var folder = TestFiles.NewProject(name);
         var media = TestFiles.NewFolder(name + "-media");
         var document = EditorDocument.Open(folder);
-        var importer = new MediaImporter(document, new JobManager(), ffmpeg ?? TestFiles.Ffmpeg, action => action());
+        var importer = new MediaImporter(document, new JobManager(), ffmpeg ?? TestFiles.Ffmpeg, action => action(),
+            operation => Task.FromResult<(bool Saved, string Status)?>((document.Apply(operation), document.Status)));
         var added = new List<Asset>();
         importer.Added += added.Add;
         return (document, importer, added, media);

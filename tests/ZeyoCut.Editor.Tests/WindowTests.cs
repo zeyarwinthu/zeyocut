@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 using System.Diagnostics;
+using System.Reflection;
 using System.Text.Json.Nodes;
 using System.Windows;
 using System.Windows.Controls;
@@ -366,6 +367,38 @@ public class WindowTests
         Assert.Equal(0, Title(directory).Start);
         Assert.Equal("Saved · revision 3", Text(window, "SaveStatus"));
         Assert.Equal("0", Field(window, "Start").Text);
+    });
+
+    // A file dropped on the window is imported as an edit saved like the others: while another
+    // program is saving, the window goes on working, and the file is added after it. (WPF makes a
+    // drop's event arguments only for a real drag.)
+    [Fact]
+    public void AnImportWaitingForAnotherProgramsSaveDoesntHoldUpTheWindow() => TestWindow.Run("window-import-waits", (window, folder) =>
+    {
+        var directory = Saved(folder, "project");
+        window.OpenProject(directory);
+        var picture = TestFiles.Png(Path.Combine(folder, "picture.png"), 8, 8);
+
+        var held = ProjectLock.Acquire(directory, TimeSpan.FromSeconds(1));
+        var drop = (DragEventArgs)Activator.CreateInstance(typeof(DragEventArgs), BindingFlags.Instance | BindingFlags.NonPublic, null,
+            [new DataObject(DataFormats.FileDrop, new[] { picture }), DragDropKeyStates.None, DragDropEffects.Copy, window, new Point()], null)!;
+        drop.RoutedEvent = DragDrop.DropEvent;
+        window.RaiseEvent(drop);
+        var watch = Stopwatch.StartNew();
+        for (var i = 0; i < 100 && Text(window, "SaveStatus") != "Saving…"; i++)
+        {
+            TestWindow.Pump(10);
+        }
+
+        Assert.True(watch.ElapsedMilliseconds < 1500, $"the import held up the window for {watch.ElapsedMilliseconds} ms");
+        Assert.Equal("Saving…", Text(window, "SaveStatus"));
+        Assert.Null(ProjectStore.Load(directory).FindAsset("picture"));
+
+        held.Dispose();
+        WaitForSaves(window);
+        Assert.NotNull(ProjectStore.Load(directory).FindAsset("picture"));
+        Assert.Equal("Saved · revision 3", Text(window, "SaveStatus"));
+        Assert.Equal("Imported 'picture'", Text(window, "MessageText"));
     });
 
     // Split, Delete, Pack lanes, a keyframe's diamond and Export act on the project as shown: given

@@ -472,7 +472,7 @@ public partial class MainWindow : Window
         _document = document;
         var directory = document.Session.Directory;
         _proxies = new ProxyJobs(_jobs, Ffmpeg);
-        _importer = new MediaImporter(document, _jobs, Ffmpeg, action => Dispatcher.InvokeAsync(action));
+        _importer = new MediaImporter(document, _jobs, Ffmpeg, action => Dispatcher.InvokeAsync(action), operation => SaveImport(document, operation));
         _importer.Added += OnAssetAdded;
         PendingList.ItemsSource = _importer.Pending;
         FramePreview? preview = null;
@@ -1950,13 +1950,19 @@ public partial class MainWindow : Window
         }
     }
 
+    // An import's edit, saved after the window's own (Save); null when its project was closed first.
+    private async Task<(bool Saved, string Status)?> SaveImport(EditorDocument into, AddAssetOperation operation) =>
+        ReferenceEquals(into, _document) ? await Save(document => (Saved: document.Apply(operation), document.Status)) : null;
+
+    // The proxies are looked for once no edit is being saved: a save holds the session while it waits
+    // for project.lock.
     private void OnAssetAdded(Asset asset)
     {
         _selectedAsset = asset.Id;
         _selectedLayer = null;
         Message($"Imported '{asset.Id}'");
         Rebuild();
-        _proxies?.Start(_document!.Session);
+        WhenSaved(() => _proxies?.Start(_document!.Session));
     }
 
     private void RestorePlacement()

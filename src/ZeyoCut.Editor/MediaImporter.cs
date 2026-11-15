@@ -69,8 +69,10 @@ public sealed class PendingImport(string source) : INotifyPropertyChanged
 // Imports the files you pick into the open project as import_asset and import_video do: images, audio
 // and fonts are copied in; a video is copied in when it has a constant frame rate, no rotation and 8
 // bits, and is normalized first in a background job otherwise, one video at a time. Files are copied
-// before the save takes project.lock, and each is added as its own edit, on the UI thread (post).
-public sealed class MediaImporter(EditorDocument document, JobManager jobs, Func<FfmpegPaths> ffmpeg, Action<Action> post)
+// before the save takes project.lock, and each is added as its own edit, saved by 'save' (the window's,
+// after its own edits), which gives whether it was saved and the status line then, or null when the
+// project was closed first. The rest happens on the UI thread (post).
+public sealed class MediaImporter(EditorDocument document, JobManager jobs, Func<FfmpegPaths> ffmpeg, Action<Action> post, Func<AddAssetOperation, Task<(bool Saved, string Status)?>> save)
 {
     private readonly SemaphoreSlim _normalizing = new(1, 1);
 
@@ -133,7 +135,7 @@ public sealed class MediaImporter(EditorDocument document, JobManager jobs, Func
         {
             post(() => item.Show("copying"));
             var prepared = AssetImporter.Prepare(directory, item.Source, new AssetProbe(path => Ffprobe.AudioDuration(ffmpeg().Ffprobe, path)));
-            post(() => Add(item, new AddAssetOperation(prepared)));
+            post(async () => await Add(item, new AddAssetOperation(prepared)));
             return null;
         }
 
@@ -144,7 +146,7 @@ public sealed class MediaImporter(EditorDocument document, JobManager jobs, Func
         {
             post(() => item.Show("copying"));
             var prepared = VideoImport.Prepare(directory, item.Source, probe);
-            post(() => Add(item, new AddAssetOperation(prepared)));
+            post(async () => await Add(item, new AddAssetOperation(prepared)));
             return null;
         }
 
@@ -171,11 +173,11 @@ public sealed class MediaImporter(EditorDocument document, JobManager jobs, Func
             }
         });
         post(() => item.Start(job));
-        return job.Completion.ContinueWith(_ => post(() =>
+        return job.Completion.ContinueWith(_ => post(async () =>
         {
             if (job.State == JobState.Completed && normalized is { } prepared)
             {
-                if (!Add(item, new AddAssetOperation(prepared, null, item.Source, VideoImport.Reasons(reasons))))
+                if (!await Add(item, new AddAssetOperation(prepared, null, item.Source, VideoImport.Reasons(reasons))))
                 {
                     File.Delete(output);
                 }
@@ -187,11 +189,18 @@ public sealed class MediaImporter(EditorDocument document, JobManager jobs, Func
         }), TaskScheduler.Default);
     }
 
-    private bool Add(PendingImport item, AddAssetOperation operation)
+    // False when the edit wasn't saved, so the file isn't used. When the project was closed first, it
+    // may have been.
+    private async Task<bool> Add(PendingImport item, AddAssetOperation operation)
     {
-        if (!document.Apply(operation))
+        if (await save(operation) is not { } result)
         {
-            item.Fail(document.Status);
+            return true;
+        }
+
+        if (!result.Saved)
+        {
+            item.Fail(result.Status);
             return false;
         }
 
