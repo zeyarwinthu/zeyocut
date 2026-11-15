@@ -86,6 +86,9 @@ public partial class MainWindow : Window
     private Task _saving = Task.CompletedTask;
     private int _saves;
 
+    // Commands given while edits are being saved, which wait for them (WhenSaved).
+    private readonly Queue<Action> _waiting = new();
+
     // The project the inspector's rows were built from, which their edits are checked against, and
     // the layer they are of.
     private Project? _inspectorProject;
@@ -530,6 +533,7 @@ public partial class MainWindow : Window
         _sound.Dispose();
         _claim?.Dispose();
         _claim = null;
+        _waiting.Clear();
         _export = null;
         _exportShown = null;
         _document = null;
@@ -1723,39 +1727,47 @@ public partial class MainWindow : Window
         return Timeline.FindClip(_selectedLayer) is { } clip && time > clip.Start + TimelineEditor.Epsilon && time < clip.End - TimelineEditor.Epsilon;
     }
 
+    // The clip selected, at the playhead, as they are when Split is pressed.
     private void SplitSelected()
     {
-        if (StillSaving())
+        var (layer, frame) = (_selectedLayer, _frame);
+        WhenSaved(() =>
         {
-            return;
-        }
+            if (layer is null)
+            {
+                Message("Select a clip in the timeline to split it at the playhead");
+                return;
+            }
 
-        if (_selectedLayer is null)
-        {
-            Message("Select a clip in the timeline to split it at the playhead");
-            return;
-        }
+            if (Timeline.FindClip(layer) is null && ClipOf(layer) is { } holder)
+            {
+                Message($"'{layer}' is attached to '{holder}': select that clip to split it with its child layers");
+                return;
+            }
 
-        if (Timeline.FindClip(_selectedLayer) is null && ClipOf(_selectedLayer) is { } holder)
-        {
-            Message($"'{_selectedLayer}' is attached to '{holder}': select that clip to split it with its child layers");
-            return;
-        }
+            var time = FrameMath.TimeOf(_document!.View, frame);
+            if (Timeline.FindClip(layer) is not { } clip || time <= clip.Start + TimelineEditor.Epsilon || time >= clip.End - TimelineEditor.Epsilon)
+            {
+                Message($"The playhead isn't inside '{layer}', so it can't be split there");
+                return;
+            }
 
-        if (!CanSplit(out var time))
-        {
-            Message($"The playhead isn't inside '{_selectedLayer}', so it can't be split there");
-            return;
-        }
-
-        Apply(new SplitLayerOperation(_selectedLayer, time));
+            Apply(new SplitLayerOperation(layer, time));
+        });
     }
 
+    // The clip selected when Delete is pressed; pressed again while it's being deleted, it's gone.
     private void DeleteSelected()
     {
-        if (_selectedLayer is { } id && !StillSaving())
+        if (_selectedLayer is { } id)
         {
-            Apply(new RemoveLayerOperation(id, WithChildren: true));
+            WhenSaved(() =>
+            {
+                if (_document!.View.FindLayer(id) is not null)
+                {
+                    Apply(new RemoveLayerOperation(id, WithChildren: true));
+                }
+            });
         }
     }
 
@@ -1795,6 +1807,13 @@ public partial class MainWindow : Window
         {
             _saves--;
             UpdateStatus();
+
+            // After what the saves' callers show (a message, a selection), which comes at a higher
+            // priority.
+            if (_saves == 0 && _waiting.Count > 0)
+            {
+                _ = Dispatcher.InvokeAsync(RunWaiting, DispatcherPriority.Background);
+            }
         }
 
         if (!ReferenceEquals(document, _document))
@@ -1815,18 +1834,30 @@ public partial class MainWindow : Window
         return result;
     }
 
-    // Split, Delete, Pack lanes and a keyframe's button act on the project as it's shown, which an
-    // edit being saved is about to change: pressed again meanwhile, they'd split or delete what's
-    // gone. They wait for the save.
-    private bool StillSaving()
+    // Runs a command that acts on the project as it's shown (Split, Delete, Pack lanes, a keyframe's
+    // diamond, Export) now, or, while edits are being saved, once they're shown: they change what it
+    // acts on, and pressed twice, its second time would split or delete what's gone. Commands that
+    // wait run in order.
+    private void WhenSaved(Action command)
     {
-        if (_saves == 0)
+        if (_saves == 0 && _waiting.Count == 0)
         {
-            return false;
+            command();
         }
+        else
+        {
+            _waiting.Enqueue(command);
+        }
+    }
 
-        Message("An edit is being saved; try again once it's saved");
-        return true;
+    // The commands that waited, in order, while no edit is being saved: one that saves makes the rest
+    // wait for it.
+    private void RunWaiting()
+    {
+        while (_saves == 0 && _waiting.TryDequeue(out var command))
+        {
+            command();
+        }
     }
 
     private void ShowStartPage(string? error = null)
@@ -2145,20 +2176,31 @@ public partial class MainWindow : Window
     // playing, it's where the playback stops.
     private void OnToggleKeyframe(object sender, RoutedEventArgs e)
     {
-        if (_document is null || sender is not Button { Tag: InspectorField { ToggleKey: { } toggle } } || StillSaving())
+        if (_document is null || sender is not Button { Tag: InspectorField { ToggleKey: not null } field } || Occurrence(field) is not { } occurrence)
         {
             return;
         }
 
+        // After edits being saved, the diamond's row is taken as the inspector shows them: whether it
+        // adds a keyframe or takes one away depends on the project.
         Pause();
-        try
+        var (layer, frame) = (_inspectorLayer, _frame);
+        WhenSaved(() =>
         {
-            Apply(toggle(FrameMath.TimeOf(_document.View, _frame)), _inspectorProject);
-        }
-        catch (ZeyoCutException ex)
-        {
-            Message(ex.Message);
-        }
+            if (_inspectorLayer != layer || InspectorList.Items.OfType<InspectorField>().Where(f => f.Label == field.Label).ElementAtOrDefault(occurrence) is not { ToggleKey: { } toggle })
+            {
+                return;
+            }
+
+            try
+            {
+                Apply(toggle(FrameMath.TimeOf(_document!.View, frame)), _inspectorProject);
+            }
+            catch (ZeyoCutException ex)
+            {
+                Message(ex.Message);
+            }
+        });
     }
 
     private void OnFieldChosen(object sender, RoutedEventArgs e)
@@ -2246,13 +2288,14 @@ public partial class MainWindow : Window
         e.Handled = true;
     }
 
-    private void OnPackLanes(object sender, RoutedEventArgs e)
+    // Pressed again while the lanes are being packed, there's nothing more to pack.
+    private void OnPackLanes(object sender, RoutedEventArgs e) => WhenSaved(() =>
     {
-        if (!StillSaving())
+        if (_packable)
         {
             Apply(new PackLanesOperation());
         }
-    }
+    });
 
     private void OnMode(object sender, RoutedEventArgs e) => ShowMode();
 
@@ -2437,21 +2480,16 @@ public partial class MainWindow : Window
         }
     }
 
+    // An edit still being saved goes into the export: it waits for it.
+    private void OnExport(object sender, RoutedEventArgs e) => WhenSaved(Export);
+
     // Exports the project as it is saved now (with what another program saved last), the way
     // start_export does, in this window's process.
-    private void OnExport(object sender, RoutedEventArgs e)
+    private void Export()
     {
         TakeOutsideChanges();
         if (_document is not { } document)
         {
-            return;
-        }
-
-        // An edit still being saved would be left out.
-        if (_saves > 0)
-        {
-            ExportStatus.Foreground = (Brush)FindResource("WarningBrush");
-            ExportStatus.Text = "An edit is still being saved; export once the status line says it's saved";
             return;
         }
 

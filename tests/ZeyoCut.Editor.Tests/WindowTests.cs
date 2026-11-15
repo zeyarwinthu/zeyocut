@@ -41,15 +41,20 @@ public class WindowTests
 
     private static string Text(MainWindow window, string name) => ((TextBlock)window.FindName(name)).Text;
 
-    // Lets the window finish the saves it started; its status line says "Saving…" until then.
+    // Lets the window finish the saves it started, and those of the commands that waited for them;
+    // its status line says "Saving…" until then.
     private static void WaitForSaves(MainWindow window)
     {
-        for (var i = 0; i < 1000 && Text(window, "SaveStatus") == "Saving…"; i++)
+        for (var i = 0; i < 1000; i++)
         {
+            TestWindow.Pump();
+            if (Text(window, "SaveStatus") != "Saving…")
+            {
+                return;
+            }
+
             TestWindow.Pump(10);
         }
-
-        TestWindow.Pump();
     }
 
     // The inspector's text box for a field.
@@ -363,19 +368,40 @@ public class WindowTests
         Assert.Equal("0", Field(window, "Start").Text);
     });
 
+    // Split, Delete, Pack lanes, a keyframe's diamond and Export act on the project as shown: given
+    // while an edit is being saved, they wait for it, as they did when saves held up the window.
     [Fact]
-    public void DeletePressedAgainWhileTheClipIsBeingDeletedWaits() => TestWindow.Run("window-delete-twice", (window, folder) =>
+    public void CommandsGivenWhileAnEditIsBeingSavedWaitForIt() => TestWindow.Run("window-commands-wait", (window, folder) =>
     {
         var directory = WithTitle(window, folder);
-        var held = ProjectLock.Acquire(directory, TimeSpan.FromSeconds(1));
-        TestWindow.Press(window, Key.Delete);
-        TestWindow.Press(window, Key.Delete);
-        Assert.Equal("An edit is being saved; try again once it's saved", Text(window, "MessageText"));
+        var list = (ItemsControl)window.FindName("InspectorList");
+        Button Diamond()
+        {
+            TestWindow.Pump();
+            var row = list.ItemContainerGenerator.ContainerFromItem(list.Items.OfType<InspectorField>().Single(f => f.Label == "X"));
+            return Descendant<Button>((DependencyObject)row)!;
+        }
 
+        // The X diamond clicked twice while its keyframe is being saved: the second click takes it
+        // away again.
+        var held = ProjectLock.Acquire(directory, TimeSpan.FromSeconds(1));
+        Diamond().RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+        Diamond().RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+        Assert.Equal("Saving…", Text(window, "SaveStatus"));
+        held.Dispose();
+        WaitForSaves(window);
+        Assert.Empty(Title(directory).X.Keyframes);
+        Assert.Equal("Saved · revision 3", Text(window, "SaveStatus"));
+
+        // Delete pressed twice: the title is deleted once.
+        held = ProjectLock.Acquire(directory, TimeSpan.FromSeconds(1));
+        TestWindow.Press(window, Key.Delete);
+        TestWindow.Press(window, Key.Delete);
         held.Dispose();
         WaitForSaves(window);
         Assert.Null(ProjectStore.Load(directory).FindLayer("title"));
-        Assert.Equal("Saved · revision 2", Text(window, "SaveStatus"));
+        Assert.Equal("Saved · revision 4", Text(window, "SaveStatus"));
+        Assert.StartsWith("removed: title", Text(window, "MessageText"));
     });
 
     [Fact]
