@@ -248,6 +248,74 @@ public class WindowTests
         Assert.Equal("ZeyoCut Editor", window.Title);
     });
 
+    // A project with a title from 0 to 2 s, open with the title selected.
+    private static string WithTitle(MainWindow window, string folder)
+    {
+        var project = TestFiles.Project();
+        ProjectEditor.AddTextLayer(project, new TextLayerOptions { Id = "title", Text = "Hello", Start = 0, End = 2 });
+        var directory = Path.Combine(folder, "titled");
+        ProjectSession.Create(directory, project);
+        window.OpenProject(directory);
+        window.SelectLayer("title");
+        return directory;
+    }
+
+    private static TextLayer Title(string directory) => (TextLayer)ProjectStore.Load(directory).FindLayer("title")!;
+
+    [Fact]
+    public void AFieldIsSavedOnEnterAndWhenTheKeyboardLeavesIt() => TestWindow.Run("window-fields", (window, folder) =>
+    {
+        var directory = WithTitle(window, folder);
+        Assert.Equal("TEXT LAYER", Text(window, "InspectorTitle"));
+
+        var start = Field(window, "Start");
+        start.Text = "0.5";
+        TestWindow.Press(start, Key.Return);
+        Assert.Equal(0.5, Title(directory).Start);
+        Assert.Equal("Saved · revision 2", Text(window, "SaveStatus"));
+
+        // Typed into Length, then the keyboard moves on to Start.
+        var length = Field(window, "Length");
+        Assert.True(length.Focus());
+        length.Text = "1";
+        Assert.True(Field(window, "Start").Focus());
+        TestWindow.Pump();
+        Assert.Equal(1.5, Title(directory).End);
+        Assert.Equal("Saved · revision 3", Text(window, "SaveStatus"));
+        Assert.Equal("1", Field(window, "Length").Text);
+    });
+
+    [Fact]
+    public void ATypedValueIsKeptWhenAnotherProgramChangedTheLayerFirst() => TestWindow.Run("window-kept", (window, folder) =>
+    {
+        var directory = WithTitle(window, folder);
+        var start = Field(window, "Start");
+        Assert.True(start.Focus());
+        start.Text = "1";
+
+        // Another program moves the title meanwhile. The window takes it, but the field keeps what
+        // was typed.
+        ProjectSession.Open(directory).Mutate("move_layer title", p => TimelineEditor.MoveLayer(p, "title", 0.25));
+        TestWindow.Pump(1500);
+        Assert.Equal("Saved · revision 2", Text(window, "SaveStatus"));
+        Assert.Same(start, Field(window, "Start"));
+        Assert.Equal("1", start.Text);
+
+        // Enter doesn't save it over their change: the window shows theirs, with what was typed
+        // back in the field.
+        TestWindow.Press(start, Key.Return);
+        Assert.Equal(0.25, Title(directory).Start);
+        Assert.StartsWith("Your change wasn't saved: another program changed 'title' first", Text(window, "SaveStatus"));
+        start = Field(window, "Start");
+        Assert.Equal("1", start.Text);
+        Assert.Equal("What you typed is still in the field: Enter saves it over the other program's change, Escape drops it", Text(window, "MessageText"));
+
+        // Enter again saves it.
+        TestWindow.Press(start, Key.Return);
+        Assert.Equal(1, Title(directory).Start);
+        Assert.Equal("Saved · revision 3", Text(window, "SaveStatus"));
+    });
+
     [Fact]
     public void ALongClipIsDrawnAtTheClosestZoom() => TestWindow.Run("window-long-clip", (window, folder) =>
     {

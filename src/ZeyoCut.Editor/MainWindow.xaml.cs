@@ -1677,7 +1677,7 @@ public partial class MainWindow : Window
         }
     }
 
-    private void SelectLayer(string? id)
+    public void SelectLayer(string? id)
     {
         _selectedLayer = id;
         Timeline.Selection = ClipOf(id);
