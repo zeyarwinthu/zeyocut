@@ -491,7 +491,8 @@ public sealed class ProjectSession
 
     private ZeyoCutException NotSaved(string problem) =>
         new($"{ProjectStore.ProjectFileName} was changed by another program and can't be read ({problem}), so nothing was saved; "
-            + $"fix the file, or put a backup back with restore_backup (the open project is revision {_project.Revision})");
+            + $"fix the file, or {(_program.Length > 0 ? $"put a copy from the {ProjectStore.BackupsFolder} folder in its place" : "put a backup back with restore_backup")} "
+            + $"(the open project is revision {_project.Revision})");
 
     // Takes another program's project.json as the open project and notes what changed. False, with
     // the reason, when it can't be read: the open project then stays as it was.

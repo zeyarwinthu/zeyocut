@@ -222,7 +222,7 @@ public sealed class EditorDocument
 
         _cameAfter.Add(View, new StrongBox<int>(_changes));
         return change?.Problem is { } problem
-            ? $"{ProjectStore.ProjectFileName} can't be read ({problem}); edits aren't saved until it's fixed or restore_backup puts a backup back"
+            ? $"{ProjectStore.ProjectFileName} can't be read ({problem}); edits aren't saved until it's fixed, or a copy from the {ProjectStore.BackupsFolder} folder is put in its place"
             : null;
     }
 

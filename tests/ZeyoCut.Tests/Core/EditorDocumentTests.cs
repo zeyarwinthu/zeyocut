@@ -394,9 +394,12 @@ public class EditorDocumentTests
         File.WriteAllText(file, "{ not json");
         Assert.False(editor.Refresh());
         Assert.StartsWith("project.json can't be read (", editor.Status);
-        Assert.EndsWith("); edits aren't saved until it's fixed or restore_backup puts a backup back", editor.Status);
+        Assert.EndsWith("); edits aren't saved until it's fixed, or a copy from the backups folder is put in its place", editor.Status);
         Assert.False(editor.Apply(new MoveLayerOperation("title", 1)));
         Assert.StartsWith("move_layer title wasn't saved: project.json was changed by another program and can't be read", editor.Status);
+
+        // The editor has no restore_backup, so its messages name the folder.
+        Assert.EndsWith("so nothing was saved; fix the file, or put a copy from the backups folder in its place (the open project is revision 1)", editor.Status);
         Assert.Equal("{ not json", File.ReadAllText(file));
     }
 }
