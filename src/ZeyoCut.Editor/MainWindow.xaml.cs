@@ -77,6 +77,9 @@ public partial class MainWindow : Window
     private bool _rebuilding;
     private bool _inspectorStale;
 
+    // Whether the shown project's lanes can be packed, worked out once each Rebuild.
+    private bool _packable;
+
     // The project the inspector's rows were built from, which their edits are checked against, and
     // the layer they are of.
     private Project? _inspectorProject;
@@ -238,6 +241,7 @@ public partial class MainWindow : Window
         _prefs.AddRecent(directory);
         SavePrefs();
         UpdateMenus();
+        ShowRecent();
     }
 
     // The Edit view is showing, with a project open.
@@ -582,6 +586,7 @@ public partial class MainWindow : Window
         Title = $"{Path.GetFileName(document.Session.Directory)} — ZeyoCut Editor";
         _frames = Math.Max(1, FrameMath.FrameCount(project));
         _frame = Math.Clamp(_frame, 0, _frames - 1);
+        _packable = ProjectEditor.PackedLevels(project).Count > 0;
 
         var lanes = TimelineLayout.Lanes(project);
         Timeline.Show(project, lanes, _frames);
@@ -968,6 +973,13 @@ public partial class MainWindow : Window
         UndoItem.IsEnabled = open && _document!.CanUndo;
         RedoItem.IsEnabled = open && _document!.CanRedo;
         UpdateEditButtons();
+    }
+
+    // The recent projects that are still there. Built when a project or the start page opens and when
+    // the menu opens, not with the other menus, which the once-a-second check updates: it looks for
+    // each folder on disk.
+    private void ShowRecent()
+    {
         RecentMenu.Items.Clear();
         foreach (var directory in _prefs.ExistingRecent())
         {
@@ -979,6 +991,14 @@ public partial class MainWindow : Window
         RecentMenu.IsEnabled = RecentMenu.Items.Count > 0;
     }
 
+    private void OnRecentOpened(object sender, RoutedEventArgs e)
+    {
+        if (ReferenceEquals(e.OriginalSource, RecentMenu))
+        {
+            ShowRecent();
+        }
+    }
+
     // Split needs a selected clip under the playhead; Delete, a selected clip; Pack lanes, lanes
     // that can be packed. The Edit view's commands need it showing.
     private void UpdateEditButtons()
@@ -986,7 +1006,7 @@ public partial class MainWindow : Window
         var open = Editing;
         SplitItem.IsEnabled = SplitButton.IsEnabled = open && CanSplit(out _);
         DeleteItem.IsEnabled = DeleteButton.IsEnabled = open && _selectedLayer is not null;
-        PackButton.IsEnabled = open && ProjectEditor.PackedLevels(_document!.View).Count > 0;
+        PackButton.IsEnabled = open && _packable;
         PackButton.ToolTip = PackButton.IsEnabled || !open
             ? "Put clips that never show at the same time on shared lanes; every frame stays as it is"
             : "The lanes are packed: sharing more of them would change what's drawn on top";
@@ -1733,6 +1753,7 @@ public partial class MainWindow : Window
         StartError.Text = error ?? "";
         StartError.Visibility = error is null ? Visibility.Collapsed : Visibility.Visible;
         UpdateMenus();
+        ShowRecent();
         _ = LoadStartLists();
     }
 

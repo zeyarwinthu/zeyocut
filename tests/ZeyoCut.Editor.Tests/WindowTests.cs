@@ -190,6 +190,41 @@ public class WindowTests
     });
 
     [Fact]
+    public void TheOnceASecondCheckLeavesTheMenusAlone() => TestWindow.Run("window-poll", (window, folder) =>
+    {
+        // Two titles at different levels that never show at once: the lanes can be packed.
+        var first = Saved(folder, "first", p =>
+        {
+            var layers = p["layers"]!.AsArray();
+            layers.Add(new JsonObject { ["type"] = "text", ["id"] = "a", ["text"] = "A", ["start"] = 0, ["end"] = 1, ["zIndex"] = 0 });
+            layers.Add(new JsonObject { ["type"] = "text", ["id"] = "b", ["text"] = "B", ["start"] = 1, ["end"] = 2, ["zIndex"] = 1 });
+        });
+        var second = Saved(folder, "second");
+        window.OpenProject(second);
+        window.OpenProject(first);
+        var pack = (Button)window.FindName("PackButton");
+        Assert.True(pack.IsEnabled);
+
+        var recent = (MenuItem)window.FindName("RecentMenu");
+        var items = recent.Items.Cast<MenuItem>().ToList();
+        Assert.Equal([first, second], items.Select(i => (string)i.Tag));
+
+        // Checks for another program's changes don't build the menu again.
+        TestWindow.Pump(1500);
+        Assert.Equal(items, recent.Items.Cast<MenuItem>());
+
+        // Opened, it leaves out a project that is gone.
+        Directory.Delete(second, recursive: true);
+        recent.RaiseEvent(new RoutedEventArgs(MenuItem.SubmenuOpenedEvent, recent));
+        Assert.Equal([first], recent.Items.Cast<MenuItem>().Select(i => (string)i.Tag));
+
+        // Packed, there's nothing more to pack.
+        pack.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+        TestWindow.Pump();
+        Assert.False(pack.IsEnabled);
+    });
+
+    [Fact]
     public void ALongClipIsDrawnAtTheClosestZoom() => TestWindow.Run("window-long-clip", (window, folder) =>
     {
         // Two hours (the longest a project can be) at 48 px a frame is 10 million px, past what WPF

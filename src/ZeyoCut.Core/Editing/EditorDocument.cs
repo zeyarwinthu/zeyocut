@@ -148,7 +148,7 @@ public sealed class EditorDocument
             return false;
         }
 
-        var problem = Take();
+        var problem = Take(took);
         if (problem is not null)
         {
             Status = problem;
@@ -205,11 +205,18 @@ public sealed class EditorDocument
     }
 
     // Brings View up to the session and keeps what other programs changed; returns the problem
-    // when project.json can't be read.
-    private string? Take()
+    // when project.json can't be read. After a check that took nothing (changed false), View stays
+    // unless another program's change came in after all: copying the project takes time that grows
+    // with it.
+    private string? Take(bool changed = true)
     {
-        View = Session.Snapshot();
         var change = Session.TakeOutsideChanges();
+        if (!changed && change is null)
+        {
+            return null;
+        }
+
+        View = Session.Snapshot();
         if (change is not null)
         {
             _outside.Add(change);

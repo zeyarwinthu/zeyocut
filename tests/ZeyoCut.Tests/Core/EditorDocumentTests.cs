@@ -51,6 +51,21 @@ public class EditorDocumentTests
     }
 
     [Fact]
+    public void ACheckThatFindsNothingNewKeepsTheProjectShown()
+    {
+        var (server, editor, _) = Open("editor-refresh-same");
+        var view = editor.View;
+        Assert.False(editor.Refresh());
+        Assert.Same(view, editor.View);
+        Assert.Equal("Saved · revision 1", editor.Status);
+
+        server.Mutate("add_caption_track en", TestProjects.AddCaptions);
+        Assert.True(editor.Refresh());
+        Assert.NotSame(view, editor.View);
+        Assert.NotNull(editor.View.FindLayer("captions_en"));
+    }
+
+    [Fact]
     public void TheProjectsLengthIsSetUnlessAnotherProgramChangedItFirst()
     {
         var (server, editor, directory) = Open("editor-duration");

@@ -207,7 +207,7 @@
     <Menu>
       <MenuItem Header="_File">
         <MenuItem Header="_Open project…" InputGestureText="Ctrl+O" Click="OnOpen" />
-        <MenuItem x:Name="RecentMenu" Header="Open _recent" />
+        <MenuItem x:Name="RecentMenu" Header="Open _recent" SubmenuOpened="OnRecentOpened" />
         <MenuItem x:Name="CloseItem" Header="_Close project" Click="OnCloseProject" />
         <Separator />
         <MenuItem Header="E_xit" InputGestureText="Alt+F4" Click="OnExit" />
