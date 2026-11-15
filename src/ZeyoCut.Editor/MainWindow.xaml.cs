@@ -89,6 +89,9 @@ public partial class MainWindow : Window
     // Commands given while edits are being saved, which wait for them (WhenSaved).
     private readonly Queue<Action> _waiting = new();
 
+    // What's let finish once the window is asked to close (OnClosing), while it's hidden.
+    private Task? _finishing;
+
     // The project the inspector's rows were built from, which their edits are checked against, and
     // the layer they are of.
     private Project? _inspectorProject;
@@ -393,7 +396,14 @@ public partial class MainWindow : Window
     protected override void OnClosing(CancelEventArgs e)
     {
         base.OnClosing(e);
-        if (!StopExportFirst("close the window"))
+        if (_finishing is not null)
+        {
+            e.Cancel = !_finishing.IsCompleted;
+            return;
+        }
+
+        var export = _export?.Job;
+        if (!StopExportFirst("close the window", wait: false))
         {
             e.Cancel = true;
             return;
@@ -401,10 +411,6 @@ public partial class MainWindow : Window
 
         SavePlacement();
         CloseProject();
-
-        // Edits still being saved are let finish (each waits up to 5 s for project.lock), so closing
-        // doesn't drop them.
-        Task.WaitAny([_saving], TimeSpan.FromSeconds(10));
         _poll.Stop();
         _settle.Stop();
         _ticker.Stop();
@@ -414,7 +420,19 @@ public partial class MainWindow : Window
             job.Cancellation.Cancel();
         }
 
-        Task.WaitAll(running.Select(j => j.Completion).ToArray(), TimeSpan.FromSeconds(3));
+        // Edits still being saved (each waits up to 5 s for project.lock), the export and the jobs
+        // stopping are let finish, so closing doesn't drop them, with the window hidden rather than
+        // held up; then it closes.
+        _finishing = Task.WhenAll(
+            Task.WhenAny(_saving, Task.Delay(TimeSpan.FromSeconds(10))),
+            Task.WhenAny(export?.Completion ?? Task.CompletedTask, Task.Delay(TimeSpan.FromSeconds(5))),
+            Task.WhenAny(Task.WhenAll(running.Select(j => j.Completion)), Task.Delay(TimeSpan.FromSeconds(3))));
+        if (!_finishing.IsCompleted)
+        {
+            e.Cancel = true;
+            Hide();
+            _ = _finishing.ContinueWith(_ => Dispatcher.InvokeAsync(Close), TaskScheduler.Default);
+        }
     }
 
     private static Brush Frozen(byte r, byte g, byte b)
@@ -2451,8 +2469,8 @@ public partial class MainWindow : Window
     }
 
     // Before something that would end the running export: asks whether to stop it. True when no
-    // export runs or it was stopped.
-    private bool StopExportFirst(string then)
+    // export runs or it was stopped; 'wait' waits up to 5 s for it to stop.
+    private bool StopExportFirst(string then, bool wait = true)
     {
         if (_export?.Job is not { State: ExportState.Running } job)
         {
@@ -2467,7 +2485,11 @@ public partial class MainWindow : Window
         }
 
         _exports.Cancel(job.Id);
-        job.Completion.Wait(TimeSpan.FromSeconds(5));
+        if (wait)
+        {
+            job.Completion.Wait(TimeSpan.FromSeconds(5));
+        }
+
         return true;
     }
 

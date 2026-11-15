@@ -16,8 +16,8 @@ public static class TestWindow
     private static readonly Lazy<Dispatcher> Ui = new(Start);
 
     // Runs test with a new window whose settings, projects folder and log folder are in the test's
-    // folder, then closes it. An error nothing in the window caught (one the editor would show in
-    // its error dialog) fails the test too.
+    // folder, then closes it, which can first finish what it's doing hidden. An error nothing in the
+    // window caught (one the editor would show in its error dialog) fails the test too.
     public static void Run(string name, Action<MainWindow, string> test)
     {
         ExceptionDispatchInfo? failed = null;
@@ -32,6 +32,7 @@ public static class TestWindow
             }
 
             Dispatcher.CurrentDispatcher.UnhandledException += Record;
+            var closed = false;
             var settings = new Settings(null, Path.Combine(folder, "projects"), Path.Combine(folder, "logs"));
             var window = new MainWindow(settings, Path.Combine(folder, "editor.json"))
             {
@@ -43,6 +44,7 @@ public static class TestWindow
                 Width = 1400,
                 Height = 900,
             };
+            window.Closed += (_, _) => closed = true;
             try
             {
                 window.Show();
@@ -56,7 +58,16 @@ public static class TestWindow
             }
             finally
             {
-                window.Close();
+                if (!closed)
+                {
+                    window.Close();
+                }
+
+                for (var i = 0; i < 2000 && !closed; i++)
+                {
+                    Pump(10);
+                }
+
                 Pump();
                 Dispatcher.CurrentDispatcher.UnhandledException -= Record;
             }

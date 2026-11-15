@@ -456,6 +456,31 @@ public class WindowTests
         Assert.Equal(0.5, Title(directory!).Start);
     }
 
+    // Closed while an edit waits for another program's save, the window is hidden at once, and
+    // closes once the edit is saved.
+    [Fact]
+    public void ClosingTheWindowWhileAnEditIsBeingSavedDoesntHoldItUp()
+    {
+        string? directory = null;
+        TestWindow.Run("window-close-hidden", (window, folder) =>
+        {
+            directory = WithTitle(window, folder);
+            var held = ProjectLock.Acquire(directory, TimeSpan.FromSeconds(1));
+            var start = Field(window, "Start");
+            start.Text = "0.5";
+            TestWindow.Press(start, Key.Return);
+            _ = Task.Delay(2000).ContinueWith(_ => held.Dispose(), TaskScheduler.Default);
+
+            var watch = Stopwatch.StartNew();
+            window.Close();
+            Assert.True(watch.ElapsedMilliseconds < 1000, $"closing held up the window for {watch.ElapsedMilliseconds} ms");
+            Assert.False(window.IsVisible);
+            Assert.Equal(0, Title(directory).Start);
+        });
+
+        Assert.Equal(0.5, Title(directory!).Start);
+    }
+
     [Fact]
     public void ALongClipIsDrawnAtTheClosestZoom() => TestWindow.Run("window-long-clip", (window, folder) =>
     {
