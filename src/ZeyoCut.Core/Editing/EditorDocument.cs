@@ -19,8 +19,12 @@ namespace ZeyoCut.Core.Editing;
 // A file or folder that can't be read or written (held by another program, read-only, gone) doesn't
 // throw: nothing is saved and Status gives the reason. Status also names the problems a project has
 // when it is opened.
+//
+// The editor saves on a worker thread and takes other programs' changes on its window's thread: an
+// edit, an undo or redo, and taking those changes run one at a time.
 public sealed class EditorDocument
 {
+    private readonly object _gate = new();
     private readonly List<OutsideChange> _outside = [];
 
     // How many changes by other programs each View came after, and for each layer the last of them
@@ -65,113 +69,128 @@ public sealed class EditorDocument
     // one shown now.
     public bool Apply(EditOperation operation, Project? from = null)
     {
-        var shown = View;
-        string? changed = null;
-        string summary;
-        try
+        lock (_gate)
         {
-            summary = Session.Mutate(operation.Label, project =>
+            var shown = View;
+            string? changed = null;
+            string summary;
+            try
             {
-                changed = operation.Layers.FirstOrDefault(id => (from is not null && ChangedSince(from, id)) || LayerJson(shown, id) != LayerJson(project, id));
-                if (changed is not null)
+                summary = Session.Mutate(operation.Label, project =>
                 {
-                    throw new ZeyoCutException($"another program changed layer '{changed}'");
-                }
+                    changed = operation.Layers.FirstOrDefault(id => (from is not null && ChangedSince(from, id)) || LayerJson(shown, id) != LayerJson(project, id));
+                    if (changed is not null)
+                    {
+                        throw new ZeyoCutException($"another program changed layer '{changed}'");
+                    }
 
-                return operation.Apply(project);
-            });
-        }
-        catch (Exception ex) when (ex is ZeyoCutException or IOException or UnauthorizedAccessException)
-        {
+                    return operation.Apply(project);
+                });
+            }
+            catch (Exception ex) when (ex is ZeyoCutException or IOException or UnauthorizedAccessException)
+            {
+                Take();
+                Summary = null;
+                Overtaken = changed;
+                Status = changed is null
+                    ? $"{operation.Label} wasn't saved: {ex.Message}"
+                    : $"Your change wasn't saved: another program {(View.FindLayer(changed) is null ? "removed" : "changed")} '{changed}' first{SavedBy(changed)}. You see its version now.";
+                return false;
+            }
+
             Take();
-            Summary = null;
-            Overtaken = changed;
-            Status = changed is null
-                ? $"{operation.Label} wasn't saved: {ex.Message}"
-                : $"Your change wasn't saved: another program {(View.FindLayer(changed) is null ? "removed" : "changed")} '{changed}' first{SavedBy(changed)}. You see its version now.";
-            return false;
+            Summary = summary;
+            Overtaken = null;
+            Status = Saved();
+            return true;
         }
-
-        Take();
-        Summary = summary;
-        Overtaken = null;
-        Status = Saved();
-        return true;
     }
 
     // After an undo or a redo that was refused, the next one steps over that step, and Status names it.
     public bool Undo()
     {
-        var label = "";
-        IReadOnlyList<string> over = [];
-        if (!Run("undo", () => label = Session.Undo(out over)))
+        lock (_gate)
         {
-            return false;
-        }
+            var label = "";
+            IReadOnlyList<string> over = [];
+            if (!Run("undo", () => label = Session.Undo(out over)))
+            {
+                return false;
+            }
 
-        if (over.Count > 0)
-        {
-            Status = $"Undid '{label}' and stepped over {string.Join(", ", over.Select(l => $"'{l}'"))}, which can't be undone on top of another program's changes. {Saved()}";
-        }
+            if (over.Count > 0)
+            {
+                Status = $"Undid '{label}' and stepped over {string.Join(", ", over.Select(l => $"'{l}'"))}, which can't be undone on top of another program's changes. {Saved()}";
+            }
 
-        return true;
+            return true;
+        }
     }
 
     public bool Redo()
     {
-        var label = "";
-        IReadOnlyList<string> over = [];
-        if (!Run("redo", () => label = Session.Redo(out over)))
+        lock (_gate)
         {
-            return false;
-        }
+            var label = "";
+            IReadOnlyList<string> over = [];
+            if (!Run("redo", () => label = Session.Redo(out over)))
+            {
+                return false;
+            }
 
-        if (over.Count > 0)
-        {
-            Status = $"Redid '{label}' and stepped over {string.Join(", ", over.Select(l => $"'{l}'"))}, which can't be redone on top of another program's changes. {Saved()}";
-        }
+            if (over.Count > 0)
+            {
+                Status = $"Redid '{label}' and stepped over {string.Join(", ", over.Select(l => $"'{l}'"))}, which can't be redone on top of another program's changes. {Saved()}";
+            }
 
-        return true;
+            return true;
+        }
     }
 
     // Takes what another program saved since; true when View changed.
     public bool Refresh()
     {
-        bool took;
-        try
+        lock (_gate)
         {
-            took = Session.Sync();
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            Status = $"Couldn't check {ProjectStore.ProjectFileName} for another program's changes: {ex.Message}";
-            return false;
-        }
+            bool took;
+            try
+            {
+                took = Session.Sync();
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                Status = $"Couldn't check {ProjectStore.ProjectFileName} for another program's changes: {ex.Message}";
+                return false;
+            }
 
-        var problem = Take(took);
-        if (problem is not null)
-        {
-            Status = problem;
-        }
-        else if (took)
-        {
-            Status = Saved();
-        }
+            var problem = Take(took);
+            if (problem is not null)
+            {
+                Status = problem;
+            }
+            else if (took)
+            {
+                Status = Saved();
+            }
 
-        return took;
+            return took;
+        }
     }
 
     // What other programs changed since this was last asked, as one; null when nothing.
     public OutsideChange? TakeOutsideChanges()
     {
-        if (_outside.Count == 0)
+        lock (_gate)
         {
-            return null;
-        }
+            if (_outside.Count == 0)
+            {
+                return null;
+            }
 
-        var merged = OutsideChange.Merge(_outside);
-        _outside.Clear();
-        return merged;
+            var merged = OutsideChange.Merge(_outside);
+            _outside.Clear();
+            return merged;
+        }
     }
 
     private static string? LayerJson(Project project, string id) =>

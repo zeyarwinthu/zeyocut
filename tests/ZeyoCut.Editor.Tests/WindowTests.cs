@@ -41,6 +41,17 @@ public class WindowTests
 
     private static string Text(MainWindow window, string name) => ((TextBlock)window.FindName(name)).Text;
 
+    // Lets the window finish the saves it started; its status line says "Saving…" until then.
+    private static void WaitForSaves(MainWindow window)
+    {
+        for (var i = 0; i < 1000 && Text(window, "SaveStatus") == "Saving…"; i++)
+        {
+            TestWindow.Pump(10);
+        }
+
+        TestWindow.Pump();
+    }
+
     // The inspector's text box for a field.
     private static TextBox Field(MainWindow window, string label)
     {
@@ -176,6 +187,7 @@ public class WindowTests
         Assert.Equal("1", box.Text);
         box.Text = "2";
         TestWindow.Press(box, Key.Return);
+        WaitForSaves(window);
         Assert.Equal(2, ProjectStore.Load(directory).Duration);
         Assert.Equal("duration 1s → 2s", Text(window, "MessageText"));
         Assert.Equal("Saved · revision 2", Text(window, "SaveStatus"));
@@ -221,7 +233,7 @@ public class WindowTests
 
         // Packed, there's nothing more to pack.
         pack.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
-        TestWindow.Pump();
+        WaitForSaves(window);
         Assert.False(pack.IsEnabled);
     });
 
@@ -271,6 +283,7 @@ public class WindowTests
         var start = Field(window, "Start");
         start.Text = "0.5";
         TestWindow.Press(start, Key.Return);
+        WaitForSaves(window);
         Assert.Equal(0.5, Title(directory).Start);
         Assert.Equal("Saved · revision 2", Text(window, "SaveStatus"));
 
@@ -280,6 +293,7 @@ public class WindowTests
         length.Text = "1";
         Assert.True(Field(window, "Start").Focus());
         TestWindow.Pump();
+        WaitForSaves(window);
         Assert.Equal(1.5, Title(directory).End);
         Assert.Equal("Saved · revision 3", Text(window, "SaveStatus"));
         Assert.Equal("1", Field(window, "Length").Text);
@@ -304,6 +318,7 @@ public class WindowTests
         // Enter doesn't save it over their change: the window shows theirs, with what was typed
         // back in the field.
         TestWindow.Press(start, Key.Return);
+        WaitForSaves(window);
         Assert.Equal(0.25, Title(directory).Start);
         Assert.StartsWith("Your change wasn't saved: another program changed 'title' first", Text(window, "SaveStatus"));
         start = Field(window, "Start");
@@ -312,9 +327,75 @@ public class WindowTests
 
         // Enter again saves it.
         TestWindow.Press(start, Key.Return);
+        WaitForSaves(window);
         Assert.Equal(1, Title(directory).Start);
         Assert.Equal("Saved · revision 3", Text(window, "SaveStatus"));
     });
+
+    [Fact]
+    public void AnEditWaitingForAnotherProgramsSaveDoesntHoldUpTheWindow() => TestWindow.Run("window-save-waits", (window, folder) =>
+    {
+        var directory = WithTitle(window, folder);
+
+        // Another program is saving: it has project.lock open for a while.
+        var held = ProjectLock.Acquire(directory, TimeSpan.FromSeconds(1));
+        var start = Field(window, "Start");
+        start.Text = "0.5";
+        var watch = Stopwatch.StartNew();
+        TestWindow.Press(start, Key.Return);
+        Assert.True(watch.ElapsedMilliseconds < 1000, $"Enter took {watch.ElapsedMilliseconds} ms");
+        TestWindow.Pump(300);
+        Assert.Equal("Saving…", Text(window, "SaveStatus"));
+        Assert.Equal(0, Title(directory).Start);
+
+        // Once it's done, the edit is saved after it.
+        held.Dispose();
+        WaitForSaves(window);
+        Assert.Equal(0.5, Title(directory).Start);
+        Assert.Equal("Saved · revision 2", Text(window, "SaveStatus"));
+        Assert.Equal("0.5", Field(window, "Start").Text);
+
+        // Undo goes the same way.
+        ((MenuItem)window.FindName("UndoItem")).RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+        WaitForSaves(window);
+        Assert.Equal(0, Title(directory).Start);
+        Assert.Equal("Saved · revision 3", Text(window, "SaveStatus"));
+        Assert.Equal("0", Field(window, "Start").Text);
+    });
+
+    [Fact]
+    public void DeletePressedAgainWhileTheClipIsBeingDeletedWaits() => TestWindow.Run("window-delete-twice", (window, folder) =>
+    {
+        var directory = WithTitle(window, folder);
+        var held = ProjectLock.Acquire(directory, TimeSpan.FromSeconds(1));
+        TestWindow.Press(window, Key.Delete);
+        TestWindow.Press(window, Key.Delete);
+        Assert.Equal("An edit is being saved; try again once it's saved", Text(window, "MessageText"));
+
+        held.Dispose();
+        WaitForSaves(window);
+        Assert.Null(ProjectStore.Load(directory).FindLayer("title"));
+        Assert.Equal("Saved · revision 2", Text(window, "SaveStatus"));
+    });
+
+    [Fact]
+    public void ClosingTheWindowWaitsForTheEditBeingSaved()
+    {
+        string? directory = null;
+        TestWindow.Run("window-close-saving", (window, folder) =>
+        {
+            directory = WithTitle(window, folder);
+            var held = ProjectLock.Acquire(directory, TimeSpan.FromSeconds(1));
+            var start = Field(window, "Start");
+            start.Text = "0.5";
+            TestWindow.Press(start, Key.Return);
+
+            // The other program finishes once the window is closing.
+            _ = Task.Delay(500).ContinueWith(_ => held.Dispose(), TaskScheduler.Default);
+        });
+
+        Assert.Equal(0.5, Title(directory!).Start);
+    }
 
     [Fact]
     public void ALongClipIsDrawnAtTheClosestZoom() => TestWindow.Run("window-long-clip", (window, folder) =>

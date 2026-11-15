@@ -80,6 +80,12 @@ public partial class MainWindow : Window
     // Whether the shown project's lanes can be packed, worked out once each Rebuild.
     private bool _packable;
 
+    // Saves run one after another on a worker thread (Save): the last one started, and how many
+    // aren't shown yet. Until they are, the window leaves the session alone, as a save holds it while
+    // it waits for project.lock.
+    private Task _saving = Task.CompletedTask;
+    private int _saves;
+
     // The project the inspector's rows were built from, which their edits are checked against, and
     // the layer they are of.
     private Project? _inspectorProject;
@@ -392,6 +398,10 @@ public partial class MainWindow : Window
 
         SavePlacement();
         CloseProject();
+
+        // Edits still being saved are let finish (each waits up to 5 s for project.lock), so closing
+        // doesn't drop them.
+        Task.WaitAny([_saving], TimeSpan.FromSeconds(10));
         _poll.Stop();
         _settle.Stop();
         _ticker.Stop();
@@ -557,10 +567,11 @@ public partial class MainWindow : Window
         return watcher;
     }
 
-    // Takes what another program saved, if anything, and shows it.
+    // Takes what another program saved, if anything, and shows it. While an edit is being saved, it
+    // waits: the save takes it too.
     private void TakeOutsideChanges()
     {
-        if (_document is null)
+        if (_document is null || _saves > 0)
         {
             return;
         }
@@ -866,24 +877,19 @@ public partial class MainWindow : Window
             return false;
         }
 
+        // The inspector is built again over the field being typed in once the edit is saved, unless
+        // more was typed meanwhile.
+        (TextBox? Box, string? Text) Typing() => TypingField() is { } typing ? (typing.Box, typing.Box.Text) : default;
+        var typed = Typing();
         var shown = Occurrence(field);
         var layer = _inspectorLayer;
-        bool saved;
-        _committingField = true;
-        try
+        Apply(operation, from ?? _inspectorProject, () => Typing() == typed, (saved, overtaken) =>
         {
-            saved = Apply(operation, from ?? _inspectorProject);
-        }
-        finally
-        {
-            _committingField = false;
-        }
-
-        if (!saved && _document.Overtaken is not null && shown is { } occurrence && layer is not null)
-        {
-            Dispatcher.InvokeAsync(() => KeepTyped(layer, field.Label, occurrence, text), DispatcherPriority.Loaded);
-        }
-
+            if (!saved && overtaken is not null && shown is { } occurrence && layer is not null)
+            {
+                Dispatcher.InvokeAsync(() => KeepTyped(layer, field.Label, occurrence, text), DispatcherPriority.Loaded);
+            }
+        });
         return true;
     }
     public static List<KeyValuePair<string, string>> AssetRows(string directory, Project project, Asset asset)
@@ -965,9 +971,10 @@ public partial class MainWindow : Window
             return;
         }
 
-        SaveStatus.Text = _document.Status;
-        SaveStatus.ToolTip = _document.Status;
-        SaveStatus.Foreground = (Brush)FindResource(_document.Status.StartsWith("Saved", StringComparison.Ordinal) ? "SecondaryTextBrush" : "WarningBrush");
+        var status = _saves > 0 ? "Saving…" : _document.Status;
+        SaveStatus.Text = status;
+        SaveStatus.ToolTip = status;
+        SaveStatus.Foreground = (Brush)FindResource(_saves > 0 || status.StartsWith("Saved", StringComparison.Ordinal) ? "SecondaryTextBrush" : "WarningBrush");
         UpdateMenus();
     }
 
@@ -976,8 +983,14 @@ public partial class MainWindow : Window
         var open = _document is not null;
         CloseItem.IsEnabled = open;
         MediaMenu.IsEnabled = open;
-        UndoItem.IsEnabled = open && _document!.CanUndo;
-        RedoItem.IsEnabled = open && _document!.CanRedo;
+
+        // While a save runs, the session is busy with it: undo and redo stay as they were.
+        if (!open || _saves == 0)
+        {
+            UndoItem.IsEnabled = open && _document!.CanUndo;
+            RedoItem.IsEnabled = open && _document!.CanRedo;
+        }
+
         UpdateEditButtons();
     }
 
@@ -1022,11 +1035,13 @@ public partial class MainWindow : Window
     private void AddClip(AddClipOperation operation)
     {
         var before = _document!.View.Layers.Select(l => l.Id).ToHashSet(StringComparer.Ordinal);
-        Apply(operation);
-        if (_document.View.Layers.FirstOrDefault(l => !before.Contains(l.Id)) is { } added)
+        Apply(operation, then: (_, _) =>
         {
-            SelectLayer(added.Id);
-        }
+            if (_document!.View.Layers.FirstOrDefault(l => !before.Contains(l.Id)) is { } added)
+            {
+                SelectLayer(added.Id);
+            }
+        });
     }
 
     // A clip of an asset dropped on the timeline: footage or a still on the visual lane it's dropped
@@ -1710,6 +1725,11 @@ public partial class MainWindow : Window
 
     private void SplitSelected()
     {
+        if (StillSaving())
+        {
+            return;
+        }
+
         if (_selectedLayer is null)
         {
             Message("Select a clip in the timeline to split it at the playhead");
@@ -1733,20 +1753,80 @@ public partial class MainWindow : Window
 
     private void DeleteSelected()
     {
-        if (_selectedLayer is { } id)
+        if (_selectedLayer is { } id && !StillSaving())
         {
             Apply(new RemoveLayerOperation(id, WithChildren: true));
         }
     }
 
-    // Saves an edit and shows the project with it, or why it wasn't saved. 'from' is the project the
+    // Saves an edit and shows the project with it, or why it wasn't saved; 'then' gets whether it
+    // was, and the layer another program changed first when that's why not. 'from' is the project the
     // edit was built from, when that isn't the one shown now: a field's rows, or where a drag began.
-    private bool Apply(EditOperation operation, Project? from = null)
+    // 'committing' is for a field's edit (Save).
+    private async void Apply(EditOperation operation, Project? from = null, Func<bool>? committing = null, Action<bool, string?>? then = null)
     {
-        var saved = _document!.Apply(operation, from);
-        Rebuild();
-        Message(saved ? _document.Summary ?? "" : "");
-        return saved;
+        if (await Save(document => (Saved: document.Apply(operation, from), document.Summary, document.Overtaken), committing) is not { } result)
+        {
+            return;
+        }
+
+        Message(result.Saved ? result.Summary ?? "" : "");
+        then?.Invoke(result.Saved, result.Overtaken);
+    }
+
+    // Runs a save after the ones before it, on a worker thread: the wait for project.lock (up to 5 s
+    // while another program saves), the backup and the flush to disk don't hold up the window, whose
+    // status line says "Saving…" meanwhile. Then shows the project as saved; null when it was closed
+    // first. 'committing' says whether the inspector is built again over the field being typed in, as
+    // for the field just saved.
+    private async Task<T?> Save<T>(Func<EditorDocument, T> save, Func<bool>? committing = null) where T : struct
+    {
+        var document = _document!;
+        _saves++;
+        UpdateStatus();
+        var saving = _saving.ContinueWith(_ => save(document), CancellationToken.None, TaskContinuationOptions.None, TaskScheduler.Default);
+        _saving = saving;
+        T result;
+        try
+        {
+            result = await saving;
+        }
+        finally
+        {
+            _saves--;
+            UpdateStatus();
+        }
+
+        if (!ReferenceEquals(document, _document))
+        {
+            return null;
+        }
+
+        _committingField = committing?.Invoke() == true;
+        try
+        {
+            Rebuild();
+        }
+        finally
+        {
+            _committingField = false;
+        }
+
+        return result;
+    }
+
+    // Split, Delete, Pack lanes and a keyframe's button act on the project as it's shown, which an
+    // edit being saved is about to change: pressed again meanwhile, they'd split or delete what's
+    // gone. They wait for the save.
+    private bool StillSaving()
+    {
+        if (_saves == 0)
+        {
+            return false;
+        }
+
+        Message("An edit is being saved; try again once it's saved");
+        return true;
     }
 
     private void ShowStartPage(string? error = null)
@@ -1823,22 +1903,20 @@ public partial class MainWindow : Window
         }
     }
 
-    private void Undo()
+    private async void Undo()
     {
-        _document!.Undo();
-        AfterHistoryStep();
+        if (await Save(document => document.Undo()) is not null)
+        {
+            Message("");
+        }
     }
 
-    private void Redo()
+    private async void Redo()
     {
-        _document!.Redo();
-        AfterHistoryStep();
-    }
-
-    private void AfterHistoryStep()
-    {
-        Rebuild();
-        Message("");
+        if (await Save(document => document.Redo()) is not null)
+        {
+            Message("");
+        }
     }
 
     private void OnAssetAdded(Asset asset)
@@ -2067,7 +2145,7 @@ public partial class MainWindow : Window
     // playing, it's where the playback stops.
     private void OnToggleKeyframe(object sender, RoutedEventArgs e)
     {
-        if (_document is null || sender is not Button { Tag: InspectorField { ToggleKey: { } toggle } })
+        if (_document is null || sender is not Button { Tag: InspectorField { ToggleKey: { } toggle } } || StillSaving())
         {
             return;
         }
@@ -2168,7 +2246,13 @@ public partial class MainWindow : Window
         e.Handled = true;
     }
 
-    private void OnPackLanes(object sender, RoutedEventArgs e) => Apply(new PackLanesOperation());
+    private void OnPackLanes(object sender, RoutedEventArgs e)
+    {
+        if (!StillSaving())
+        {
+            Apply(new PackLanesOperation());
+        }
+    }
 
     private void OnMode(object sender, RoutedEventArgs e) => ShowMode();
 
@@ -2360,6 +2444,14 @@ public partial class MainWindow : Window
         TakeOutsideChanges();
         if (_document is not { } document)
         {
+            return;
+        }
+
+        // An edit still being saved would be left out.
+        if (_saves > 0)
+        {
+            ExportStatus.Foreground = (Brush)FindResource("WarningBrush");
+            ExportStatus.Text = "An edit is still being saved; export once the status line says it's saved";
             return;
         }
 

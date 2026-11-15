@@ -64,6 +64,10 @@ public sealed class TimelineView : FrameworkElement
     private int _playhead;
     private string? _selected;
     private Drag? _drag;
+
+    // A drag let go, drawn where it was dropped until the project is shown with its edit (Show): the
+    // window saves the edit on a worker thread.
+    private Drag? _landing;
     private bool _scrubbing;
     private string? _hovered;
     private IReadOnlyList<double> _keyTimes = [];
@@ -187,6 +191,7 @@ public sealed class TimelineView : FrameworkElement
 
     public void Show(Project project, IReadOnlyList<TimelineLane> lanes, int frames)
     {
+        _landing = null;
         _project = project;
         _lanes = lanes;
         _markers = project.Markers;
@@ -396,6 +401,7 @@ public sealed class TimelineView : FrameworkElement
         _drag = null;
         ReleaseMouseCapture();
         var operation = drag.Active ? TimelineEdits.Operation(drag.Clip, drag.Part, drag.Place, drag.Drop) : null;
+        _landing = operation is null ? null : drag;
         DrawContent();
         if (operation is not null)
         {
@@ -710,7 +716,7 @@ public sealed class TimelineView : FrameworkElement
 
         // Lanes and their clips.
         dc.PushClip(new RectangleGeometry(new Rect(HeaderWidth, RulerHeight, width - HeaderWidth, height - RulerHeight)));
-        var drag = _drag is { Active: true } d ? d : null;
+        var drag = _drag is { Active: true } d ? d : _landing;
         for (var i = 0; i < _lanes.Count; i++)
         {
             var lane = _lanes[i];
