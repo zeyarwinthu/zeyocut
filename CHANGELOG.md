@@ -106,6 +106,10 @@ when they open.
 - An export with a GPU encoder no longer fails when the encoder fails on a chunk now and then: the
   chunk is encoded again, up to 4 times in all, and the export's notes say so. Intel Quick Sync can
   hand back an empty frame ("Invalid FrameType:0") when frames come faster than it encodes them.
+- With `VideoEncoder` at `auto`, a GPU encoder's test encode is tried up to three times before the
+  encoder counts as not working. Before, one such empty frame had exports use libx264 on that
+  computer until FFmpeg or the hardware changed; where that happened, deleting `encoders.json` in
+  the library tests the encoders again.
 
 - A release's `SHA256SUMS.txt` has Unix line endings, so `sha256sum -c` can check the downloads too,
   not only PowerShell.

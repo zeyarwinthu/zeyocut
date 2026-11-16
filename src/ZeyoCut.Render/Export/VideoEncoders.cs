@@ -108,7 +108,9 @@ public static class VideoEncoders
     }
 
     // Encodes half a second of a test pattern the way a delivery preset would; null when it works, or
-    // the first thing FFmpeg said about why not. A hung driver gives up after 30 s.
+    // the first thing FFmpeg said about why not. A failed encode is tried twice more, as a GPU
+    // encoder's failure can come and go (Intel Quick Sync now and then hands back an empty frame); a
+    // hung driver gives up after 30 s.
     public static string? Try(FfmpegPaths ffmpeg, VideoEncoder encoder)
     {
         List<string> arguments =
@@ -122,8 +124,14 @@ public static class VideoEncoders
         ];
         try
         {
-            var result = ProcessRunner.Run(ffmpeg.Ffmpeg, arguments, TimeSpan.FromSeconds(30));
-            return result.ExitCode == 0 ? null : Problem(result.StandardError, result.ExitCode);
+            for (var attempt = 1; ; attempt++)
+            {
+                var result = ProcessRunner.Run(ffmpeg.Ffmpeg, arguments, TimeSpan.FromSeconds(30));
+                if (result.ExitCode == 0 || attempt == 3)
+                {
+                    return result.ExitCode == 0 ? null : Problem(result.StandardError, result.ExitCode);
+                }
+            }
         }
         catch (ZeyoCutException ex)
         {
