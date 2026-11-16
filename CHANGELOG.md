@@ -103,6 +103,9 @@ when they open.
   layer, in the editor or with a tool. Only a change to the captions or to what covers them makes
   it refuse, whether it answers directly or from its background job. Before, any save did, even one
   that changed nothing.
+- An export with a GPU encoder no longer fails when the encoder fails on a chunk now and then: the
+  chunk is encoded again, up to 4 times in all, and the export's notes say so. Intel Quick Sync can
+  hand back an empty frame ("Invalid FrameType:0") when frames come faster than it encodes them.
 
 - A release's `SHA256SUMS.txt` has Unix line endings, so `sha256sum -c` can check the downloads too,
   not only PowerShell.
