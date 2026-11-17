@@ -12,7 +12,7 @@ when they open.
 
 - **The ZeyoCut editor:** `ZeyoCut.Editor.exe`, a window for working on a project by hand,
   in the release zip and the bundle. It opens a project (from a start page with the projects
-  folder and recent projects, File → Open, or a folder on the command line), lists its media,
+  folder and recent projects, Open project folder, or a folder on the command line), lists its media,
   imports images, audio, fonts and video (from the file picker or dropped on the window, normalizing
   video as `import_video` does, with progress) and shows the frame at any time, drawn by the same
   renderer as exports, with frame stepping, fit and zoom. It plays the edit at 0.5×, 1× or 2× with
@@ -43,8 +43,9 @@ when they open.
   without a save, such as a matte the server finishes. The Export view renders the project as
   `start_export` does, with presets, language versions, progress, stop and show in folder, and
   lists the exports folder. The project's Duration is set in the inspector, and the lanes are
-  shaded past the end, as the ruler is. The Assistant view shows the revision and the 20 most
-  recent saves, yours and Claude's. A project is open in one editor window at a time. Held at the
+  shaded past the end, as the ruler is. Its header names the project, whether it's saved and when
+  Claude last saved, with undo, redo and the way to Export; the Activity view shows the revision
+  and the 20 most recent saves, yours and Claude's. A project is open in one editor window at a time. Held at the
   timeline's edge, a drag or a scrub scrolls it, and clicking into an animated value or its diamond
   while playing stops the playback first. A
   change that can't be saved (another program holds `project.json`, or its folder is read-only or

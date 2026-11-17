@@ -11,7 +11,7 @@ It imports media, plays the edit with its sound, moves, trims and splits clips o
 `ZeyoCut.Editor.exe` is in the release zip, next to `ZeyoCut.Mcp.exe`; [Install](install.md#the-editor-optional) says how it finds FFmpeg and your projects. Then:
 
 - The start page lists your projects folder and recent projects.
-- File → Open project (Ctrl+O) opens any project folder, and so does dropping one on the start page.
+- Open project folder (Ctrl+O) opens any project folder, and so does dropping one on the start page.
 - From the command line: `ZeyoCut.Editor.exe C:\Users\you\ZeyoCut\projects\my-video`.
 - Or ask the model to open the project in the editor ([`open_in_editor`](GUIDE.md#open_in_editor)).
 
@@ -19,11 +19,11 @@ A project is open in one window at a time: opening it again brings that window t
 
 A `project.json` with problems still opens, such as one edited by hand whose asset names a file outside `assets\`. The status bar names the problems and the media list marks those files; changes and exports are refused until they're fixed.
 
-The window has three views, switched at the top or with Ctrl+1, Ctrl+2 and Ctrl+3: **Assistant**, **Edit** and **Export**.
+The header across the top names the project and whether it's saved ("Saved · rev N"). The logo and **Projects** close the project and go back to the start page. In the middle, **Edit** and **Activity** switch views; on the right are Undo and Redo, when Claude last saved the project, and **Export**, which opens the Export view (Ctrl+1, Ctrl+2 and Ctrl+3 go to Activity, Edit and Export). The status bar at the bottom names the selected clip, counts the layers and lanes, and says what the last change did.
 
 ## Media
 
-- Media → Import (Ctrl+I) imports images, audio, fonts and video. Video that needs normalizing (variable frame rate, rotation, HDR) is converted first, as `import_video` does, with its progress in the media list. Files you pick yourself can come from any folder; the import folders limit only what the model can read.
+- Import, above the media list (Ctrl+I), imports images, audio, fonts and video. Video that needs normalizing (variable frame rate, rotation, HDR) is converted first, as `import_video` does, with its progress in the media list. Files you pick yourself can come from any folder; the import folders limit only what the model can read.
 - Drag files from File Explorer onto the window to import them.
 - Drag media from the list onto a lane of the timeline, or right-click it → Add at the playhead. A video or picture dropped on a picture lane is drawn at that lane's level, and anywhere else on a level of its own on top. Sound takes the role of the sound lane it's dropped on, else music.
 
@@ -99,19 +99,20 @@ To blur seconds 2 to 4, say:
 
 ![The Export view exporting the Japanese version of comic-panels, at 56%, with an earlier export listed in the exports folder](editor-export.png)
 
-Export (Ctrl+3) renders the project as it's saved to an MP4 in its `exports` folder, as the model's `start_export` does, in the editor's own process: with the project's settings or a preset of the same shape, and one language's version when layers are tagged with languages. Edits made while it runs aren't in it.
+Export in the header (Ctrl+3) opens the Export view, and Back to edit returns to the timeline. It renders the project as it's saved to an MP4 in its `exports` folder, as the model's `start_export` does, in the editor's own process: with the project's settings or a preset of the same shape, and one language's version when layers are tagged with languages. Edits made while it runs aren't in it.
 
 It shows the progress, Stop ends it, and Show in folder opens File Explorer on the file. Replacing a file asks first, and closing the window or the project while an export runs asks whether to stop it. The files already in the `exports` folder are listed below; click one to show it.
 
 ## Working with the model
 
-- **Every change is saved at once**, as one step that Ctrl+Z undoes and Ctrl+Y redoes. The status bar shows "Saved · revision N" and what the last change did; there's no Save button. It says "Saving…" while a change is being saved: when the server is saving at that moment, your change is saved after it (it waits up to 5 s), and the window goes on working meanwhile. Split, Delete, Pack lanes, a keyframe diamond and Export, pressed meanwhile, wait for it and then act on the project as saved, and closing the window hides it at once and lets the change finish saving before it closes.
+- **Every change is saved at once**, as one step that Ctrl+Z undoes and Ctrl+Y redoes. The header shows "Saved · rev N" and the status bar what the last change did; there's no Save button. The header says "Saving…" while a change is being saved: when the server is saving at that moment, your change is saved after it (it waits up to 5 s), and the window goes on working meanwhile. Split, Delete, Pack lanes, a keyframe diamond and Export, pressed meanwhile, wait for it and then act on the project as saved, and closing the window hides it at once and lets the change finish saving before it closes.
 - When a change can't be saved, because another program holds `project.json` or its folder is read-only or gone, the change isn't made and the status bar says why. Make it again once the file can be written.
 - If the editor runs into an error it didn't expect, it says so in plain words and goes on; your changes before it are saved. The details are added to `editor-errors.log` in the log folder (`%LOCALAPPDATA%\ZeyoCut\logs` by default): include them when you report the problem.
 - When the server saves the project, the editor shows the new version and says what changed. The server's next reply lists what the editor changed. Undo on either side takes back only its own changes. See [Saving alongside another program](project-format.md#saving-alongside-another-program).
 - Ctrl+Z can't take back your change to a layer the server changed after it: that would throw the server's change away, and the status bar says so. The next Ctrl+Z steps over that change, which stays as it is, undoes the one before it and names the one it stepped over. Ctrl+Y does the same with a change it can't put back.
 - A change you began before the server's isn't saved over it. If the server changes a layer while you're typing in one of its fields or dragging it, your change isn't saved and the status bar says "Your change wasn't saved: another program changed '…' first". What you typed stays in the field: Enter saves it over the server's change, Escape drops it.
-- The **Assistant** view (Ctrl+1) shows the revision, who saved it last, and the 20 most recent saves, each marked You or Claude.
+- The header says when Claude last saved the project ("Claude saved 3 min ago"); hover over it for what it changed.
+- The **Activity** view (Ctrl+1) shows the revision, who saved it last, and the 20 most recent saves, each marked You or Claude.
 
 ## Keys
 
@@ -128,7 +129,7 @@ It shows the progress, Stop ends it, and Show in folder opens File Explorer on t
 | − / + | Zoom the timeline out and in (also Ctrl+wheel) |
 | Shift+Z | Fit the whole video in the timeline |
 | Ctrl+Z / Ctrl+Y | Undo and redo; in a field, the typing there |
-| Ctrl+1 / Ctrl+2 / Ctrl+3 | Assistant, Edit and Export |
+| Ctrl+1 / Ctrl+2 / Ctrl+3 | Activity, Edit and Export |
 | Ctrl+O | Open a project |
 | Ctrl+I | Import media |
 

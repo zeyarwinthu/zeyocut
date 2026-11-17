@@ -16,7 +16,7 @@
       <Setter Property="Template">
         <Setter.Value>
           <ControlTemplate TargetType="Button">
-            <Border x:Name="Bd" Background="Transparent" BorderBrush="Transparent" BorderThickness="1" CornerRadius="4" Padding="12,8">
+            <Border x:Name="Bd" Background="Transparent" BorderBrush="Transparent" BorderThickness="1" CornerRadius="8" Padding="12,8">
               <ContentPresenter HorizontalAlignment="Stretch" />
             </Border>
             <ControlTemplate.Triggers>
@@ -197,32 +197,69 @@
       <RowDefinition Height="Auto" />
     </Grid.RowDefinitions>
 
-    <StackPanel x:Name="ModeBar" HorizontalAlignment="Center" VerticalAlignment="Center" Orientation="Horizontal" Panel.ZIndex="1" Visibility="Collapsed">
-      <RadioButton x:Name="AssistantMode" GroupName="Mode" Style="{StaticResource SegmentButton}" Content="Assistant" Checked="OnMode"
-                   ToolTip="What Claude and you saved last, and how to work with Claude (Ctrl+1)" />
-      <RadioButton x:Name="EditMode" GroupName="Mode" Style="{StaticResource SegmentButton}" Content="Edit" IsChecked="True" Checked="OnMode" ToolTip="The timeline, preview and inspector (Ctrl+2)" />
-      <RadioButton x:Name="ExportMode" GroupName="Mode" Style="{StaticResource SegmentButton}" Content="Export" Checked="OnMode" ToolTip="Render the project to an MP4 (Ctrl+3)" />
-    </StackPanel>
+    <Border Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,0,0,1" MinHeight="48" Padding="12,0">
+      <Grid>
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="*" />
+          <ColumnDefinition Width="Auto" />
+          <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
 
-    <Menu>
-      <MenuItem Header="_File">
-        <MenuItem Header="_Open project…" InputGestureText="Ctrl+O" Click="OnOpen" />
-        <MenuItem x:Name="RecentMenu" Header="Open _recent" SubmenuOpened="OnRecentOpened" />
-        <MenuItem x:Name="CloseItem" Header="_Close project" Click="OnCloseProject" />
-        <Separator />
-        <MenuItem Header="E_xit" InputGestureText="Alt+F4" Click="OnExit" />
-      </MenuItem>
-      <MenuItem Header="_Edit">
-        <MenuItem x:Name="UndoItem" Header="_Undo" InputGestureText="Ctrl+Z" Click="OnUndo" />
-        <MenuItem x:Name="RedoItem" Header="_Redo" InputGestureText="Ctrl+Y" Click="OnRedo" />
-        <Separator />
-        <MenuItem x:Name="SplitItem" Header="_Split at playhead" InputGestureText="S" Click="OnSplit" />
-        <MenuItem x:Name="DeleteItem" Header="_Delete" InputGestureText="Delete" Click="OnDelete" />
-      </MenuItem>
-      <MenuItem x:Name="MediaMenu" Header="_Media">
-        <MenuItem Header="_Import…" InputGestureText="Ctrl+I" Click="OnImport" />
-      </MenuItem>
-    </Menu>
+        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+          <Button x:Name="LogoButton" Style="{StaticResource LogoButton}" IsEnabled="False" Click="OnCloseProject" ToolTip="Close the project and go back to the projects"
+                  AutomationProperties.Name="Back to the projects" />
+          <TextBlock x:Name="AppName" Text="ZeyoCut" FontSize="13" FontWeight="SemiBold" Margin="10,0,0,0" VerticalAlignment="Center" />
+          <StackPanel x:Name="Crumbs" Orientation="Horizontal" Margin="12,0,0,0" VerticalAlignment="Center" Visibility="Collapsed">
+            <Button x:Name="ProjectsLink" Style="{StaticResource LinkButton}" Content="Projects" FontSize="13" Click="OnCloseProject" ToolTip="Close the project and go back to the projects" />
+            <TextBlock Text="/" Foreground="{StaticResource SecondaryTextBrush}" FontSize="13" Margin="7,0" VerticalAlignment="Center" />
+            <TextBlock x:Name="ProjectName" FontSize="13" FontWeight="SemiBold" MaxWidth="280" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+            <TextBlock x:Name="ExportCrumb" FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center" Visibility="Collapsed">
+              <Run Text=" / " Foreground="{StaticResource SecondaryTextBrush}" FontWeight="Normal" /><Run Text="Export" />
+            </TextBlock>
+            <Border x:Name="SaveBadge" Style="{StaticResource Pill}" Margin="10,0,0,0">
+              <StackPanel Orientation="Horizontal">
+                <TextBlock x:Name="SaveIcon" FontFamily="{StaticResource IconFont}" FontSize="10" Margin="0,0,6,0" VerticalAlignment="Center" />
+                <TextBlock x:Name="SaveBadgeText" FontSize="11" Foreground="{StaticResource SecondaryTextBrush}" VerticalAlignment="Center" />
+              </StackPanel>
+            </Border>
+          </StackPanel>
+        </StackPanel>
+
+        <Border x:Name="ModeBar" Grid.Column="1" Background="{StaticResource WindowBrush}" BorderBrush="{StaticResource DividerBrush}" BorderThickness="1" CornerRadius="9" Padding="3"
+                Margin="16,0" VerticalAlignment="Center" Visibility="Collapsed">
+          <StackPanel Orientation="Horizontal">
+            <RadioButton x:Name="EditMode" GroupName="Mode" Style="{StaticResource TabSegment}" Content="Edit" IsChecked="True" Checked="OnMode" ToolTip="The timeline, preview and inspector (Ctrl+2)" />
+            <RadioButton x:Name="ActivityMode" GroupName="Mode" Style="{StaticResource TabSegment}" Content="Activity" Checked="OnMode"
+                         ToolTip="What Claude and you saved last, and how to work with Claude (Ctrl+1)" />
+            <RadioButton x:Name="ExportMode" GroupName="Mode" Visibility="Collapsed" Checked="OnMode" />
+          </StackPanel>
+        </Border>
+
+        <StackPanel x:Name="ProjectCommands" Grid.Column="2" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center" Visibility="Collapsed">
+          <Button x:Name="UndoButton" Style="{StaticResource HeaderIcon}" Content="&#xE7A7;" ToolTip="Undo your last change (Ctrl+Z)" AutomationProperties.Name="Undo" Click="OnUndo" />
+          <Button x:Name="RedoButton" Style="{StaticResource HeaderIcon}" Content="&#xE7A6;" ToolTip="Redo (Ctrl+Y)" AutomationProperties.Name="Redo" Click="OnRedo" />
+          <Border Width="1" Height="20" Background="{StaticResource BorderBrush}" Margin="8,0" />
+          <Border x:Name="ClaudeBadge" Style="{StaticResource Pill}" Background="{StaticResource AccentSoftBrush}" Margin="0,0,10,0" Visibility="Collapsed">
+            <StackPanel Orientation="Horizontal">
+              <Ellipse Width="7" Height="7" Fill="{StaticResource AccentBrush}" Margin="0,0,7,0" VerticalAlignment="Center" />
+              <TextBlock x:Name="ClaudeText" FontSize="11" Foreground="{StaticResource AccentSoftTextBrush}" VerticalAlignment="Center" />
+            </StackPanel>
+          </Border>
+          <Button x:Name="ExportViewButton" Style="{StaticResource AccentButton}" Click="OnExportView" ToolTip="Render the project to an MP4 (Ctrl+3)">
+            <StackPanel Orientation="Horizontal">
+              <TextBlock FontFamily="{StaticResource IconFont}" Text="&#xE898;" FontSize="13" FontWeight="Normal" Margin="0,0,8,0" VerticalAlignment="Center" />
+              <TextBlock Text="Export" VerticalAlignment="Center" />
+            </StackPanel>
+          </Button>
+          <Button x:Name="BackToEdit" Padding="12,6" Click="OnBackToEdit" ToolTip="Back to the timeline (Ctrl+2)" Visibility="Collapsed">
+            <StackPanel Orientation="Horizontal">
+              <TextBlock FontFamily="{StaticResource IconFont}" Text="&#xE76B;" FontSize="11" Margin="0,0,7,0" VerticalAlignment="Center" />
+              <TextBlock Text="Back to edit" FontWeight="Medium" VerticalAlignment="Center" />
+            </StackPanel>
+          </Button>
+        </StackPanel>
+      </Grid>
+    </Border>
 
     <ScrollViewer x:Name="StartPage" Grid.Row="1" VerticalScrollBarVisibility="Auto" Focusable="False">
       <StackPanel Width="720" Margin="32,48,32,32" HorizontalAlignment="Center">
@@ -241,16 +278,16 @@
       </StackPanel>
     </ScrollViewer>
 
-    <ScrollViewer x:Name="AssistantPage" Grid.Row="1" VerticalScrollBarVisibility="Auto" Focusable="False" Visibility="Collapsed">
+    <ScrollViewer x:Name="ActivityPage" Grid.Row="1" VerticalScrollBarVisibility="Auto" Focusable="False" Visibility="Collapsed">
       <StackPanel Width="720" Margin="32,40,32,32" HorizontalAlignment="Center">
-        <TextBlock Text="Assistant" FontSize="22" FontWeight="SemiBold" />
-        <TextBlock x:Name="AssistantSaved" FontSize="13" TextWrapping="Wrap" Margin="0,10,0,0" />
+        <TextBlock Text="Activity" FontSize="22" FontWeight="SemiBold" />
+        <TextBlock x:Name="ActivitySaved" FontSize="13" TextWrapping="Wrap" Margin="0,10,0,0" />
         <Border Background="{StaticResource PanelBrush}" CornerRadius="4" Padding="14,10" Margin="0,16,0,0">
           <TextBlock Foreground="{StaticResource SecondaryTextBrush}" FontSize="12" TextWrapping="Wrap"
                      Text="Ask Claude in your chat to change this project, for example &#x201C;add Japanese captions&#x201D; or &#x201C;cut the long pauses&#x201D;. Each change you make here is saved as you make it, so Claude works on top of it on its next step; what Claude changes shows here within a second. Undo here takes back only your own changes." />
         </Border>
         <TextBlock Text="RECENT SAVES" Style="{StaticResource PanelTitle}" Margin="0,28,0,6" />
-        <ItemsControl x:Name="AssistantSaves" Focusable="False">
+        <ItemsControl x:Name="ActivitySaves" Focusable="False">
           <ItemsControl.ItemTemplate>
             <DataTemplate>
               <Grid Margin="0,4">
@@ -273,7 +310,7 @@
             </DataTemplate>
           </ItemsControl.ItemTemplate>
         </ItemsControl>
-        <TextBlock x:Name="AssistantEmpty" Style="{StaticResource Secondary}" FontSize="12" TextWrapping="Wrap" TextTrimming="None" Visibility="Collapsed"
+        <TextBlock x:Name="ActivityEmpty" Style="{StaticResource Secondary}" FontSize="12" TextWrapping="Wrap" TextTrimming="None" Visibility="Collapsed"
                    Text="Nothing saved yet since the project was made." />
       </StackPanel>
     </ScrollViewer>
@@ -528,18 +565,22 @@
       </DockPanel>
     </Grid>
 
-    <Border Grid.Row="2" Background="{StaticResource HeaderBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0" Padding="10,3">
+    <Border Grid.Row="2" Background="{StaticResource WindowBrush}" BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,1,0,0" Padding="12,4">
       <Grid>
         <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="Auto" />
+          <ColumnDefinition Width="Auto" />
           <ColumnDefinition Width="Auto" />
           <ColumnDefinition Width="*" />
           <ColumnDefinition Width="Auto" />
           <ColumnDefinition Width="Auto" />
         </Grid.ColumnDefinitions>
-        <TextBlock x:Name="SaveStatus" Style="{StaticResource Secondary}" MaxWidth="560" />
-        <TextBlock x:Name="MessageText" Grid.Column="1" Style="{StaticResource Secondary}" Margin="16,0" />
-        <TextBlock x:Name="JobsText" Grid.Column="2" Style="{StaticResource Secondary}" Margin="0,0,16,0" MaxWidth="420" />
-        <TextBlock x:Name="RenderText" Grid.Column="3" Style="{StaticResource Secondary}" />
+        <TextBlock x:Name="SelectionText" Style="{StaticResource Secondary}" MaxWidth="280" TextTrimming="CharacterEllipsis" Margin="0,0,16,0" />
+        <TextBlock x:Name="LayersText" Grid.Column="1" Style="{StaticResource Secondary}" Margin="0,0,16,0" />
+        <TextBlock x:Name="SaveStatus" Grid.Column="2" Style="{StaticResource Secondary}" MaxWidth="560" Margin="0,0,16,0" Visibility="Collapsed" />
+        <TextBlock x:Name="MessageText" Grid.Column="3" Style="{StaticResource Secondary}" Margin="0,0,16,0" />
+        <TextBlock x:Name="JobsText" Grid.Column="4" Style="{StaticResource Secondary}" Margin="0,0,16,0" MaxWidth="420" />
+        <TextBlock x:Name="RenderText" Grid.Column="5" Style="{StaticResource Secondary}" />
       </Grid>
     </Border>
   </Grid>

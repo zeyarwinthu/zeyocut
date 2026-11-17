@@ -76,4 +76,28 @@ public class ExportPageTests
         Assert.Equal([("trim_layer title", "You"), ("move_layer title", "You"), ("add_text_layer title", "Claude")], saves.Select(s => (s.Edit, s.Who)));
         Assert.True(saves[0].Time >= saves[2].Time);
     }
+
+    [Fact]
+    public void TheHeaderSaysWhenClaudeSavedLast()
+    {
+        var directory = TestFiles.NewProject("claude-saved");
+        Assert.Null(ProjectHistory.LastByClaude(directory));
+
+        ProjectSession.Open(directory, ProjectBackups.EditorProgram)
+            .Mutate("add_text_layer title", p => ProjectEditor.AddTextLayer(p, new TextLayerOptions { Id = "title", Text = "Hello" }));
+        Assert.Null(ProjectHistory.LastByClaude(directory));
+
+        ProjectSession.Open(directory).Mutate("move_layer title", p => new MoveLayerOperation("title", 0.5).Apply(p));
+        ProjectSession.Open(directory, ProjectBackups.EditorProgram).Mutate("trim_layer title", p => new TrimLayerOperation("title", null, 1.5).Apply(p));
+        Assert.Equal("move_layer title", ProjectHistory.LastByClaude(directory)!.Edit);
+
+        var now = new DateTime(2026, 11, 17, 12, 0, 0);
+        Assert.Equal("just now", ProjectHistory.Ago(now.AddSeconds(-59), now));
+        Assert.Equal("just now", ProjectHistory.Ago(now.AddSeconds(5), now));
+        Assert.Equal("1 min ago", ProjectHistory.Ago(now.AddMinutes(-1), now));
+        Assert.Equal("59 min ago", ProjectHistory.Ago(now.AddSeconds(-3599), now));
+        Assert.Equal("1 h ago", ProjectHistory.Ago(now.AddHours(-1), now));
+        Assert.Equal("23 h ago", ProjectHistory.Ago(now.AddMinutes(-1439), now));
+        Assert.Equal("on 2026-11-16", ProjectHistory.Ago(now.AddDays(-1), now));
+    }
 }

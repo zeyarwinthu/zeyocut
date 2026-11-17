@@ -42,6 +42,23 @@ public class WindowTests
 
     private static string Text(MainWindow window, string name) => ((TextBlock)window.FindName(name)).Text;
 
+    private static Visibility Shown(MainWindow window, string name) => ((UIElement)window.FindName(name)).Visibility;
+
+    private static void Click(MainWindow window, string name) =>
+        ((Button)window.FindName(name)).RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+
+    // The start page's recent projects, once it has listed as many.
+    private static List<string> Recent(MainWindow window, int count)
+    {
+        var list = (ItemsControl)window.FindName("RecentList");
+        for (var i = 0; i < 500 && list.Items.Count != count; i++)
+        {
+            TestWindow.Pump(10);
+        }
+
+        return list.Items.Cast<ProjectEntry>().Select(p => p.Directory).ToList();
+    }
+
     // Lets the window finish the saves it started, and those of the commands that waited for them;
     // its status line says "Saving…" until then.
     private static void WaitForSaves(MainWindow window)
@@ -215,7 +232,7 @@ public class WindowTests
     });
 
     [Fact]
-    public void TheOnceASecondCheckLeavesTheMenusAlone() => TestWindow.Run("window-poll", (window, folder) =>
+    public void TheWayBackToTheProjectsListsTheRecentOnesStillThere() => TestWindow.Run("window-recent", (window, folder) =>
     {
         // Two titles at different levels that never show at once: the lanes can be packed.
         var first = Saved(folder, "first", p =>
@@ -230,23 +247,25 @@ public class WindowTests
         var pack = (Button)window.FindName("PackButton");
         Assert.True(pack.IsEnabled);
 
-        var recent = (MenuItem)window.FindName("RecentMenu");
-        var items = recent.Items.Cast<MenuItem>().ToList();
-        Assert.Equal([first, second], items.Select(i => (string)i.Tag));
-
-        // Checks for another program's changes don't build the menu again.
-        TestWindow.Pump(1500);
-        Assert.Equal(items, recent.Items.Cast<MenuItem>());
-
-        // Opened, it leaves out a project that is gone.
-        Directory.Delete(second, recursive: true);
-        recent.RaiseEvent(new RoutedEventArgs(MenuItem.SubmenuOpenedEvent, recent));
-        Assert.Equal([first], recent.Items.Cast<MenuItem>().Select(i => (string)i.Tag));
-
         // Packed, there's nothing more to pack.
         pack.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
         WaitForSaves(window);
         Assert.False(pack.IsEnabled);
+
+        // "Projects" in the header closes the project; the start page lists both, the last opened first.
+        Click(window, "ProjectsLink");
+        Assert.Equal("ZeyoCut Editor", window.Title);
+        Assert.Equal(Visibility.Visible, Shown(window, "StartPage"));
+        Assert.Equal(Visibility.Collapsed, Shown(window, "Crumbs"));
+        Assert.Equal(Visibility.Collapsed, Shown(window, "ProjectCommands"));
+        Assert.False(((Button)window.FindName("LogoButton")).IsEnabled);
+        Assert.Equal([first, second], Recent(window, 2));
+
+        // The logo does too, and the list leaves out a project that is gone.
+        Directory.Delete(second, recursive: true);
+        window.OpenProject(first);
+        Click(window, "LogoButton");
+        Assert.Equal([first], Recent(window, 1));
     });
 
     [Fact]
@@ -267,9 +286,76 @@ public class WindowTests
         Assert.Equal("", Text(window, "RenderText"));
 
         var watch = Stopwatch.StartNew();
-        ((MenuItem)window.FindName("CloseItem")).RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+        Click(window, "LogoButton");
         Assert.True(watch.ElapsedMilliseconds < 1000, $"closing took {watch.ElapsedMilliseconds} ms");
         Assert.Equal("ZeyoCut Editor", window.Title);
+    });
+
+    // The header names the project and whether it's saved, undoes and redoes, says when Claude saved
+    // last and leads to the Export view and back; the status bar names the selection.
+    [Fact]
+    public void TheHeaderNamesTheProjectAndItsLastSaves() => TestWindow.Run("window-header", (window, folder) =>
+    {
+        var directory = WithTitle(window, folder);
+        var undo = (Button)window.FindName("UndoButton");
+        var redo = (Button)window.FindName("RedoButton");
+        Assert.Equal("titled", Text(window, "ProjectName"));
+        Assert.Equal("Saved · rev 1", Text(window, "SaveBadgeText"));
+        Assert.Equal(Visibility.Collapsed, Shown(window, "SaveStatus"));
+        Assert.Equal(Visibility.Collapsed, Shown(window, "ClaudeBadge"));
+        Assert.False(undo.IsEnabled);
+        Assert.False(redo.IsEnabled);
+        Assert.Equal("title selected", Text(window, "SelectionText"));
+        Assert.Equal("1 layer · 1 lane", Text(window, "LayersText"));
+
+        var start = Field(window, "Start");
+        start.Text = "0.5";
+        TestWindow.Press(start, Key.Return);
+        WaitForSaves(window);
+        Assert.Equal("Saved · rev 2", Text(window, "SaveBadgeText"));
+        Assert.True(undo.IsEnabled);
+        Assert.False(redo.IsEnabled);
+
+        Click(window, "UndoButton");
+        WaitForSaves(window);
+        Assert.Equal("Saved · rev 3", Text(window, "SaveBadgeText"));
+        Assert.Equal(0, Title(directory).Start);
+        Assert.False(undo.IsEnabled);
+        Assert.True(redo.IsEnabled);
+
+        // Another program's save is Claude's, named in the header with when it was made.
+        ProjectSession.Open(directory).Mutate("update_layer title", p =>
+        {
+            p.FindLayer("title")!.End = 3;
+            return 0;
+        });
+        for (var i = 0; i < 300 && Shown(window, "ClaudeBadge") != Visibility.Visible; i++)
+        {
+            TestWindow.Pump(10);
+        }
+
+        Assert.Equal("Claude saved just now", Text(window, "ClaudeText"));
+        Assert.Equal("Saved · rev 4", Text(window, "SaveBadgeText"));
+
+        // The Export button opens the Export view, whose header has a way back in place of the tabs.
+        Click(window, "ExportViewButton");
+        Assert.Equal(Visibility.Visible, Shown(window, "ExportPage"));
+        Assert.Equal(Visibility.Visible, Shown(window, "ExportCrumb"));
+        Assert.Equal(Visibility.Visible, Shown(window, "BackToEdit"));
+        Assert.Equal(Visibility.Collapsed, Shown(window, "ModeBar"));
+        Assert.Equal(Visibility.Collapsed, Shown(window, "ExportViewButton"));
+        Assert.Equal("", Text(window, "SelectionText"));
+        Click(window, "BackToEdit");
+        Assert.Equal(Visibility.Visible, Shown(window, "Workspace"));
+        Assert.Equal(Visibility.Visible, Shown(window, "ModeBar"));
+        Assert.Equal(Visibility.Collapsed, Shown(window, "ExportCrumb"));
+        Assert.Equal("title selected", Text(window, "SelectionText"));
+
+        // The Activity tab names Claude's save.
+        ((RadioButton)window.FindName("ActivityMode")).IsChecked = true;
+        Assert.Equal(Visibility.Visible, Shown(window, "ActivityPage"));
+        Assert.StartsWith("Revision 4, saved ", Text(window, "ActivitySaved"));
+        Assert.EndsWith(" by Claude: update_layer title.", Text(window, "ActivitySaved"));
     });
 
     // A project with a title from 0 to 2 s, open with the title selected.
@@ -455,7 +541,7 @@ public class WindowTests
         Assert.Equal("0.5", Field(window, "Start").Text);
 
         // Undo goes the same way.
-        ((MenuItem)window.FindName("UndoItem")).RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+        Click(window, "UndoButton");
         WaitForSaves(window);
         Assert.Equal(0, Title(directory).Start);
         Assert.Equal("Saved · revision 3", Text(window, "SaveStatus"));

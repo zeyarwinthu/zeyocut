@@ -80,6 +80,11 @@ public partial class MainWindow : Window
     // Whether the shown project's lanes can be packed, worked out once each Rebuild.
     private bool _packable;
 
+    // The layers and lanes the status bar counts, and Claude's last save the header names, worked
+    // out once each Rebuild.
+    private string _counts = "";
+    private SavedChange? _claudeSaved;
+
     // Saves run one after another on a worker thread (Save): the last one started, and how many
     // aren't shown yet. Until they are, the window leaves the session alone, as a save holds it while
     // it waits for project.lock.
@@ -169,6 +174,7 @@ public partial class MainWindow : Window
             }
 
             RedrawChangedFiles();
+            ShowClaude();
         }, Dispatcher);
         _ticker = new DispatcherTimer(TimeSpan.FromMilliseconds(250), DispatcherPriority.Background, (_, _) => Tick(), Dispatcher);
         ShowStartPage();
@@ -252,8 +258,7 @@ public partial class MainWindow : Window
 
         _prefs.AddRecent(directory);
         SavePrefs();
-        UpdateMenus();
-        ShowRecent();
+        UpdateCommands();
     }
 
     // The Edit view is showing, with a project open.
@@ -311,7 +316,7 @@ public partial class MainWindow : Window
         }
         else if (control && _document is not null && key is Key.D1 or Key.D2 or Key.D3 or Key.NumPad1 or Key.NumPad2 or Key.NumPad3)
         {
-            (key is Key.D1 or Key.NumPad1 ? AssistantMode : key is Key.D2 or Key.NumPad2 ? EditMode : ExportMode).IsChecked = true;
+            (key is Key.D1 or Key.NumPad1 ? ActivityMode : key is Key.D2 or Key.NumPad2 ? EditMode : ExportMode).IsChecked = true;
         }
         else if (control && key == Key.I && open)
         {
@@ -518,12 +523,11 @@ public partial class MainWindow : Window
         _exportLanguage = ExportChoices.EveryLanguage;
         ExportStatus.Text = "";
         StartPage.Visibility = Visibility.Collapsed;
-        ModeBar.Visibility = Visibility.Visible;
         EditMode.IsChecked = true;
         ShowMode();
         Message(document.Session.MigratedFrom is { } from
             ? $"Updated project.json from format {from} to {Project.CurrentFormatVersion}; the file as it was is kept as {Path.GetFileName(document.Session.OriginalCopy)}"
-            : $"Opened {directory}");
+            : $"Opened {Path.GetFileName(directory)}");
         Timeline.ZoomToFit();
         Rebuild();
         _proxies.Start(document.Session);
@@ -566,6 +570,10 @@ public partial class MainWindow : Window
         PendingList.ItemsSource = null;
         Title = "ZeyoCut Editor";
         SaveStatus.Text = "";
+        SaveStatus.Visibility = Visibility.Collapsed;
+        _counts = "";
+        _claudeSaved = null;
+        ShowClaude();
         RenderText.Text = "";
         SoundText.Text = "";
     }
@@ -623,12 +631,17 @@ public partial class MainWindow : Window
         var project = document.View;
         _shownRevision = document.Revision;
         Title = $"{Path.GetFileName(document.Session.Directory)} — ZeyoCut Editor";
+        ProjectName.Text = Path.GetFileName(document.Session.Directory);
+        ProjectName.ToolTip = document.Session.Directory;
+        _claudeSaved = ProjectHistory.LastByClaude(document.Session.Directory);
+        ShowClaude();
         _frames = Math.Max(1, FrameMath.FrameCount(project));
         _frame = Math.Clamp(_frame, 0, _frames - 1);
         _packable = ProjectEditor.PackedLevels(project).Count > 0;
 
         var lanes = TimelineLayout.Lanes(project);
         Timeline.Show(project, lanes, _frames);
+        _counts = $"{Count(project.Layers.Count, "layer")} · {Count(lanes.Count, "lane")}";
         if (_selectedLayer is not null && ClipOf(_selectedLayer) is null)
         {
             _selectedLayer = null;
@@ -993,60 +1006,82 @@ public partial class MainWindow : Window
             return;
         }
 
+        // The header's badge says whether the project is saved; the status bar has the whole line
+        // when it says more than that.
         var status = _saves > 0 ? "Saving…" : _document.Status;
+        var saved = $"Saved · revision {_document.Revision}";
+        var fine = _saves > 0 || status.StartsWith("Saved", StringComparison.Ordinal) || status.EndsWith(saved, StringComparison.Ordinal);
         SaveStatus.Text = status;
         SaveStatus.ToolTip = status;
-        SaveStatus.Foreground = (Brush)FindResource(_saves > 0 || status.StartsWith("Saved", StringComparison.Ordinal) ? "SecondaryTextBrush" : "WarningBrush");
-        UpdateMenus();
+        SaveStatus.Foreground = (Brush)FindResource(fine ? "SecondaryTextBrush" : "WarningBrush");
+        SaveStatus.Visibility = _saves > 0 || status == saved ? Visibility.Collapsed : Visibility.Visible;
+        SaveBadgeText.Text = _saves > 0 ? "Saving…" : fine ? $"Saved · rev {_document.Revision}" : $"Rev {_document.Revision}";
+        SaveIcon.Text = _saves > 0 ? "\uE895" : fine ? "\uE73E" : "\uE7BA";
+        SaveIcon.Foreground = (Brush)FindResource(_saves > 0 ? "SecondaryTextBrush" : fine ? "SuccessBrush" : "WarningBrush");
+        SaveBadge.ToolTip = status;
+        UpdateCommands();
     }
 
-    private void UpdateMenus()
+    private void UpdateCommands()
     {
         var open = _document is not null;
-        CloseItem.IsEnabled = open;
-        MediaMenu.IsEnabled = open;
 
         // While a save runs, the session is busy with it: undo and redo stay as they were.
         if (!open || _saves == 0)
         {
-            UndoItem.IsEnabled = open && _document!.CanUndo;
-            RedoItem.IsEnabled = open && _document!.CanRedo;
+            UndoButton.IsEnabled = open && _document!.CanUndo;
+            RedoButton.IsEnabled = open && _document!.CanRedo;
         }
 
         UpdateEditButtons();
     }
 
-    // The recent projects that are still there. Built when a project or the start page opens and when
-    // the menu opens, not with the other menus, which the once-a-second check updates: it looks for
-    // each folder on disk.
-    private void ShowRecent()
+    // The header: the way back to the projects, the project's path and its commands while one is
+    // open; the Export view has a way back to Edit in place of the tabs and the Export button.
+    private void ShowHeader()
     {
-        RecentMenu.Items.Clear();
-        foreach (var directory in _prefs.ExistingRecent())
-        {
-            var item = new MenuItem { Header = $"{Path.GetFileName(directory)}  ({directory})".Replace("_", "__", StringComparison.Ordinal), Tag = directory };
-            item.Click += (_, _) => OpenProject(directory);
-            RecentMenu.Items.Add(item);
-        }
-
-        RecentMenu.IsEnabled = RecentMenu.Items.Count > 0;
+        var open = _document is not null;
+        var exporting = open && ExportMode.IsChecked == true;
+        LogoButton.IsEnabled = open;
+        AppName.Visibility = open ? Visibility.Collapsed : Visibility.Visible;
+        Crumbs.Visibility = ProjectCommands.Visibility = open ? Visibility.Visible : Visibility.Collapsed;
+        ModeBar.Visibility = open && !exporting ? Visibility.Visible : Visibility.Collapsed;
+        ExportCrumb.Visibility = BackToEdit.Visibility = exporting ? Visibility.Visible : Visibility.Collapsed;
+        ExportViewButton.Visibility = exporting ? Visibility.Collapsed : Visibility.Visible;
     }
 
-    private void OnRecentOpened(object sender, RoutedEventArgs e)
+    // "Claude saved 3 min ago", while the backups folder has one of its saves.
+    private void ShowClaude()
     {
-        if (ReferenceEquals(e.OriginalSource, RecentMenu))
+        if (_claudeSaved is not { } last)
         {
-            ShowRecent();
+            ClaudeBadge.Visibility = Visibility.Collapsed;
+            return;
         }
+
+        ClaudeText.Text = $"Claude saved {ProjectHistory.Ago(last.Time, DateTime.Now)}";
+        ClaudeBadge.ToolTip = $"Claude's last save, at {last.Time:yyyy-MM-dd HH:mm:ss}: {last.Edit}";
+        ClaudeBadge.Visibility = Visibility.Visible;
     }
+
+    // A status bar field takes no room while it has nothing to say.
+    private static void ShowText(TextBlock block, string text)
+    {
+        block.Text = text;
+        block.Visibility = text.Length == 0 ? Visibility.Collapsed : Visibility.Visible;
+    }
+
+    private static string Count(int count, string what) => $"{count} {what}{(count == 1 ? "" : "s")}";
 
     // Split needs a selected clip under the playhead; Delete, a selected clip; Pack lanes, lanes
     // that can be packed. The Edit view's commands need it showing.
     private void UpdateEditButtons()
     {
         var open = Editing;
-        SplitItem.IsEnabled = SplitButton.IsEnabled = open && CanSplit(out _);
-        DeleteItem.IsEnabled = DeleteButton.IsEnabled = open && _selectedLayer is not null;
+        SplitButton.IsEnabled = open && CanSplit(out _);
+        DeleteButton.IsEnabled = open && _selectedLayer is not null;
+        ShowText(SelectionText, open && _selectedLayer is { } selected ? $"{selected} selected" : "");
+        ShowText(LayersText, open ? _counts : "");
         PackButton.IsEnabled = open && _packable;
         PackButton.ToolTip = PackButton.IsEnabled || !open
             ? "Put clips that never show at the same time on shared lanes; every frame stays as it is"
@@ -1881,14 +1916,13 @@ public partial class MainWindow : Window
     private void ShowStartPage(string? error = null)
     {
         Workspace.Visibility = Visibility.Collapsed;
-        AssistantPage.Visibility = Visibility.Collapsed;
+        ActivityPage.Visibility = Visibility.Collapsed;
         ExportPage.Visibility = Visibility.Collapsed;
-        ModeBar.Visibility = Visibility.Collapsed;
         StartPage.Visibility = Visibility.Visible;
         StartError.Text = error ?? "";
         StartError.Visibility = error is null ? Visibility.Collapsed : Visibility.Visible;
-        UpdateMenus();
-        ShowRecent();
+        ShowHeader();
+        UpdateCommands();
         _ = LoadStartLists();
     }
 
@@ -2052,8 +2086,6 @@ public partial class MainWindow : Window
         CloseProject();
         ShowStartPage();
     }
-
-    private void OnExit(object sender, RoutedEventArgs e) => Close();
 
     private void OnUndo(object sender, RoutedEventArgs e) => Undo();
 
@@ -2323,6 +2355,10 @@ public partial class MainWindow : Window
 
     private void OnMode(object sender, RoutedEventArgs e) => ShowMode();
 
+    private void OnExportView(object sender, RoutedEventArgs e) => ExportMode.IsChecked = true;
+
+    private void OnBackToEdit(object sender, RoutedEventArgs e) => EditMode.IsChecked = true;
+
     // Shows the view the mode switch is on. Playback stops outside the Edit view.
     private void ShowMode()
     {
@@ -2338,13 +2374,14 @@ public partial class MainWindow : Window
         }
 
         Workspace.Visibility = editing ? Visibility.Visible : Visibility.Collapsed;
-        AssistantPage.Visibility = AssistantMode.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
+        ActivityPage.Visibility = ActivityMode.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
         ExportPage.Visibility = ExportMode.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
+        ShowHeader();
         UpdateEditButtons();
         ShowPage();
     }
 
-    // Brings the Assistant or Export view up to date when it is the one showing.
+    // Brings the Activity or Export view up to date when it is the one showing.
     private void ShowPage()
     {
         if (_document is null)
@@ -2352,9 +2389,9 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (AssistantMode.IsChecked == true)
+        if (ActivityMode.IsChecked == true)
         {
-            ShowAssistant();
+            ShowActivity();
         }
         else if (ExportMode.IsChecked == true)
         {
@@ -2362,14 +2399,14 @@ public partial class MainWindow : Window
         }
     }
 
-    // The Assistant view: who saved last and the recent saves, from the backups folder.
-    private void ShowAssistant()
+    // The Activity view: who saved last and the recent saves, from the backups folder.
+    private void ShowActivity()
     {
         var document = _document!;
         var saves = ProjectHistory.Saves(document.Session.Directory);
-        AssistantSaves.ItemsSource = saves;
-        AssistantEmpty.Visibility = saves.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
-        AssistantSaved.Text = saves.Count == 0
+        ActivitySaves.ItemsSource = saves;
+        ActivityEmpty.Visibility = saves.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        ActivitySaved.Text = saves.Count == 0
             ? $"Revision {document.Revision}."
             : $"Revision {document.Revision}, saved {saves[0].Time:yyyy-MM-dd HH:mm:ss} by {(saves[0].ByEditor ? "you" : "Claude")}: {saves[0].Edit}.";
     }
