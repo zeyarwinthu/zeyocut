@@ -188,6 +188,7 @@ Tracking uses OpenCV 4.13 through OpenCvSharp4, both Apache-2.0, which are built
 **Logging.** The server writes protocol messages, and only protocol messages, to stdout. Logs go to:
 - stderr, which Claude desktop saves to `%APPDATA%\Claude\logs\mcp-server-zeyocut.log`
 - a daily file, `zeyocut-yyyyMMdd.jsonl`, in the log directory, with one JSON object per line. Every tool call is logged with its arguments, how long it took and, if it failed, its error. The `get_logs` tool reads it (see [the guide](docs/GUIDE.md#get_logs))
+- `connected.json` in the log directory, the name of the last client that listed the tools and when. The editor's Welcome reads it to tell that Claude is connected
 
 ## Build and test
 

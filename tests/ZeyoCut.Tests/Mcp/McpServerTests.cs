@@ -4,6 +4,7 @@ using System.Text.Json;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using SkiaSharp;
+using ZeyoCut.Core;
 using ZeyoCut.Mcp;
 using ZeyoCut.Render;
 using ZeyoCut.Tests.TestSupport;
@@ -175,6 +176,18 @@ public class McpServerTests
 
         await using (var client = await StartServer(root, Path.Combine(root, "projects"), logs, ct))
         {
+            // A client that lists the tools, as clients do once they connect, is noted for the editor's Welcome.
+            Assert.Null(ClientConnection.Read(logs));
+            var listed = DateTimeOffset.Now;
+            await client.ListToolsAsync(cancellationToken: ct);
+            var connection = ClientConnection.Read(logs);
+            Assert.NotNull(connection);
+            Assert.Equal(("ZeyoCut.Tests", true), (connection.Client, connection.Time >= listed.AddSeconds(-1) && connection.Time <= DateTimeOffset.Now));
+            Assert.Equal([ClientConnection.FileName], Directory.GetFiles(logs, "*.json").Select(Path.GetFileName));
+            File.WriteAllText(ClientConnection.PathIn(logs), "{ not json");
+            Assert.Null(ClientConnection.Read(logs));
+            Assert.Null(ClientConnection.Read(Path.Combine(root, "no logs")));
+
             Assert.Equal($"no log entries containing \"create_project\" in {logs}", await CallOk(client, "get_logs", new() { ["contains"] = "create_project" }, ct));
             await CallOk(client, "create_project", new() { ["name"] = "logged", ["width"] = 320, ["height"] = 240, ["fps"] = 10, ["duration"] = 1.0 }, ct);
             var typo = await Call(client, "update_layer", new() { ["layerId"] = "ghost", ["changes"] = new Dictionary<string, object?> { ["x"] = 5 } }, ct);
