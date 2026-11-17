@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.Globalization;
 using SkiaSharp;
 using ZeyoCut.Core;
+using ZeyoCut.Core.Editing;
 using ZeyoCut.Core.Model;
 
 namespace ZeyoCut.Render.Export;
@@ -21,7 +22,7 @@ internal static class ChunkedExport
     // The chunk cache of a project is trimmed to this size, oldest first.
     public const long CacheBytes = 2L * 1024 * 1024 * 1024;
 
-    public const string CacheFolder = "cache";
+    public const string CacheFolder = ProjectStore.CacheFolder;
 
     // A GPU encoder that fails on a chunk is given it again, up to this many times in all: Intel Quick
     // Sync now and then hands back an empty frame ("Invalid FrameType:0") when frames come faster than

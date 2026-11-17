@@ -20,6 +20,10 @@ public static class ProjectStore
     public const string ExportsFolder = "exports";
     public const string BackupsFolder = "backups";
 
+    // What can be made again from the project: exported chunks, the preview's sound, the editor's
+    // thumbnails.
+    public const string CacheFolder = "cache";
+
     private const int SaveAttempts = 5;
 
     private const uint DeleteAccess = 0x00010000;
