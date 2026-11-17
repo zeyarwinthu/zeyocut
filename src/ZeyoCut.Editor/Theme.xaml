@@ -35,6 +35,7 @@
   <SolidColorBrush x:Key="YouBrush" Color="#1F3A2C" />
   <SolidColorBrush x:Key="YouTextBrush" Color="#8EE0B0" />
   <SolidColorBrush x:Key="ClaudeBrush" Color="#26305A" />
+  <SolidColorBrush x:Key="SoundTileBrush" Color="#1F1A2E" />
   <FontFamily x:Key="IconFont">Segoe Fluent Icons, Segoe MDL2 Assets</FontFamily>
   <StreamGeometry x:Key="SafeAreaShape">M4,5 H20 A1,1 0 0 1 21,6 V18 A1,1 0 0 1 20,19 H4 A1,1 0 0 1 3,18 V6 A1,1 0 0 1 4,5 Z M6,10 V8 H8 M16,8 H18 V10 M18,14 V16 H16 M8,16 H6 V14</StreamGeometry>
   <StreamGeometry x:Key="GridShape">M3,9 H21 M3,15 H21 M9,3 V21 M15,3 V21</StreamGeometry>

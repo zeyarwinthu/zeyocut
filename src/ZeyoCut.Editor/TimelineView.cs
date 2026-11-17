@@ -47,6 +47,7 @@ public sealed class TimelineView : FrameworkElement
     private static readonly Pen KeyEdge = Frozen(new Pen(Frozen(0xA0, 0, 0, 0), 1));
     private static readonly Brush PastEndBrush = Frozen(0x30, 0, 0, 0);
     private static readonly Brush ThumbnailBack = Frozen(0x1A, 0x1D, 0x24);
+    private static readonly Brush WaveBrush = Frozen(0xB3, 0xB9, 0xA6, 0xFF);
     private static readonly Brush EyeBrush = Frozen(0x7C, 0x83, 0x92);
     private static readonly Brush MixedBar = Frozen(0x9A, 0xA1, 0xAE);
     private static readonly Brush GlowBrush = Frozen(0x40, 0x7B, 0x93, 0xFF);
@@ -150,6 +151,9 @@ public sealed class TimelineView : FrameworkElement
     // The thumbnail of an asset, by its id, drawn at the start of the clips that show it; null while
     // there is none.
     public Func<string, ImageSource?>? Thumbnail { get; set; }
+
+    // The peaks of a sound, by its id, drawn along the clips that play it; null while there are none.
+    public Func<string, AudioPeaks?>? Waveform { get; set; }
 
     public TimelineTool Tool
     {
@@ -1113,6 +1117,19 @@ public sealed class TimelineView : FrameworkElement
 
         dc.PushClip(new RectangleGeometry(rect, corner, corner));
         var start = rect.X + 8;
+
+        // The sound's waveform behind its name, for the part of the clip on screen.
+        if (!clip.Hidden && clip.Kind == ClipKind.Audio && clip.Asset is { } sound && Waveform?.Invoke(sound) is { } peaks)
+        {
+            var (shownFrom, shownTo) = (Math.Max(rect.X, HeaderWidth), Math.Min(rect.Right, width));
+            if (shownTo > shownFrom)
+            {
+                var area = new Rect(shownFrom, rect.Y + 3, shownTo - shownFrom, Math.Max(0, rect.Height - 6));
+                var from = clip.TrimIn + scale.TimeAt(shownFrom - HeaderWidth) - clip.Start;
+                var to = clip.TrimIn + scale.TimeAt(shownTo - HeaderWidth) - clip.Start;
+                dc.DrawGeometry(WaveBrush, null, peaks.Outline(from, to, area, Math.Max(1, (int)(area.Width / 2)), clip.TrimOut ?? double.PositiveInfinity));
+            }
+        }
 
         // The footage's first frame, or the picture, at the start of the clip.
         if (!clip.Hidden && clip.Kind is ClipKind.Video or ClipKind.Image && clip.Asset is { } asset && Thumbnail?.Invoke(asset) is { Width: > 0, Height: > 0 } picture)

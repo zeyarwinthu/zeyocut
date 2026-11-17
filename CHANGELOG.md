@@ -56,10 +56,12 @@ when they open.
   it, with the timeline's menu under ⋯; its fields are on tabs by kind, with timing, position and
   scale on one row each, one diamond keying both of a row's values, an opacity slider, chips for
   the attached layers, and a video's speed (as `set_speed` sets it, without moving the clips after
-  it). The media panel shows tiles with thumbnails (kept in the project's `cache\thumbnails`) and
+  it). The media panel shows tiles with thumbnails and sound waveforms (kept in the project's
+  `cache\thumbnails` and `cache\waveforms`) and
   chips for each kind. The timeline names its lanes for what they hold, numbered from the bottom,
   with an eye on each that hides every clip in it (mutes, on a sound lane) as one step; draws clips
-  rounded in their kind's color with a thumbnail, and hidden or muted ones faded and dashed; has a
+  rounded in their kind's color with a thumbnail, or a sound's waveform from where it's trimmed, and
+  hidden or muted ones faded and dashed; has a
   Blade (B) that splits a clip where it's clicked, Add marker (M) for a chapter marker at the
   playhead, as `add_markers` adds one, and a zoom slider. A project is open in one editor window at a time. Held at the
   timeline's edge, a drag or a scrub scrolls it, and clicking into an animated value or its diamond

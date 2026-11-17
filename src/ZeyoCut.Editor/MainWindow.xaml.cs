@@ -24,8 +24,8 @@ using ZeyoCut.Render.Video;
 
 namespace ZeyoCut.Editor;
 
-// One asset as the media library lists it: a tile with its thumbnail (Picture, once it's made), a
-// dot in its kind's color (Badge), and a video's or sound's length.
+// One asset as the media library lists it: a tile with its thumbnail or its sound's waveform
+// (Picture, once it's made), a dot in its kind's color (Badge), and a video's or sound's length.
 public sealed record MediaItem(string Id, string Kind, Brush Badge, string Details, bool Missing)
 {
     public Brush? Picture { get; init; }
@@ -88,6 +88,7 @@ public partial class MainWindow : Window
     private MediaImporter? _importer;
     private FramePreview? _preview;
     private MediaThumbnails? _thumbnails;
+    private MediaWaveforms? _waveforms;
     private ProjectThumbnails? _projectPictures;
     private PreviewSound? _sound;
     private FileSystemWatcher? _watcher;
@@ -218,6 +219,7 @@ public partial class MainWindow : Window
         RestorePlacement();
         SnapToggle.IsChecked = Timeline.Snapping = _prefs.Snapping;
         Timeline.Thumbnail = id => _document?.View.FindAsset(id) is { } asset ? _thumbnails?.Get(asset) : null;
+        Timeline.Waveform = id => _document?.View.FindAsset(id) is { } asset ? _waveforms?.Get(asset) : null;
         _prefs.PlaybackScale = _prefs.PlaybackScale switch
         {
             1 => 1,
@@ -603,6 +605,15 @@ public partial class MainWindow : Window
             }
         }));
         _thumbnails = thumbnails;
+        MediaWaveforms? waveforms = null;
+        waveforms = new MediaWaveforms(directory, () => Ffmpeg().Ffmpeg, _ => Dispatcher.InvokeAsync(() =>
+        {
+            if (ReferenceEquals(waveforms, _waveforms))
+            {
+                ShowThumbnails();
+            }
+        }));
+        _waveforms = waveforms;
         _sound = new PreviewSound(Ffmpeg, Dispatcher);
         _sound.Changed += OnSoundChanged;
         _watcher = Watch(directory);
@@ -655,6 +666,8 @@ public partial class MainWindow : Window
         _sound.Dispose();
         _thumbnails?.Dispose();
         _thumbnails = null;
+        _waveforms?.Dispose();
+        _waveforms = null;
         _claim?.Dispose();
         _claim = null;
         _waiting.Clear();
@@ -811,15 +824,32 @@ public partial class MainWindow : Window
         MediaEmpty.Visibility = items.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
     }
 
-    // A thumbnail fills a video's tile, and a picture fits in its tile whole.
+    // A thumbnail fills a video's tile, a picture fits in its tile whole, and a sound's waveform runs
+    // across its tile, half as tall as the tile at full scale.
     private Brush? Picture(Asset asset)
     {
+        if (asset.Type == AssetType.Audio)
+        {
+            return _waveforms?.Get(asset) is { } peaks ? Waveform(peaks) : null;
+        }
+
         if (_thumbnails?.Get(asset) is not { } thumbnail)
         {
             return null;
         }
 
         var brush = new ImageBrush(thumbnail) { Stretch = asset.Type == AssetType.Image ? Stretch.Uniform : Stretch.UniformToFill };
+        brush.Freeze();
+        return brush;
+    }
+
+    private static Brush Waveform(AudioPeaks peaks)
+    {
+        var drawing = new DrawingGroup();
+        drawing.Children.Add(new GeometryDrawing(Brushes.Transparent, null, new RectangleGeometry(new Rect(0, 0, 160, 100))));
+        drawing.Children.Add(new GeometryDrawing(null, new Pen(AudioBadge, 0.75), new LineGeometry(new Point(8, 50), new Point(152, 50))));
+        drawing.Children.Add(new GeometryDrawing(AudioBadge, null, peaks.Outline(0, peaks.Duration, new Rect(8, 25, 144, 50), 72)));
+        var brush = new DrawingBrush(drawing) { Stretch = Stretch.Fill };
         brush.Freeze();
         return brush;
     }

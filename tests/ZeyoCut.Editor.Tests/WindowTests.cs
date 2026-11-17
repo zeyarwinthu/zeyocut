@@ -732,7 +732,7 @@ public class WindowTests
         Assert.Equal(["marker_1"], ProjectStore.Load(directory).Markers.Select(m => m.Id));
     });
 
-    // The media panel's tiles: a thumbnail, a length on footage and sound, a missing file marked;
+    // The media panel's tiles: a thumbnail or a waveform, a length on footage and sound, a missing file marked;
     // the chips show one kind, and Fonts is there while the project has a font.
     [Fact]
     public void TheMediaPanelShowsTilesThatTheChipsFilter() => TestWindow.Run("window-media", (window, folder) =>
@@ -755,13 +755,14 @@ public class WindowTests
         Assert.Equal((null, "0:00.5", null), (Tile("logo").Length, Tile("music").Length, Tile("font").Length));
         Assert.True(Tile("font").Missing);
         Assert.StartsWith("logo.png · 64×64\n", Tile("logo").Tip);
-        for (var i = 0; i < 500 && Tile("logo").Picture is null; i++)
+        for (var i = 0; i < 500 && (Tile("logo").Picture is null || Tile("music").Picture is null); i++)
         {
             TestWindow.Pump(20);
         }
 
-        Assert.NotNull(Tile("logo").Picture);
-        Assert.Null(Tile("music").Picture);
+        Assert.IsType<ImageBrush>(Tile("logo").Picture);
+        Assert.IsType<DrawingBrush>(Tile("music").Picture);
+        Assert.Null(Tile("font").Picture);
 
         void Chip(string name)
         {

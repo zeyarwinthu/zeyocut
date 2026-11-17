@@ -21,6 +21,8 @@ my-project\
                    and as an older ZeyoCut saved it (project-v<format>-<time>.json)
   cache\chunks\    the 2 s chunks of earlier exports, reused by the next export (at most 2 GB)
   cache\preview\   the sound mix the preview page plays (mix-<key>.m4a, the latest one)
+  cache\thumbnails\, cache\waveforms\
+                   the editor's pictures of the media and peaks of each sound, made again when a file changes
   proxies\         1920 px copies of footage over 2560 px, for previews and tracking (exports read the originals)
   project.lock     open only while a program saves project.json; it holds the highest revision saved
 ```

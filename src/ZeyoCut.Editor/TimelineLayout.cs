@@ -25,7 +25,8 @@ public enum ClipKind
 // A clip as the timeline shows it: a layer from Start to End, in a row of its lane. Children are
 // the layers that move, trim and split with it; Marks name the cutouts and redactions that follow it.
 // Hidden is visible: false, an audio layer's mute; SoundOff is a video's own sound muted. Asset is
-// the footage or picture whose thumbnail starts the clip.
+// the footage or picture whose thumbnail starts the clip, or the sound whose waveform it shows from
+// TrimIn (in the sound's seconds) to TrimOut.
 public sealed record TimelineClip(
     string LayerId,
     ClipKind Kind,
@@ -38,7 +39,9 @@ public sealed record TimelineClip(
     bool SoundOff,
     int Children,
     IReadOnlyList<string> Marks,
-    string? Asset = null);
+    string? Asset = null,
+    double TrimIn = 0,
+    double? TrimOut = null);
 
 // A lane: one draw level (the zIndex of the top-level video, image and text layers in it), one
 // caption group, or the sound of one role. Clips that overlap stack in rows.
@@ -159,8 +162,11 @@ public static class TimelineLayout
             {
                 VideoLayer video => video.Asset,
                 ImageLayer image when kind == ClipKind.Image => image.Drawings.GetValueOrDefault("normal") ?? image.Drawings.Values.FirstOrDefault(),
+                AudioLayer audio => audio.Asset,
                 _ => null,
-            });
+            },
+            layer is AudioLayer sound ? sound.TrimIn : 0,
+            layer is AudioLayer trimmed ? trimmed.TrimOut : null);
     }
 
     private static ClipKind KindOf(Layer layer, Dictionary<string, int> children) => layer switch

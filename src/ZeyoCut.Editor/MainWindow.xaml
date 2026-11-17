@@ -1003,8 +1003,15 @@
                 </StackPanel>
                 <DataTemplate.Triggers>
                   <DataTrigger Binding="{Binding Kind}" Value="AUDIO">
-                    <Setter TargetName="SoundIcon" Property="Visibility" Value="Visible" />
+                    <Setter TargetName="Frame" Property="Background" Value="{StaticResource SoundTileBrush}" />
                   </DataTrigger>
+                  <MultiDataTrigger>
+                    <MultiDataTrigger.Conditions>
+                      <Condition Binding="{Binding Kind}" Value="AUDIO" />
+                      <Condition Binding="{Binding Picture}" Value="{x:Null}" />
+                    </MultiDataTrigger.Conditions>
+                    <Setter TargetName="SoundIcon" Property="Visibility" Value="Visible" />
+                  </MultiDataTrigger>
                   <DataTrigger Binding="{Binding Kind}" Value="FONT">
                     <Setter TargetName="FontText" Property="Visibility" Value="Visible" />
                   </DataTrigger>

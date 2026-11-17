@@ -24,7 +24,7 @@ The header across the top names the project and whether it's saved ("Saved · re
 
 ## Media
 
-The media panel shows a tile for each asset: a picture made small, a video's first frame, a note for sound and "Aa" for a font, with the length of footage and sound, and a dot in the kind's color. The name under a tile is the asset's id, which is what Claude calls it; the file name is in its tooltip, and a file that's gone is marked Missing in red. The chips All, Video, Images, Audio (and Fonts, when the project has one) show one kind. Thumbnails are made in the background and kept in the project's `cache\thumbnails` folder.
+The media panel shows a tile for each asset: a picture made small, a video's first frame, a sound's waveform and "Aa" for a font, with the length of footage and sound, and a dot in the kind's color. The name under a tile is the asset's id, which is what Claude calls it; the file name is in its tooltip, and a file that's gone is marked Missing in red. The chips All, Video, Images, Audio (and Fonts, when the project has one) show one kind. Thumbnails and waveforms are made in the background and kept in the project's `cache\thumbnails` and `cache\waveforms` folders; a file that changes gets new ones.
 
 - Import, above the media list (Ctrl+I), imports images, audio, fonts and video. Video that needs normalizing (variable frame rate, rotation, HDR) is converted first, as `import_video` does, with its progress in the media list. Files you pick yourself can come from any folder; the import folders limit only what the model can read.
 - Drag files from File Explorer onto the window to import them.
@@ -54,7 +54,7 @@ Under the frame are the playhead's timecode and the last frame's. ← and → st
 
 There's a lane for each draw level (`zIndex`) of video, images and text, the highest on top; a lane for each caption track ("Captions · EN"); and Voice, Music and Sound effects lanes for sound. A draw level is named for what it holds (Video, Images, Text, or Mixed), and levels of the same name are numbered from the bottom: Video 2 draws over Video 1. The lane's tooltip gives its draw level. A layer with child layers (a logo attached to a clip, a rig) is one clip with a "+N" badge, and its children move, trim, split and delete with it.
 
-Clips are drawn in their kind's color, a video's or picture's with its thumbnail at the start. A hidden clip, or muted sound, is faded with a dashed edge and a crossed-out eye or speaker.
+Clips are drawn in their kind's color, a video's or picture's with its thumbnail at the start, and a sound's with its waveform from where it's trimmed. A hidden clip, or muted sound, is faded with a dashed edge and a crossed-out eye or speaker.
 
 - Click a clip to select it and see it in the inspector.
 - The eye beside a lane's name hides every clip in it, as one step to undo, and shows them all again once all are hidden. On a sound lane it's a speaker that mutes them.
@@ -176,4 +176,4 @@ The editor reads `FfmpegPath`, `ProjectsRoot`, `LibraryPath` and `VideoEncoder` 
 
 - Masks, motion paths, transitions and speed changes.
 - Closing a gap: deleting a clip leaves one. The model's `remove_range` cuts a stretch of time out of every layer.
-- Clips show no thumbnails or sound waveforms, and one clip is selected at a time.
+- One clip is selected at a time.
