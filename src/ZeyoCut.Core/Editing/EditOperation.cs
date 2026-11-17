@@ -181,6 +181,31 @@ public sealed record SetSpeedOperation(string LayerId, double Speed) : EditOpera
     }
 }
 
+// Markers, as add_markers adds or changes them, in one step: all of them or none.
+public sealed record AddMarkersOperation(IReadOnlyList<MarkerEntry> Entries) : EditOperation
+{
+    public override string Label => $"add_markers ({Entries.Count} marker{(Entries.Count == 1 ? "" : "s")})";
+
+    public override IReadOnlyList<string> Layers => [];
+
+    public override string Apply(Project project)
+    {
+        var change = MarkerEditor.AddMarkers(project, Entries);
+        var parts = new List<string>();
+        if (change.Added.Count > 0)
+        {
+            parts.Add($"added {change.Added.Count} marker{(change.Added.Count == 1 ? "" : "s")}: {string.Join(", ", change.Added.Select(m => m.Id))}");
+        }
+
+        if (change.Changed.Count > 0)
+        {
+            parts.Add($"changed {string.Join(", ", change.Changed.Select(m => m.Id))}");
+        }
+
+        return string.Join("; ", parts.Concat(change.Warnings));
+    }
+}
+
 // Draw order: a layer's zIndex (higher draws on top); the timeline's lanes follow it. Its children
 // move with it. With Insert, it gets levels of its own from ZIndex up (see ProjectEditor.Reorder).
 public sealed record ReorderLayerOperation(string LayerId, int ZIndex, bool Insert = false) : EditOperation

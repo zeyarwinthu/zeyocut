@@ -136,6 +136,9 @@ public class EditOperationTests
             (new ReorderLayerOperation("title", 2), p => ProjectEditor.UpdateLayer(p, "title", new JsonObject { ["zIndex"] = 2 })),
             (new SetSpeedOperation("clip_2", 2), p => TimelineEditor.SetSpeed(p, "clip_2", 2, ripple: false)),
             (new SetSpeedOperation("clip_1", 0.5), p => TimelineEditor.SetSpeed(p, "clip_1", 0.5, ripple: false)),
+            (new AddMarkersOperation([new MarkerEntry(null, 2, "Marker 1", null)]), p => MarkerEditor.AddMarkers(p, [new MarkerEntry(null, 2, "Marker 1", null)])),
+            (new AddMarkersOperation([new MarkerEntry("outro", 6.5, "Outro", "scene"), new MarkerEntry(null, 0, "Intro", null)]),
+                p => MarkerEditor.AddMarkers(p, [new MarkerEntry("outro", 6.5, "Outro", "scene"), new MarkerEntry(null, 0, "Intro", null)])),
         };
         foreach (var (operation, direct) in cases)
         {
@@ -177,6 +180,29 @@ public class EditOperationTests
         Assert.Equal("reorder_layer title", reorder.Label);
         Assert.Equal("'title' now draws at z=1", reorder.Apply(project));
         Assert.Equal(1, Layer<TextLayer>(project, "title").ZIndex);
+    }
+
+    // The editor's Add marker button adds a marker as add_markers does, named and labelled the same way.
+    [Fact]
+    public void AddingMarkersIsAddMarkersInOneStep()
+    {
+        var project = TestProjects.Footage();
+        var add = new AddMarkersOperation([new MarkerEntry(null, 2, "Marker 1", null)]);
+        Assert.Equal(("add_markers (1 marker)", 0), (add.Label, add.Layers.Count));
+        Assert.Equal("added 1 marker: marker_1", add.Apply(project));
+        Assert.Equal([("marker_1", 2.0, "Marker 1", MarkerKind.Chapter)], project.Markers.Select(m => (m.Id, m.Time, m.Name, m.Kind)));
+
+        // A second at the same time is added with the warning add_markers gives.
+        var again = new AddMarkersOperation([new MarkerEntry(null, 2, "Marker 2", null), new MarkerEntry("marker_1", 1, "Start", null)]);
+        Assert.Equal("add_markers (2 markers)", again.Label);
+        var summary = again.Apply(project);
+        Assert.StartsWith("added 1 marker: marker_2; changed marker_1", summary);
+        Assert.Equal([("marker_1", 1.0), ("marker_2", 2.0)], project.Markers.Select(m => (m.Id, m.Time)));
+
+        // Past the project's end, nothing is added.
+        var before = ProjectJson.Serialize(project);
+        Assert.Contains("markers go from 0 to the project end", Assert.Throws<ZeyoCutException>(() => new AddMarkersOperation([new MarkerEntry(null, 99, "Late", null)]).Apply(project)).Message);
+        Assert.Equal(before, ProjectJson.Serialize(project));
     }
 
     // The editor's speed field changes the clip as set_speed with ripple off does: the clip keeps its
