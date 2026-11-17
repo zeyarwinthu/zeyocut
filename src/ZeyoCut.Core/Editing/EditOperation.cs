@@ -166,6 +166,21 @@ public sealed record CropLayerOperation(string LayerId, CropSides Sides) : EditO
     public override string Apply(Project project) => PlacementEditor.Crop(project, LayerId, Sides);
 }
 
+// A video clip's speed, as set_speed changes it with ripple off: the clip keeps its start, and its
+// children and keyframes stretch with it; the layers after it stay where they are.
+public sealed record SetSpeedOperation(string LayerId, double Speed) : EditOperation
+{
+    public override string Label => $"set_speed {LayerId}";
+
+    public override IReadOnlyList<string> Layers => [LayerId];
+
+    public override string Apply(Project project)
+    {
+        var change = TimelineEditor.SetSpeed(project, LayerId, Speed, ripple: false);
+        return change.Summary + string.Concat(change.Warnings.Select(w => $"; {w}"));
+    }
+}
+
 // Draw order: a layer's zIndex (higher draws on top); the timeline's lanes follow it. Its children
 // move with it. With Insert, it gets levels of its own from ZIndex up (see ProjectEditor.Reorder).
 public sealed record ReorderLayerOperation(string LayerId, int ZIndex, bool Insert = false) : EditOperation

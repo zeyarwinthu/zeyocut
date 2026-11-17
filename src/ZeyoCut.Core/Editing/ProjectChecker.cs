@@ -227,6 +227,19 @@ public static class ProjectChecker
         }
     }
 
+    // What's left of the canvas inside the strips text should stay out of (SafeZones), in canvas
+    // pixels: the editor draws it over the preview, as check_project checks it.
+    public static (double Left, double Top, double Right, double Bottom) SafeArea(Project project)
+    {
+        double w = project.Width, h = project.Height;
+        var zones = SafeZones(project).Select(z => z.Area).ToList();
+        var left = zones.Where(z => z.Left <= 0 && z.Top <= 0 && z.Bottom >= h && z.Right < w).Select(z => z.Right).DefaultIfEmpty(0).Max();
+        var right = zones.Where(z => z.Right >= w && z.Top <= 0 && z.Bottom >= h && z.Left > 0).Select(z => z.Left).DefaultIfEmpty(w).Min();
+        var top = zones.Where(z => z.Top <= 0 && z.Left <= 0 && z.Right >= w && z.Bottom < h).Select(z => z.Bottom).DefaultIfEmpty(0).Max();
+        var bottom = zones.Where(z => z.Bottom >= h && z.Left <= 0 && z.Right >= w && z.Top > 0).Select(z => z.Top).DefaultIfEmpty(h).Min();
+        return (left, top, right, bottom);
+    }
+
     // The strips text should stay out of: the title-safe margins, plus the Shorts player's buttons
     // and captions on vertical canvases.
     private static List<(string Zone, Rect Area)> SafeZones(Project project)

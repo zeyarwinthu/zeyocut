@@ -134,6 +134,8 @@ public class EditOperationTests
             (new RemoveLayerOperation("label", WithChildren: false), p => ProjectEditor.RemoveLayer(p, "label", withChildren: false)),
             (new UpdateLayerOperation("music", volume), p => ProjectEditor.UpdateLayer(p, "music", new JsonObject { ["volume"] = 0.3 })),
             (new ReorderLayerOperation("title", 2), p => ProjectEditor.UpdateLayer(p, "title", new JsonObject { ["zIndex"] = 2 })),
+            (new SetSpeedOperation("clip_2", 2), p => TimelineEditor.SetSpeed(p, "clip_2", 2, ripple: false)),
+            (new SetSpeedOperation("clip_1", 0.5), p => TimelineEditor.SetSpeed(p, "clip_1", 0.5, ripple: false)),
         };
         foreach (var (operation, direct) in cases)
         {
@@ -175,6 +177,25 @@ public class EditOperationTests
         Assert.Equal("reorder_layer title", reorder.Label);
         Assert.Equal("'title' now draws at z=1", reorder.Apply(project));
         Assert.Equal(1, Layer<TextLayer>(project, "title").ZIndex);
+    }
+
+    // The editor's speed field changes the clip as set_speed with ripple off does: the clip keeps its
+    // start, and the layers after it stay.
+    [Fact]
+    public void SpeedStretchesTheClipAndLeavesTheLayersAfterIt()
+    {
+        var project = TestProjects.Footage();
+        var speed = new SetSpeedOperation("clip_1", 2);
+        Assert.Equal("set_speed clip_1", speed.Label);
+        Assert.Equal(["clip_1"], speed.Layers);
+        var summary = speed.Apply(project);
+        Assert.Equal(TimelineEditor.SetSpeed(TestProjects.Footage(), "clip_1", 2, ripple: false).Summary, summary);
+        var clip = Layer<VideoLayer>(project, "clip_1");
+        Assert.Equal((0.0, 2.0, 2.0), (clip.Start, clip.TimelineEnd, clip.Speed));
+        Assert.Equal(4, project.FindLayer("clip_2")!.Start);
+
+        Assert.Equal("layer 'clip_1' already plays at 2x", Assert.Throws<ZeyoCutException>(() => speed.Apply(project)).Message);
+        Assert.StartsWith("set_speed works on video layers", Assert.Throws<ZeyoCutException>(() => new SetSpeedOperation("title", 2).Apply(project)).Message);
     }
 
     [Fact]

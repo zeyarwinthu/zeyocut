@@ -102,6 +102,40 @@ public class ValueEditorTests
         Assert.Equal("removed 1 keyframe(s) at 1.01s from title.x", ValueEditor.ToggleKeyframe(project, "title", "x", 1).Apply(project));
     }
 
+    // A row of the inspector, such as Position, has one diamond for both its values.
+    [Fact]
+    public void OneDiamondKeysBothValuesOfARow()
+    {
+        var project = TestProjects.Footage();
+        var title = Layer<TextLayer>(project, "title");
+        var (x, y) = (title.X.Value, title.Y.Value);
+        string[] position = ["x", "y"];
+
+        var add = ValueEditor.ToggleKeyframes(project, "title", position, 1);
+        Assert.Equal("set_keyframes title", add.Label);
+        Assert.Equal(["title"], add.Layers);
+        add.Apply(project);
+        Assert.Equal([(1.0, x)], Layer<TextLayer>(project, "title").X.Keyframes.Select(k => (k.Time, k.Value)));
+        Assert.Equal([(1.0, y)], Layer<TextLayer>(project, "title").Y.Keyframes.Select(k => (k.Time, k.Value)));
+
+        // With only x keyed somewhere, the diamond keys y where it isn't, and leaves x's key alone.
+        ValueEditor.ToggleKeyframe(project, "title", "y", 1).Apply(project);
+        ValueEditor.ToggleKeyframes(project, "title", position, 1).Apply(project);
+        Assert.Single(Layer<TextLayer>(project, "title").X.Keyframes);
+        Assert.Single(Layer<TextLayer>(project, "title").Y.Keyframes);
+
+        // Both keyed there: both are taken away, as one step, and keep their values.
+        var remove = ValueEditor.ToggleKeyframes(project, "title", position, 1);
+        Assert.Equal("remove_keyframes title", remove.Label);
+        Assert.IsType<BatchOperation>(remove);
+        remove.Apply(project);
+        title = Layer<TextLayer>(project, "title");
+        Assert.Equal((0, 0, x, y), (title.X.Keyframes.Count, title.Y.Keyframes.Count, title.X.Value, title.Y.Value));
+
+        Assert.Equal("A keyframe goes at the playhead, and 'title' isn't there; move the playhead into 0–3s, where the layer is",
+            Error(() => ValueEditor.ToggleKeyframes(project, "title", position, 5)));
+    }
+
     [Fact]
     public void KeyTimesAreEveryTimeALayerHasAKeyframe()
     {

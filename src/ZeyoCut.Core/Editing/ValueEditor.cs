@@ -98,6 +98,30 @@ public static class ValueEditor
         return new SetKeyframesOperation([new KeyframeEntry(layer.Id, property, time, JsonSerializer.SerializeToElement(value), EnumNames.ToName(EasingAt(track, time)))]);
     }
 
+    // One diamond for several values, such as x and y: when each has a keyframe at time they are all
+    // taken away, otherwise those without one get one, as one step.
+    public static EditOperation ToggleKeyframes(Project project, string layerId, IReadOnlyList<string> properties, double time)
+    {
+        var layer = ProjectEditor.GetVisualLayer(project, layerId);
+        var missing = properties.Where(p => KeyAt(project, Track(layer, p), time) is null).ToList();
+        if (missing.Count == 0)
+        {
+            var removals = properties.Select(p => ToggleKeyframe(project, layerId, p, time)).ToList();
+            return removals.Count == 1 ? removals[0] : new BatchOperation($"remove_keyframes {layer.Id}", removals);
+        }
+
+        if (!SceneEvaluator.IsActive(layer, time, project.Duration))
+        {
+            throw new ZeyoCutException($"A keyframe goes at the playhead, and '{layer.Id}' isn't there; {MoveInto(project, layer)}");
+        }
+
+        return new SetKeyframesOperation(missing.Select(p =>
+        {
+            var track = Track(layer, p);
+            return new KeyframeEntry(layer.Id, p, time, JsonSerializer.SerializeToElement(Interpolator.Evaluate(track, time)), EnumNames.ToName(EasingAt(track, time)));
+        }).ToList());
+    }
+
     // The keyframe on the frame at time: the playhead is on a frame, and a keyframe between frames
     // belongs to the frame nearest it. The nearest when there are more; null when there's none.
     public static Keyframe? KeyAt(Project project, AnimatedValue value, double time) =>
