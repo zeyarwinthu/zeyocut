@@ -150,6 +150,38 @@ public class JobRecoveryTests
         Assert.Equal("1 h 40 min", JobTime.Format(TimeSpan.FromSeconds(6000)));
     }
 
+    // Running lists what live servers run now, for the editor to show, and leaves every record alone.
+    [Fact]
+    public void RunningListsTheJobsLiveServersRunAndChangesNothing()
+    {
+        var folder = TestPaths.NewDirectory("jobs-running");
+        var store = new JobStore(folder);
+        var now = DateTime.UtcNow;
+        Assert.Empty(new JobStore(Path.Combine(folder, "none")).Running());
+
+        Live(store, Gone("export_2", "export", now.AddMinutes(-1), new JsonObject { ["outputPath"] = "b.mp4" }, attempts: 1, 0.62, "rendering", now));
+        Live(store, Gone("export_1", "export", now.AddMinutes(-2), new JsonObject { ["outputPath"] = "a.mp4" }, attempts: 1, 0.1, "rendering", now));
+        var finished = Gone("batch_1", "batch", now.AddMinutes(-3), null, attempts: 1, 1, null, now);
+        (finished.State, finished.FinishedUtc) = (JobState.Completed, now);
+        Live(store, finished);
+        store.Save(Gone("export_3", "export", now.AddMinutes(-4), new JsonObject { ["outputPath"] = "c.mp4" }, attempts: 1, 0.5, "rendering", now));
+        var old = Gone("analyze_1", "analyze", now.AddDays(-9), null, attempts: 1, 0.1, null, null);
+        (old.State, old.FinishedUtc) = (JobState.Failed, now.AddDays(-8));
+        store.Save(old);
+        File.WriteAllText(Path.Combine(folder, "detect_1.json"), "");
+
+        var running = store.Running();
+        Assert.Equal(["export_1", "export_2"], running.Select(r => r.Id));
+        Assert.Equal((0.62, "rendering", "b.mp4"), (running[1].Progress, running[1].Stage, running[1].Resume!["outputPath"]!.GetValue<string>()));
+        Assert.Equal(6, Directory.GetFiles(folder).Length);
+    }
+
+    private static void Live(JobStore store, JobRecord record)
+    {
+        record.ProcessStartedUtc = JobStore.ProcessStartedUtc;
+        store.Save(record);
+    }
+
     // A running job's record from a server that's gone: this process id with another start time.
     private static JobRecord Gone(string id, string kind, DateTime started, JsonObject? resume, int attempts, double progress, string? stage, DateTime? seen) => new()
     {

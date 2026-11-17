@@ -240,25 +240,10 @@ public sealed class JobStore
     // KeepFinished are deleted on the way.
     public IReadOnlyList<JobRecord> Unowned()
     {
-        if (!System.IO.Directory.Exists(Directory))
-        {
-            return [];
-        }
-
         var records = new List<JobRecord>();
-        foreach (var path in System.IO.Directory.EnumerateFiles(Directory, "*.json"))
+        foreach (var record in Records())
         {
-            JobRecord? record;
-            try
-            {
-                record = JsonSerializer.Deserialize<JobRecord>(File.ReadAllText(path, Encoding.UTF8), ProjectJson.Options);
-            }
-            catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException)
-            {
-                continue;
-            }
-
-            if (record is null || record.Id.Length == 0 || IsAlive(record))
+            if (IsAlive(record))
             {
                 continue;
             }
@@ -273,6 +258,38 @@ public sealed class JobStore
         }
 
         return records.OrderBy(r => r.StartedUtc).ToList();
+    }
+
+    // The jobs live servers are running now, oldest first, for another program to show (the
+    // editor's Export view lists Claude's exports). Unlike Unowned, it changes nothing.
+    public IReadOnlyList<JobRecord> Running() =>
+        Records().Where(r => r.State == JobState.Running && IsAlive(r)).OrderBy(r => r.StartedUtc).ToList();
+
+    // The records in the folder that can be read; one being written or broken is left out.
+    private IEnumerable<JobRecord> Records()
+    {
+        if (!System.IO.Directory.Exists(Directory))
+        {
+            yield break;
+        }
+
+        foreach (var path in System.IO.Directory.EnumerateFiles(Directory, "*.json"))
+        {
+            JobRecord? record;
+            try
+            {
+                record = JsonSerializer.Deserialize<JobRecord>(File.ReadAllText(path, Encoding.UTF8), ProjectJson.Options);
+            }
+            catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException)
+            {
+                continue;
+            }
+
+            if (record is not null && record.Id.Length > 0)
+            {
+                yield return record;
+            }
+        }
     }
 
     // Whether the server that wrote the record still runs (this one included).
