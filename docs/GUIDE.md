@@ -1,6 +1,6 @@
 # ZeyoCut tool guide
 
-The `zeyocut` server has 92 tools, plus [`describe_clip`](#optional-describe_clip) when a clip describer is configured, and 4 [workflow prompts](#workflow-prompts). Every example below was run against the real server; paths are shortened to `C:\Users\you\...` and `C:\videos\...`.
+The `zeyocut` server has 93 tools, plus [`describe_clip`](#optional-describe_clip) when a clip describer is configured, and 4 [workflow prompts](#workflow-prompts). Every example below was run against the real server; paths are shortened to `C:\Users\you\...` and `C:\videos\...`.
 
 ## Conventions
 
@@ -523,6 +523,32 @@ Lists assets and the layers that use them. It takes no parameters.
 - tora_head_happy [image] assets/tora_head_happy.png (240x208 px); used by: tora_head
 - tora_tail [image] assets/tora_tail.png (180x92 px); used by: tora_tail
 - boing [audio] assets/boing.wav (0.6s); used by: boing
+```
+
+### `relink_asset`
+
+Points an asset at another file of the same kind, such as its file found somewhere else after it was moved or deleted from `assets\`. `check_project` lists assets with no file. The file is copied into `assets\` as `import_asset` copies it. The asset keeps its id, so every layer that uses it uses the new file.
+
+The asset takes the new file's size, length or font family, with a warning when they differ. A file of another kind is refused before anything is copied. A video must need no normalizing; import one that does with `import_video` instead. The editor's Relink dialog does the same.
+
+| Parameter | Type | Notes |
+|---|---|---|
+| `assetId` | string | The asset to point at the file |
+| `path` | string | Absolute path of the file |
+
+```json
+{ "assetId": "clouds", "path": "C:\\Users\\you\\Pictures\\moved\\clouds.png" }
+```
+```text
+relinked clouds [image] assets/clouds.png (60x20 px)
+Warnings:
+- 'clouds' was 40x20 px and is now 60x20 px
+```
+```json
+{ "assetId": "clouds", "path": "C:\\Users\\you\\Music\\tone.wav" }
+```
+```text
+An error occurred invoking 'relink_asset': 'tone.wav' is an audio file, and asset 'clouds' needs an image
 ```
 
 ---
@@ -4122,7 +4148,7 @@ Checks every frame of the open project. No parameters.
 ```text
 check_project: 4 problem(s) in 'tora-checks' (120 frames checked)
 missing files (1):
-- asset 'rock' (assets/rock.png) has no file; used by rock, which won't render or export; put the file back, or import it again
+- asset 'rock' (assets/rock.png) has no file; used by rock, which won't render or export; put the file back, or point the asset at it with relink_asset
 off the canvas (1):
 - 'bird' is never on the canvas while it's shown (0–4s); check its x/y, its parent and the camera
 text outside the safe area (1):

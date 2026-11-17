@@ -32,6 +32,18 @@ public static class VideoImport
         return AssetImporter.Prepare(projectDirectory, output, new AssetProbe(video: _ => info), AssetType.Video);
     }
 
+    // Probes images and fonts, audio with ffprobe, and a video that needs no normalizing; a video
+    // that does is refused. For what takes a file as it is: relinking.
+    public static IAssetProbe AsIsProbe(Func<FfmpegPaths> ffmpeg) => new AssetProbe(
+        path => Ffprobe.AudioDuration(ffmpeg().Ffprobe, path),
+        path =>
+        {
+            var (probe, reasons) = Check(ffmpeg(), path);
+            return reasons.Count == 0
+                ? probe.ToAssetInfo()
+                : throw new ZeyoCutException($"'{Path.GetFileName(path)}' needs normalizing ({Reasons(reasons)}), and relinking uses a file as it is; import it instead, then use the new asset in the clips");
+        });
+
     // What the asset notes about why it was normalized.
     public static string Reasons(IReadOnlyList<string> reasons) => string.Join("; ", reasons);
 

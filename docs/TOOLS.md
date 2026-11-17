@@ -3,7 +3,7 @@
 
 # Tool reference
 
-The `zeyocut` server has 92 tools and 4 [workflow prompts](#workflow-prompts). Each is listed here as the server describes it to the model, with its parameters. The [guide](GUIDE.md) shows how they work together, with an example call and the real response for each. One more tool, `describe_clip`, appears only when a clip describer is configured (see the [guide](GUIDE.md#optional-describe_clip)).
+The `zeyocut` server has 93 tools and 4 [workflow prompts](#workflow-prompts). Each is listed here as the server describes it to the model, with its parameters. The [guide](GUIDE.md) shows how they work together, with an example call and the real response for each. One more tool, `describe_clip`, appears only when a clip describer is configured (see the [guide](GUIDE.md#optional-describe_clip)).
 
 | Tool | What it does |
 |---|---|
@@ -67,6 +67,7 @@ The `zeyocut` server has 92 tools and 4 [workflow prompts](#workflow-prompts). E
 | [`redo`](#redo) | Redo the last undone change. |
 | [`refine_matte`](#refine_matte) | Fix the edges of a removed background (one undo step): shrink pulls the edge in by that many pixels to cut off a halo of the old background (negative grows it back, whole pixels), feather softens it over about that many pixels. |
 | [`reframe_to_vertical`](#reframe_to_vertical) | Fit landscape video layers to a vertical canvas (switch it first with update_project preset=shorts_1080p): each clip gets a full-height crop with the canvas' aspect ratio at focusX, centered and scaled to fill the frame. |
+| [`relink_asset`](#relink_asset) | Point an asset at another file of the same kind, such as its file found elsewhere after it was moved or deleted from the project's assets folder (check_project lists assets with no file). |
 | [`remove_background`](#remove_background) | Remove the background of an image or video layer so what is behind it shows through (one undo step; replaces an earlier removal, keeping refine_matte's shrink and feather). |
 | [`remove_keyframes`](#remove_keyframes) | Remove specific keyframes (all-or-nothing). |
 | [`remove_layer`](#remove_layer) | Remove a layer. |
@@ -775,6 +776,15 @@ Fit landscape video layers to a vertical canvas (switch it first with update_pro
 |---|---|---|
 | `layerId` | string, default `"all"` | Video layer to reframe, or "all" for every video layer. Default all. |
 | `focusX` | number, default `0.5` | Horizontal position of the crop: 0 = left edge, 0.5 = center (default), 1 = right edge. |
+
+### `relink_asset`
+
+Point an asset at another file of the same kind, such as its file found elsewhere after it was moved or deleted from the project's assets folder (check_project lists assets with no file). The file is copied into assets/ as import_asset copies it, and the asset keeps its id, so every layer that uses it uses the new file; its size, length or font family become the new file's, with a warning when they differ. A video must need no normalizing; import one that does with import_video instead.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `assetId` | string, required | The asset to point at the file. |
+| `path` | string, required | Absolute path of the file, in an import folder, the library or the projects folder. |
 
 ### `remove_background`
 

@@ -92,6 +92,9 @@ when they open.
   named, when the other program changed the same layers or settings since. After a refused `undo`,
   the next one (Ctrl+Z in the editor too) steps over that step, which stays as it is, undoes the
   step before it and names the one it stepped over; `redo` steps over a refused step the same way.
+- **`relink_asset`:** points an asset at another file of the same kind, such as its file found
+  elsewhere after it was moved or deleted from `assets\`. The asset keeps its id and takes the new
+  file's size or length. `check_project` now suggests it for a missing file.
 - **`trim_layer`:** trims a layer's start, end or both, as dragging the edge of a clip does. Trimming
   in cuts the layer and its children shorter; trimming out shows more, as far as a clip's source
   goes. Fades stay at the new edges.

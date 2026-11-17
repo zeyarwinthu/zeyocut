@@ -15,7 +15,7 @@ public class McpServerTests
     private static readonly string[] ExpectedTools =
     [
         "create_project", "open_project", "update_project", "get_project", "list_projects", "undo", "redo", "restore_backup",
-        "import_asset", "import_folder", "list_assets",
+        "import_asset", "import_folder", "list_assets", "relink_asset",
         "add_image_layer", "add_text_layer", "add_audio_layer", "update_layer", "remove_layer", "duplicate_layer", "list_layers",
         "set_keyframes", "remove_keyframes", "clear_keyframes",
         "render_frame", "render_contact_sheet", "preview_server",
@@ -795,6 +795,36 @@ public class McpServerTests
 
         Assert.Contains("framediff_1: completed", status);
         Assert.Contains("- f10 1s glitch: ", status);
+    }
+
+    [Fact]
+    public async Task ServerRelinksAnAssetWhoseFileIsGone()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var root = TestPaths.NewDirectory("mcp-relink");
+        var clouds = TestImages.Solid(Path.Combine(root, "clouds.png"), 40, 20, SKColors.Red);
+        var tone = Path.Combine(root, "tone.wav");
+        ZeyoCut.Mcp.Demo.ToneGenerator.WriteTone(tone, 440, 1, 0.1);
+
+        await using var client = await StartServer(root, Path.Combine(root, "projects"), Path.Combine(root, "logs"), ct);
+        await CallOk(client, "create_project", new() { ["name"] = "relink", ["width"] = 320, ["height"] = 180, ["fps"] = 10, ["duration"] = 1.0 }, ct);
+        await CallOk(client, "import_asset", new() { ["path"] = clouds }, ct);
+        await CallOk(client, "add_image_layer", new() { ["asset"] = "clouds", ["id"] = "sky" }, ct);
+        File.Delete(Path.Combine(root, "projects", "relink", "assets", "clouds.png"));
+        Assert.Contains("asset 'clouds' (assets/clouds.png) has no file; used by sky, which won't render or export; put the file back, or point the asset at it with relink_asset",
+            await CallOk(client, "check_project", new(), ct));
+
+        var sound = await Call(client, "relink_asset", new() { ["assetId"] = "clouds", ["path"] = tone }, ct);
+        Assert.True(sound.IsError);
+        Assert.Contains("'tone.wav' is an audio file, and asset 'clouds' needs an image", Text(sound));
+        Assert.False(File.Exists(Path.Combine(root, "projects", "relink", "assets", "tone.wav")));
+
+        var moved = Directory.CreateDirectory(Path.Combine(root, "moved")).FullName;
+        var wider = TestImages.Solid(Path.Combine(moved, "clouds.png"), 60, 20, SKColors.Lime);
+        Assert.Equal("relinked clouds [image] assets/clouds.png (60x20 px)\nWarnings:\n- 'clouds' was 40x20 px and is now 60x20 px",
+            await CallOk(client, "relink_asset", new() { ["assetId"] = "clouds", ["path"] = wider }, ct));
+        Assert.DoesNotContain("has no file", await CallOk(client, "check_project", new(), ct));
+        Assert.StartsWith("undid: relink_asset clouds", await CallOk(client, "undo", new(), ct));
     }
 
     [Fact]

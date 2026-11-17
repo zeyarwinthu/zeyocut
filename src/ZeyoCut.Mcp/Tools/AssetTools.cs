@@ -38,6 +38,21 @@ public static class AssetTools
         return $"imported {Describe(asset)}";
     });
 
+    [McpServerTool(Name = "relink_asset")]
+    [Description("Point an asset at another file of the same kind, such as its file found elsewhere after it was moved or deleted from the project's assets folder (check_project lists assets with no file). The file is copied into assets/ as import_asset copies it, and the asset keeps its id, so every layer that uses it uses the new file; its size, length or font family become the new file's, with a warning when they differ. A video must need no normalizing; import one that does with import_video instead.")]
+    public static string RelinkAsset(
+        EditorState state,
+        [Description("The asset to point at the file.")] string assetId,
+        [Description("Absolute path of the file, in an import folder, the library or the projects folder.")] string path) => Guard(() =>
+    {
+        var session = state.Session;
+        var source = AllowedFolders.Readable(state.Settings, path);
+        var type = session.Read(p => AssetRelinker.Check(p, assetId, source).Type);
+        var prepared = AssetImporter.Prepare(session.Directory, source, VideoImport.AsIsProbe(state.RequireFfmpeg), type);
+        var relinked = session.Mutate($"relink_asset {assetId}", p => AssetRelinker.Relink(p, assetId, prepared));
+        return WithWarnings($"relinked {Describe(relinked.Asset)}", relinked.Warnings);
+    });
+
     [McpServerTool(Name = "import_folder")]
     [Description("Import every image, audio, font and video file in a folder (not its subfolders) whose name matches pattern, in order: by name with numbers in order (panel_2 before panel_10), or by date, oldest first. Images, audio, fonts and videos that need no normalizing are imported at once, as one undo step. Videos that do (variable frame rate, rotated, HDR, ...) are normalized one after another in one background job (import_N) and added as each finishes; poll get_job_status. Asset ids come from the file names. The reply lists the assets in order, the files of other types it skipped and any file it couldn't read. At most 500 files.")]
     public static string ImportFolder(
