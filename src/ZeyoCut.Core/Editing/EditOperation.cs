@@ -308,6 +308,18 @@ public sealed record AddAssetOperation(PreparedAsset Asset, string? Id = null, s
     }
 }
 
+// A copy of a layer and its children, as duplicate_layer makes it by default. The copied layer is
+// the first in the summary.
+public sealed record DuplicateLayerOperation(string LayerId) : EditOperation
+{
+    public override string Label => $"duplicate_layer {LayerId}";
+
+    public override IReadOnlyList<string> Layers => [LayerId];
+
+    public override string Apply(Project project) =>
+        "copied " + string.Join(", ", ProjectEditor.DuplicateLayer(project, new DuplicateOptions { LayerId = LayerId }).Select(kv => $"'{kv.Key}' -> '{kv.Value}'"));
+}
+
 // An asset pointed at a file Prepare copied into assets\, as relink_asset does: Relink.
 public sealed record RelinkAssetOperation(string AssetId, PreparedAsset Asset) : EditOperation
 {

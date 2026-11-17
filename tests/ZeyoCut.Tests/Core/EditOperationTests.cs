@@ -136,6 +136,7 @@ public class EditOperationTests
             (new ReorderLayerOperation("title", 2), p => ProjectEditor.UpdateLayer(p, "title", new JsonObject { ["zIndex"] = 2 })),
             (new SetSpeedOperation("clip_2", 2), p => TimelineEditor.SetSpeed(p, "clip_2", 2, ripple: false)),
             (new SetSpeedOperation("clip_1", 0.5), p => TimelineEditor.SetSpeed(p, "clip_1", 0.5, ripple: false)),
+            (new DuplicateLayerOperation("clip_2"), p => ProjectEditor.DuplicateLayer(p, new DuplicateOptions { LayerId = "clip_2" })),
             (new AddMarkersOperation([new MarkerEntry(null, 2, "Marker 1", null)]), p => MarkerEditor.AddMarkers(p, [new MarkerEntry(null, 2, "Marker 1", null)])),
             (new AddMarkersOperation([new MarkerEntry("outro", 6.5, "Outro", "scene"), new MarkerEntry(null, 0, "Intro", null)]),
                 p => MarkerEditor.AddMarkers(p, [new MarkerEntry("outro", 6.5, "Outro", "scene"), new MarkerEntry(null, 0, "Intro", null)])),
@@ -414,6 +415,22 @@ public class EditOperationTests
 
         Assert.True(document.Undo());
         Assert.Equal(original, TestProjects.WithoutRevision(File.ReadAllText(file)));
+    }
+
+    // Ctrl+D: duplicate_layer with its defaults, the layer with its children.
+    [Fact]
+    public void DuplicatingCopiesTheLayerWithItsChildren()
+    {
+        var project = TestProjects.Footage();
+        var duplicate = new DuplicateLayerOperation("clip_2");
+        Assert.Equal("duplicate_layer clip_2", duplicate.Label);
+        Assert.Equal(["clip_2"], duplicate.Layers);
+        Assert.Equal("copied 'clip_2' -> 'clip_2_2', 'label' -> 'label_2'", duplicate.Apply(project));
+        var copy = Layer<VideoLayer>(project, "clip_2_2");
+        Assert.Equal((4.0, 8.0, 4.0, 8.0), (copy.Start, copy.TimelineEnd, copy.TrimIn, copy.TrimOut));
+        Assert.Equal("clip_2_2", project.FindLayer("label_2")!.ParentId);
+        Assert.Equal("copied 'clip_2' -> 'clip_2_3', 'label' -> 'label_3'", duplicate.Apply(project));
+        Assert.StartsWith("layer 'nothing' not found", Assert.Throws<ZeyoCutException>(() => new DuplicateLayerOperation("nothing").Apply(project)).Message);
     }
 
     // relink_asset and the editor's Relink: the asset keeps its id and takes the new file's details.
