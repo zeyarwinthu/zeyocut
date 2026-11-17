@@ -2,9 +2,9 @@
 
 `ZeyoCut.Editor.exe` opens a ZeyoCut project in a window, for fine-tuning by hand what the model made. It edits the same `project.json` as the server, at the same time: each change you make is saved at once and the model's next reply notes it, and what the model changes shows in the window within a second.
 
-![The editor with the Tora Jumps example open: the media on the left, the frame at 0.967 seconds in the middle, the inspector on the right with Tora's Y keyed at the playhead, and the timeline below with the keyframes on Tora's clip](editor-edit.png)
+![The editor with the Tora Jumps example open: the media on the left, the frame at 0.967 seconds in the middle, the inspector on the right with Tora's position and rotation animated, and the timeline below with the keyframes on Tora's clip](editor-edit.png)
 
-It imports media, plays the edit with its sound, moves, trims and splits clips on a timeline, places, crops and animates layers with keyframes, sets effects, color adjustments and face-blur settings, edits captions, changes volumes, and exports. Masks, motion paths, transitions and speed changes stay with the model: ask it for those.
+It imports media, plays the edit with its sound, moves, trims and splits clips on a timeline, places, crops and animates layers with keyframes, sets effects, color adjustments and face-blur settings, edits captions, changes volumes and a video's speed, and exports. Masks, motion paths and transitions stay with the model: ask it for those.
 
 ## Open a project
 
@@ -50,7 +50,7 @@ Under the frame are the playhead's timecode and the last frame's. ← and → st
 
 ## The timeline
 
-![The comic-panels example's timeline: caption tracks in Burmese, Japanese and English, the three panels overlapping where they cross-fade, and two sound effects in the Effects lane](editor-timeline.png)
+![The comic-panels example's timeline: caption tracks in Burmese, Japanese and English, the three panels overlapping where they cross-fade, and two sound effects with their waveforms in the Sound effects lane](editor-timeline.png)
 
 There's a lane for each draw level (`zIndex`) of video, images and text, the highest on top; a lane for each caption track ("Captions · EN"); and Voice, Music and Sound effects lanes for sound. A draw level is named for what it holds (Video, Images, Text, or Mixed), and levels of the same name are numbered from the bottom: Video 2 draws over Video 1. The lane's tooltip gives its draw level. A layer with child layers (a logo attached to a clip, a rig) is one clip with a "+N" badge, and its children move, trim, split and delete with it.
 
@@ -96,7 +96,7 @@ Its header names the clip with a badge for its kind, and says where it comes fro
 - **Color:** a video's or picture's Brightness, Contrast and Saturation, in percent: 0, 100 and 100 leave it as it is.
 - **Face blur:** a video whose footage a redaction hides (`apply_redaction`) shows its settings: Style, Strength (pixelate and blur) or Fill color (solid), Padding, Feather and Hold frames, a section for each redaction. They are the redaction's, so they change every clip of that footage.
 
-![The title of Tora Jumps with a shadow switched on: the inspector shows the shadow's color, offset, blur and opacity, each number with a keyframe diamond](editor-effects.png)
+![The title of Tora Jumps with a shadow switched on: the inspector's Effects tab shows the shadow's color, offset, blur and opacity, each number with a keyframe diamond](editor-effects.png)
 
 ### Typing values
 
@@ -121,7 +121,7 @@ To blur seconds 2 to 4, say:
 
 ## Export
 
-![The Export view exporting the Japanese version of comic-panels, at 56%, with an earlier export listed in the exports folder](editor-export.png)
+![The Export view exporting the Japanese version of comic-panels at 1920×1080, at 24%, with the earlier exports listed in the exports folder](editor-export.png)
 
 Export in the header (Ctrl+3) opens the Export view, and Back to edit returns to the timeline. It renders the project as it's saved to an MP4 in its `exports` folder, as the model's `start_export` does, in the editor's own process. Edits made while it runs aren't in it.
 
@@ -174,6 +174,6 @@ The editor reads `FfmpegPath`, `ProjectsRoot`, `LibraryPath` and `VideoEncoder` 
 
 ## What it leaves to the model
 
-- Masks, motion paths, transitions and speed changes.
+- Masks, motion paths and transitions.
 - Closing a gap: deleting a clip leaves one. The model's `remove_range` cuts a stretch of time out of every layer.
 - One clip is selected at a time.

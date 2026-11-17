@@ -54,7 +54,7 @@ Then ask for something. ZeyoCut imports files from your Desktop, Documents, Down
 
 `ZeyoCut.Editor.exe`, next to `ZeyoCut.Mcp.exe` in the release zip, opens the same projects in a window, for working on them by hand. It imports media, plays the edit with its sound, edits clips on a timeline and in an inspector, places them in the picture, sets their effects and keyframes, and exports. Masks, motion paths and transitions are still the model's; ask it for those. The [editor guide](docs/editor.md) shows it with screenshots.
 
-![The editor with the Tora Jumps example open: the media on the left, the frame in the middle, the inspector on the right with Tora's Y keyed at the playhead, and the timeline below with the keyframes on Tora's clip](docs/editor-edit.png)
+![The editor with the Tora Jumps example open: the media on the left, the frame in the middle, the inspector on the right with Tora's position and rotation animated, and the timeline below with the keyframes on Tora's clip](docs/editor-edit.png)
 
 - **Open a project** from Home, which shows your recent projects and the rest of your projects folder as cards with a picture of each and a search box, with Open folder… (Ctrl+O), from the command line (`ZeyoCut.Editor.exe C:\Users\you\ZeyoCut\projects\my-video`), or by asking the model to open it in the editor (`open_in_editor`). A project is open in one window at a time: opening it again brings that window to the front.
 - **Three views:** Edit and Activity, switched in the header, and Export, opened by the header's Export button (or Ctrl+1, Ctrl+2 and Ctrl+3: Activity, Edit and Export). The header names the project, shows whether it's saved, undoes and redoes, and says when Claude last saved; the logo goes back to the projects.

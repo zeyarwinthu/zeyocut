@@ -10,68 +10,73 @@ when they open.
 
 ### Added
 
-- **The ZeyoCut editor:** `ZeyoCut.Editor.exe`, a window for working on a project by hand,
-  in the release zip and the bundle. It opens a project (from Home, which shows the recent projects and
-  the projects folder as cards with a picture of each, its length, its languages and Claude's latest
-  edit, with a search box and a list view; Open folder; or a folder on the command line), lists its media,
-  imports images, audio, fonts and video (from the file picker or dropped on the window, normalizing
-  video as `import_video` does, with progress) and shows the frame at any time, drawn by the same
-  renderer as exports, with frame stepping, fit and zoom. It plays the edit at 0.5×, 1× or 2× with
-  the sound mixed as exported, drawing frames at half size while playing. Its timeline shows a lane
-  for each draw level, caption track and sound role; clips move, trim, split, delete, hide and
-  change lanes by dragging, keys and a right-click menu, with snapping to clip edges, the playhead
-  and markers. Each change is saved at once as an undoable step, without holding up the window: while
-  another program is saving, the status bar says "Saving…" until the change is saved after it. When
-  another program saves the project, the editor shows the new version and says what changed. A
-  change begun before that (text
-  typed into a field, a drag) isn't saved over a layer the other program changed meanwhile: the
-  status bar says so, and what was typed stays in the field. Media goes onto the timeline by
-  dragging it onto a lane or at the playhead, and Pack lanes puts layers that never show together on
-  shared levels without changing a frame. The inspector edits the selected clip: start, end, length,
-  draw level, shown or muted, a video's sound, role, volume and fades, and a text's or caption's
-  text and style (font, font file, size, bold, color, outline, alignment, width, line height, box);
-  a caption's style applies to its whole track. Transform fields place a video, picture or text: X,
-  Y, scale, rotation and opacity, each its static value or, when animated, a keyframe at the
-  playhead; a caption's position moves its whole track. A diamond beside each animatable number adds
-  a keyframe at the playhead or takes away the one there, and the selected clip shows its keyframes
-  on the timeline, where a click or Alt+←/→ goes to one. Effects (blur, shadow, border, tint) switch
-  on and off and take their settings, animatable too; a video's or picture's brightness, contrast
-  and saturation are set in percent; and a clip a face blur follows shows the redaction's style,
-  strength, padding, feather, hold frames and fill. A video's crop is set by its sides, keeping
-  what's left of the picture in place. A click in the preview selects the layer drawn on top there,
-  a child layer too, and dragging moves it, redrawn as it goes and saved on release; Shift keeps it
-  on one axis and Escape puts it back. A paused frame is drawn again when a file it shows changes
-  without a save, such as a matte the server finishes. The Export view renders the project as
-  `start_export` does, with preset cards, language versions, a quality (crf 18, 23 or 28), .srt
-  files of the caption tracks as `export_srt` writes them, a summary card with a picture of the
-  project, progress and stop, Claude's running exports of the project read from the jobs folder,
-  and the exports folder's files with Play and Show in folder. The project's Duration is set in the inspector, and the lanes are
-  shaded past the end, as the ruler is. Its header names the project, whether it's saved and when
-  Claude last saved, with undo, redo and the way to Export; the Activity view lists the saves the
-  backups folder keeps, yours and Claude's, as steps under their days (saves in a row by one side,
-  under 5 minutes apart), with a filter by who saved and Restore, which puts a step back as a new
-  revision the way `restore_backup` does. The preview names the canvas, can draw the
-  safe area (as `check_project` checks it) and a thirds grid over the frame, loops, and shows the
-  frame full screen (F). The inspector's header says where the clip comes from and what goes with
-  it, with the timeline's menu under ⋯; its fields are on tabs by kind, with timing, position and
-  scale on one row each, one diamond keying both of a row's values, an opacity slider, chips for
-  the attached layers, and a video's speed (as `set_speed` sets it, without moving the clips after
-  it). The media panel shows tiles with thumbnails and sound waveforms (kept in the project's
-  `cache\thumbnails` and `cache\waveforms`) and
-  chips for each kind. The timeline names its lanes for what they hold, numbered from the bottom,
-  with an eye on each that hides every clip in it (mutes, on a sound lane) as one step; draws clips
-  rounded in their kind's color with a thumbnail, or a sound's waveform from where it's trimmed, and
-  hidden or muted ones faded and dashed; has a
-  Blade (B) that splits a clip where it's clicked, Add marker (M) for a chapter marker at the
-  playhead, as `add_markers` adds one, and a zoom slider. A project is open in one editor window at a time. Held at the
-  timeline's edge, a drag or a scrub scrolls it, and clicking into an animated value or its diamond
-  while playing stops the playback first. A
-  change that can't be saved (another program holds `project.json`, or its folder is read-only or
-  gone) isn't made, and the status bar gives the reason. An error the editor didn't expect is shown
-  in plain words, with its details in `editor-errors.log` in the log folder. A `project.json` with
-  problems, such as an asset whose file is outside `assets\`, opens with the problems named in the
-  status bar. The editor keeps its own settings in `%LOCALAPPDATA%\ZeyoCut\editor.json`
-  (`ZEYOCUT_EDITOR_SETTINGS` names another file). The editor guide (`docs/editor.md`) shows it with screenshots.
+- **The ZeyoCut editor:** `ZeyoCut.Editor.exe`, a window for working on a project by hand, in the
+  release zip and the bundle. The editor guide (`docs/editor.md`) shows it with screenshots.
+  - **Home** shows the recent projects and the projects folder as cards with a picture of each, its
+    length, its languages and Claude's latest edit, with a search box and a list view; Open folder,
+    or a folder on the command line, opens any project. A project is open in one editor window at a
+    time. The header names the project, whether it's saved and when Claude last saved, with undo,
+    redo, the Edit and Activity views and the way to Export.
+  - **Media:** tiles with thumbnails and sound waveforms (kept in the project's `cache\thumbnails`
+    and `cache\waveforms`) and chips for each kind. It imports images, audio, fonts and video (from
+    the file picker or dropped on the window, normalizing video as `import_video` does, with
+    progress), and media goes onto the timeline by dragging it onto a lane or at the playhead.
+  - **Preview and playback:** the frame at any time, drawn by the same renderer as exports, with
+    frame stepping, fit and zoom; the preview names the canvas, can draw the safe area (as
+    `check_project` checks it) and a thirds grid over the frame, and shows the frame full screen
+    (F). It plays the edit at 0.5×, 1× or 2× with the sound mixed as exported, drawing frames at half
+    size while playing, and loops. A click selects the layer drawn on top there, a child layer too,
+    and dragging moves it, redrawn as it goes and saved on release; Shift keeps it on one axis and
+    Escape puts it back. A paused frame is drawn again when a file it shows changes without a save,
+    such as a matte the server finishes.
+  - **Timeline:** a lane for each draw level, caption track and sound role, named for what it holds
+    and numbered from the bottom, with an eye on each that hides every clip in it (mutes, on a sound
+    lane) as one step. Clips are drawn rounded in their kind's color with a thumbnail, or a sound's
+    waveform from where it's trimmed, and hidden or muted ones faded and dashed. They move, trim,
+    split, delete, hide and change lanes by dragging, keys and a right-click menu, with snapping to
+    clip edges, the playhead and markers; held at the timeline's edge, a drag or a scrub scrolls it.
+    The Blade (B) splits a clip where it's clicked, Add marker (M) puts a chapter marker at the
+    playhead as `add_markers` does, and a slider zooms. Pack lanes puts layers that never show
+    together on shared levels without changing a frame. The lanes are shaded past the project's end,
+    as the ruler is.
+  - **Inspector:** edits the selected clip. Its header says where the clip comes from and what goes
+    with it, with the timeline's menu under ⋯, and its fields are on tabs by kind: start, end and
+    length on one row, draw level, shown or muted, and chips for the attached layers; a video's
+    sound and speed (as `set_speed` sets it, without moving the clips after it); a sound's role,
+    volume and fades; and a text's or caption's text and style (font, font file, size, bold, color,
+    outline, alignment, width, line height, box), a caption's style applying to its whole track.
+    Transform fields place a video, picture or text: X and Y, scale, rotation and opacity (with a
+    slider), each its static value or, when animated, a keyframe at the playhead; a caption's
+    position moves its whole track. A diamond beside each animatable number (one for both of a
+    row's values) adds a keyframe at the playhead or takes away the one there, and the selected clip
+    shows its keyframes on the timeline, where a click or Alt+←/→ goes to one; clicking into an
+    animated value or its diamond while playing stops the playback first. Effects (blur, shadow,
+    border, tint) switch on and off and take their settings, animatable too; a video's or picture's
+    brightness, contrast and saturation are set in percent; a clip a face blur follows shows the
+    redaction's style, strength, padding, feather, hold frames and fill; and a video's crop is set
+    by its sides, keeping what's left of the picture in place. With nothing selected, it sets the
+    project's Duration.
+  - **Export view:** renders the project as `start_export` does, with preset cards, language
+    versions, a quality (crf 18, 23 or 28), .srt files of the caption tracks as `export_srt` writes
+    them, a summary card with a picture of the project, progress and stop, Claude's running exports
+    of the project read from the jobs folder, and the exports folder's files with Play and Show in
+    folder.
+  - **Activity view:** the saves the backups folder keeps, yours and Claude's, as steps under their
+    days (saves in a row by one side, under 5 minutes apart), with a filter by who saved and
+    Restore, which puts a step back as a new revision the way `restore_backup` does.
+  - **Saving alongside another program:** each change is saved at once as an undoable step, without
+    holding up the window: while another program is saving, the status bar says "Saving…" until the
+    change is saved after it. When another program saves the project, the editor shows the new
+    version and says what changed. A change begun before that (text typed into a field, a drag)
+    isn't saved over a layer the other program changed meanwhile: the status bar says so, and what
+    was typed stays in the field. A change that can't be saved (another program holds
+    `project.json`, or its folder is read-only or gone) isn't made, and the status bar gives the
+    reason.
+  - **Errors and settings:** an error the editor didn't expect is shown in plain words, with its
+    details in `editor-errors.log` in the log folder. A `project.json` with problems, such as an
+    asset whose file is outside `assets\`, opens with the problems named in the status bar. The
+    editor keeps its own settings in `%LOCALAPPDATA%\ZeyoCut\editor.json`
+    (`ZEYOCUT_EDITOR_SETTINGS` names another file).
 - **`open_in_editor`:** opens a project (by default the open one) in the editor on the user's
   computer, so they can fine-tune it while Claude keeps working; a project already open in the editor
   comes to the front. The editor is `ZeyoCut.Editor.exe` next to the server, or the one the new

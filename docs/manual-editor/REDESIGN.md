@@ -1,7 +1,7 @@
 # Editor redesign: plan for the existing screens
 
 - Written 2026-11-17 on `feature/manual-editor` at `2c5a72d`.
-- Status: R1–R8 decided as recommended (2026-11-17). Phases A–G done; H waits for a go.
+- Status: R1–R8 decided as recommended (2026-11-17). Phases A–H done.
 - Compares the design canvas "ZeyoCut Editor — modern redesign" (19 artboards) with screenshots of the editor as it is now (`screenshots/01`–`09`, taken 2026-11-17 from the installed Release editor).
 - Covers the four screens the editor already has. The 15 new screens are left for later (see Scope).
 - The rules in PLAN.md still hold: no control without real project data and real render output behind it; the UI has no editing logic of its own; a new project property is saved, rendered on export and reachable over MCP; tests pass at every commit; stop and report after each phase.
@@ -189,7 +189,7 @@ Each phase: tests first where behavior changes, full suite green before each com
 | E · Export (done) | Two-column layout, preset cards, Quality, summary card, Play and Show in folder, Claude's running exports; Core: SRT writer moved out of `export_srt`, then the .srt option | `export_srt` output unchanged after the move; the .srt option writes the same file; Quality reaches the encoder as `crf` |
 | F · Activity (done) | Filter, date headings, grouping, Restore, side card | Grouping rule; Restore saves a new revision, and Claude's next tool call sees it in its reply note |
 | G · Waveforms (done) | Audio peaks per asset, made in the background and cached in the project's cache folder; drawn on media tiles and audio clips | Peaks match a known test tone; a missing or changed file rebuilds them |
-| H · Docs | docs/editor.md and its screenshots retaken, CHANGELOG | Docs build |
+| H · Docs (done) | docs/editor.md and its screenshots retaken, CHANGELOG | Docs build |
 
 ## Seen in the screenshots, not in the design
 
