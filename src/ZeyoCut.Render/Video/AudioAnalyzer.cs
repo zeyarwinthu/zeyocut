@@ -26,6 +26,9 @@ public static partial class AudioAnalyzer
     public const double MinThresholdDb = -70;
     public const double SpeechMarginDb = 12;
     public const double SceneThreshold = 10;
+
+    // The sample rate Peaks decodes at.
+    public const int PeakRate = 16000;
     private const double Silent = -120;
 
     [GeneratedRegex(@"silence_start:\s*(-?[\d.]+)")]
@@ -167,6 +170,67 @@ public static partial class AudioAnalyzer
 
         var bytes = buffer.GetBuffer().AsSpan(0, (int)buffer.Length - (int)buffer.Length % 4);
         return System.Runtime.InteropServices.MemoryMarshal.Cast<byte, float>(bytes).ToArray();
+    }
+
+    // The loudest sample of each 1/perSecond of a second of the file's sound, from 0 to 1, decoded to
+    // mono at PeakRate. It's read as ffmpeg decodes it, so a long file never sits in memory.
+    public static float[] Peaks(string ffmpeg, string file, int perSecond, CancellationToken cancellationToken = default)
+    {
+        var args = new List<string> { "-hide_banner", "-nostdin", "-nostats", "-loglevel", "error", "-i", file, "-vn", "-sn", "-dn", "-ac", "1",
+            "-ar", PeakRate.ToString(CultureInfo.InvariantCulture), "-c:a", "pcm_f32le", "-f", "f32le", "pipe:1" };
+        using var process = System.Diagnostics.Process.Start(ProcessRunner.StartInfo(ffmpeg, args))
+            ?? throw new ZeyoCutException($"could not start {ffmpeg}");
+        var stderr = process.StandardError.ReadToEndAsync(CancellationToken.None);
+        using var registration = cancellationToken.Register(() =>
+        {
+            try
+            {
+                process.Kill(entireProcessTree: true);
+            }
+            catch (InvalidOperationException)
+            {
+            }
+        });
+
+        var peaks = new List<float>();
+        var buffer = new byte[1 << 16];
+        var held = 0;
+        long sample = 0;
+        var peak = 0f;
+        int read;
+        while ((read = process.StandardOutput.BaseStream.Read(buffer, held, buffer.Length - held)) > 0)
+        {
+            var bytes = held + read;
+            var whole = bytes - bytes % 4;
+            foreach (var value in System.Runtime.InteropServices.MemoryMarshal.Cast<byte, float>(buffer.AsSpan(0, whole)))
+            {
+                if (sample++ * perSecond / PeakRate > peaks.Count)
+                {
+                    peaks.Add(Math.Min(peak, 1));
+                    peak = 0;
+                }
+
+                peak = Math.Max(peak, Math.Abs(value));
+            }
+
+            // Part of a sample is kept for the next read.
+            held = bytes - whole;
+            buffer.AsSpan(whole, held).CopyTo(buffer);
+        }
+
+        if (sample > 0)
+        {
+            peaks.Add(Math.Min(peak, 1));
+        }
+
+        process.WaitForExit();
+        cancellationToken.ThrowIfCancellationRequested();
+        if (process.ExitCode != 0)
+        {
+            throw new ZeyoCutException($"ffmpeg could not decode the sound of '{Path.GetFileName(file)}' (exit code {process.ExitCode}): {stderr.Result.Trim()}");
+        }
+
+        return [.. peaks];
     }
 
     // The loudness of each frame of a lip flap plan, decoded from the source file at 16 kHz.
