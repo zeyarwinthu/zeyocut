@@ -17,6 +17,11 @@
     <ProjectReference Include="..\ZeyoCut.Render\ZeyoCut.Render.csproj" />
   </ItemGroup>
 
+  <!-- The sample project the Welcome offers, next to the exe as in the release zip and the bundle. -->
+  <ItemGroup>
+    <None Include="..\..\examples\tora-jump\**" LinkBase="examples\tora-jump" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
   <Target Name="ExcludeSymbolsFromPublish" AfterTargets="ComputeResolvedFilesToPublishList">
     <ItemGroup>
       <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)" Condition="'%(Extension)' == '.pdb'" />

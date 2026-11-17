@@ -9,7 +9,7 @@ Get the latest release from the [Releases page](https://github.com/zeyarwinthu/z
 | File | What it is |
 |---|---|
 | `ZeyoCut-<version>.mcpb` | The bundle for Claude Desktop, installed in a few clicks |
-| `ZeyoCut-<version>-win-x64.zip` | For any MCP client: `ZeyoCut.Mcp.exe` (about 180 MB, with the .NET runtime and every library inside, so nothing else is needed to run it), the editor `ZeyoCut.Editor.exe` (about 150 MB, also complete in itself), `appsettings.json` and the license notices |
+| `ZeyoCut-<version>-win-x64.zip` | For any MCP client: `ZeyoCut.Mcp.exe` (about 180 MB, with the .NET runtime and every library inside, so nothing else is needed to run it), the editor `ZeyoCut.Editor.exe` (about 150 MB, also complete in itself), `appsettings.json`, the sample project `examples\tora-jump` and the license notices |
 | `SHA256SUMS.txt` | The SHA-256 checksum of both files |
 
 ### Check the download
