@@ -3,7 +3,7 @@
 - Written 2026-11-17 on `feature/manual-editor` at `2c5a72d`.
 - Status: R1–R8 decided as recommended (2026-11-17). Phases A–H done.
 - Compares the design canvas "ZeyoCut Editor — modern redesign" (19 artboards) with screenshots of the editor as it is now (`screenshots/01`–`09`, taken 2026-11-17 from the installed Release editor).
-- Covers the four screens the editor already has. The 15 new screens are left for later (see Scope).
+- Covers the four screens the editor already has. The 15 new screens are planned in NEW-SCREENS.md.
 - The rules in PLAN.md still hold: no control without real project data and real render output behind it; the UI has no editing logic of its own; a new project property is saved, rendered on export and reachable over MCP; tests pass at every commit; stop and report after each phase.
 
 ## Scope
@@ -14,7 +14,7 @@
 | 2 · Edit workspace | Edit mode (`02`, `03`, `06`–`09`) | Yes |
 | 4 · Export | Export mode (`04`) | Yes |
 | 5 · Claude activity & history | Assistant mode (`05`) | Yes, renamed Activity |
-| 3, 6–19 (Captions, Audio mixer, Keyframes & curves, Track & blur, New project, Media browser, Source viewer, Color, Effects & transitions, Title templates, Render queue, Preferences, Shortcuts, Relink, Welcome) | None | No: new screens, later |
+| 3, 6–19 (Captions, Audio mixer, Keyframes & curves, Track & blur, New project, Media browser, Source viewer, Color, Effects & transitions, Title templates, Render queue, Preferences, Shortcuts, Relink, Welcome) | None | No: planned in NEW-SCREENS.md |
 
 The existing screens link to new ones in the design. Those links stay out until their screens exist, so there are no dead buttons:
 
