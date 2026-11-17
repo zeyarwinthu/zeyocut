@@ -85,6 +85,35 @@ public class SyncServerTests
         Assert.Equal(13, JsonDocument.Parse(await CallOk(client, "get_project", new(), ct)).RootElement.GetProperty("markers").GetArrayLength());
     }
 
+    // The editor's Restore saves like its edits do, so Claude's next call says what it put back.
+    [Fact]
+    public async Task ARestoreInTheEditorIsNamedInClaudesNextReply()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var root = TestPaths.NewDirectory("mcp-sync-restore");
+        var projects = Path.Combine(root, "projects");
+        var directory = Path.Combine(projects, "shared");
+        await using var client = await StartServer(root, projects, Path.Combine(root, "logs"), ct);
+        await CallOk(client, "create_project", new() { ["name"] = "shared", ["width"] = 320, ["height"] = 180, ["duration"] = 5.0 }, ct);
+        await CallOk(client, "add_text_layer", new() { ["text"] = "Hello", ["id"] = "title" }, ct);
+        await CallOk(client, "update_layer", new() { ["layerId"] = "title", ["changes"] = new Dictionary<string, object> { ["text"] = "Changed" } }, ct);
+
+        var editor = EditorDocument.Open(directory);
+        var backup = ProjectBackups.List(directory)[0];
+        Assert.Equal("update_layer title", backup.Before);
+        Assert.True(editor.Restore(backup));
+
+        var listed = await Call(client, "list_layers", new(), ct);
+        var note = Assert.IsType<ModelContextProtocol.Protocol.TextContentBlock>(listed.Content[0]).Text;
+        Assert.Equal(
+            $"project.json was changed outside this server since your last call (now revision 4; saved: editor {ProjectBackups.RestoreLabel(backup)}). What changed:\n"
+            + "- changed layer 'title'\n"
+            + ReRead,
+            note);
+        var project = JsonDocument.Parse(await CallOk(client, "get_project", new(), ct)).RootElement;
+        Assert.Equal("Hello", project.GetProperty("layers")[0].GetProperty("text").GetString());
+    }
+
     [Fact]
     public async Task UndoStepsOverAStepItRefusedBeforeAndNamesIt()
     {

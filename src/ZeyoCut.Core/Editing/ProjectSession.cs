@@ -191,13 +191,15 @@ public sealed class ProjectSession
     }
 
     // Puts a whole project in place of the open one, as one undo step. It may replace a
-    // project.json that can't be read (a copy of it is kept in backups\ first).
-    public void Replace(string label, Project replacement)
+    // project.json that can't be read (a copy of it is kept in backups\ first). 'check' sees the
+    // project as it is on disk, while project.lock is held, and throws to keep it.
+    public void Replace(string label, Project replacement, Action<Project>? check = null)
     {
         lock (_gate)
         {
             using var held = ProjectLock.Acquire(Directory, LockTimeout);
             CatchUp(overwriteUnreadable: true);
+            check?.Invoke(_project);
             Commit(held, label, ProjectJson.Serialize(_project), ProjectJson.Clone(replacement));
         }
     }

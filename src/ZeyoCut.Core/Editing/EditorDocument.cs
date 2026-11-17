@@ -147,6 +147,38 @@ public sealed class EditorDocument
         }
     }
 
+    // Puts the project back as the backup holds it, the way restore_backup does: saved as the next
+    // revision, as one undo step. Like an edit, it isn't saved when another program saved after
+    // View was taken, since what it would replace isn't what you saw.
+    public bool Restore(ProjectBackup backup)
+    {
+        lock (_gate)
+        {
+            var shown = View.Revision;
+            var changes = _outside.Count;
+            var overtaken = false;
+            if (Run("restore", () => Session.Replace(ProjectBackups.RestoreLabel(backup), ProjectBackups.Load(backup), project =>
+                {
+                    overtaken = project.Revision != shown;
+                    if (overtaken)
+                    {
+                        throw new ZeyoCutException("another program saved first");
+                    }
+                })))
+            {
+                return true;
+            }
+
+            if (overtaken)
+            {
+                var edits = _outside.Count > changes ? _outside[^1].Edits : [];
+                Status = $"Nothing was restored: another program saved first{(edits.Count == 0 ? "" : $" ({string.Join(", ", edits.TakeLast(3))})")}. You see its version now.";
+            }
+
+            return false;
+        }
+    }
+
     // Takes what another program saved since; true when View changed.
     public bool Refresh()
     {

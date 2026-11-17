@@ -237,7 +237,7 @@ public static class ProjectTools
         }
 
         var found = ProjectBackups.Find(session.Directory, backup);
-        session.Replace($"restore_backup {found.Name.Split(" before ")[0]}", ProjectBackups.Load(found));
+        session.Replace(ProjectBackups.RestoreLabel(found), ProjectBackups.Load(found));
         return $"restored {found.Name} ({When(found)}); undo puts back what was there\n{LayerTree.Format(session.Snapshot())}";
     });
 

@@ -50,6 +50,60 @@ public class EditorDocumentTests
         Assert.Equal(["editor redo trim_layer clip_2", "editor undo trim_layer clip_2", "editor trim_layer clip_2"], ProjectBackups.List(directory).Select(b => b.Before));
     }
 
+    // The Activity view's Restore: the project as a backup holds it, saved as the next revision
+    // under the editor's name and the label restore_backup gives it, as one undo step.
+    [Fact]
+    public void ARestoreSavesTheBackupAsTheNextRevision()
+    {
+        var (server, editor, directory) = Open("editor-restore");
+        Assert.True(editor.Apply(new TrimLayerOperation("clip_2", null, 7)));
+        server.Mutate("update_layer music", p => ProjectEditor.UpdateLayer(p, "music", new JsonObject { ["volume"] = 0.3 }));
+        Assert.True(editor.Refresh());
+
+        // The copy kept before the server's save holds the project as the trim left it.
+        var backup = ProjectBackups.List(directory)[0];
+        Assert.Equal("update_layer music", backup.Before);
+        Assert.Equal($"restore_backup {backup.Name.Split(" before ")[0]}", ProjectBackups.RestoreLabel(backup));
+
+        Assert.True(editor.Restore(backup));
+        Assert.Equal("Saved · revision 4", editor.Status);
+        Assert.Equal(4, ProjectStore.Load(directory).Revision);
+        Assert.Equal((7.0, 0.8), (Saved<VideoLayer>(directory, "clip_2").TrimOut, Saved<AudioLayer>(directory, "music").Volume));
+        Assert.Equal(0.8, Assert.IsType<AudioLayer>(editor.View.FindLayer("music")).Volume);
+        Assert.Equal("editor " + ProjectBackups.RestoreLabel(backup), ProjectBackups.List(directory)[0].Before);
+
+        // Undo puts back what it replaced.
+        Assert.True(editor.Undo());
+        Assert.Equal((7.0, 0.3), (Saved<VideoLayer>(directory, "clip_2").TrimOut, Saved<AudioLayer>(directory, "music").Volume));
+    }
+
+    // Like an edit, a restore isn't saved over a version you haven't seen: what it would replace
+    // isn't what the Activity view showed.
+    [Fact]
+    public void ARestoreIsDroppedWhenAnotherProgramSavedSinceTheProjectWasShown()
+    {
+        var (server, editor, directory) = Open("editor-restore-overtaken");
+        Assert.True(editor.Apply(new TrimLayerOperation("clip_2", null, 7)));
+        var backup = ProjectBackups.List(directory)[0];
+        server.Mutate("update_layer music", p => ProjectEditor.UpdateLayer(p, "music", new JsonObject { ["volume"] = 0.3 }));
+
+        Assert.False(editor.Restore(backup));
+        Assert.Equal("Nothing was restored: another program saved first (update_layer music). You see its version now.", editor.Status);
+        Assert.Equal(3, ProjectStore.Load(directory).Revision);
+        Assert.Equal(0.3, Assert.IsType<AudioLayer>(editor.View.FindLayer("music")).Volume);
+
+        // Trying again on that version works.
+        Assert.True(editor.Restore(backup));
+        Assert.Equal((8.0, 0.8), (Saved<VideoLayer>(directory, "clip_2").TrimOut, Saved<AudioLayer>(directory, "music").Volume));
+
+        // A backup that's gone changes nothing and says why.
+        var gone = ProjectBackups.List(directory)[0];
+        File.Delete(gone.Path);
+        Assert.False(editor.Restore(gone));
+        Assert.StartsWith("can't restore: ", editor.Status);
+        Assert.Equal(4, ProjectStore.Load(directory).Revision);
+    }
+
     [Fact]
     public void ACheckThatFindsNothingNewKeepsTheProjectShown()
     {

@@ -66,6 +66,9 @@ public static partial class ProjectBackups
         return Copy(Path.Combine(directory, ProjectStore.ProjectFileName), Folder(directory), $"project-v{savedVersion}-{stamp}", ".json");
     }
 
+    // What putting a backup back is saved as, by restore_backup and by the editor's Restore.
+    public static string RestoreLabel(ProjectBackup backup) => $"restore_backup {backup.Name.Split(" before ")[0]}";
+
     // The backup at this path; null when it isn't named as one.
     public static ProjectBackup? Describe(string path) => Parse(path)?.Item1;
 
