@@ -22,6 +22,17 @@ public class PreviewTests
     }
 
     [Fact]
+    public void TheViewerNamesTheCanvasShape()
+    {
+        Assert.Equal("16:9", PreviewZoom.Ratio(1920, 1080));
+        Assert.Equal("9:16", PreviewZoom.Ratio(1080, 1920));
+        Assert.Equal("4:5", PreviewZoom.Ratio(1080, 1350));
+        Assert.Equal("1:1", PreviewZoom.Ratio(1000, 1000));
+        Assert.Equal("1.85:1", PreviewZoom.Ratio(1998, 1080));
+        Assert.Equal("1.78:1", PreviewZoom.Ratio(1366, 768));
+    }
+
+    [Fact]
     public void HundredPercentShowsEachPixelOnOneScreenPixel()
     {
         Assert.Equal((1920.0, 1080.0, 1.0), PreviewZoom.Layout(1920, 1080, 1, 500, 500, 1));

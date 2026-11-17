@@ -29,7 +29,10 @@ The header across the top names the project and whether it's saved ("Saved · re
 
 ## The preview
 
-The preview draws the frame at the playhead with the same renderer as exports, from proxies for footage over 2560 px. Fit, 50%, 100% and 200% set its zoom.
+The preview draws the frame at the playhead with the same renderer as exports, from proxies for footage over 2560 px. Its header names the canvas ("16:9 · 1920×1080 · 30 fps"); the list on the right sets the zoom: Fit, 50%, 100% or 200%.
+
+- The safe-area button draws the title-safe margin over the frame, and on a vertical canvas the strips the Shorts player covers, as `check_project` checks them. The grid button draws thirds. Both are drawn over the frame, never into it or the export, and the editor remembers them.
+- F shows the frame on the whole screen; Esc or F leaves. Space plays there too, and ← and → step.
 
 - Click a video, picture or text to select it: the one drawn on top there, a layer attached to a clip (a logo on a video, a part of a rig) too. Its box and anchor are outlined, and the timeline highlights the clip that holds it.
 - Drag it to move it. The frame is redrawn as you drag, and the move is saved when you let go, as one undo step. Shift keeps it on one axis, and Escape puts it back. An animated position gets a keyframe at the playhead. A caption takes its whole track along. A layer on a motion path doesn't move: the path places it.
@@ -38,9 +41,9 @@ The preview draws the frame at the playhead with the same renderer as exports, f
 
 ## Playback
 
-Space plays and pauses, at 0.5×, 1× or 2×, with the sound mixed as the export mixes it. After an edit that changes the sound, the mix is made again in the background; until it's ready, playback is silent and says "updating sound…". While playing, frames are drawn at half size (Playback: Full, ½ or ¼), and when drawing can't keep up, every second frame is shown. A paused frame is always full size.
+Space plays and pauses, at 0.5×, 1× or 2×, with the sound mixed as the export mixes it. After an edit that changes the sound, the mix is made again in the background; until it's ready, playback is silent and says "updating sound…". While playing, frames are drawn at half size (Preview: Full, ½ or ¼ res, under the frame), and when drawing can't keep up, every second frame is shown. A paused frame is always full size. With Loop on, playing past the last frame goes on from the first.
 
-← and → step a frame (with Shift, a second), and Home and End go to the first and last frame.
+Under the frame are the playhead's timecode and the last frame's. ← and → step a frame (with Shift, a second), and Home and End go to the first and last frame. The status bar shows the frame number.
 
 ## The timeline
 
@@ -119,6 +122,7 @@ It shows the progress, Stop ends it, and Show in folder opens File Explorer on t
 | Key | What it does |
 |---|---|
 | Space | Play and pause |
+| F | The frame on the whole screen; Esc or F leaves |
 | ← / → | The previous and next frame; with Shift, a second |
 | Home / End | The first and last frame |
 | ↑ / ↓ | The previous and next clip edge |

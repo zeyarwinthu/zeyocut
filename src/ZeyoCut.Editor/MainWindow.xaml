@@ -459,12 +459,37 @@
 
       <GridSplitter Grid.Column="1" Width="4" HorizontalAlignment="Stretch" ResizeBehavior="PreviousAndNext" />
 
-      <Grid Grid.Column="2">
+      <Grid Grid.Column="2" Background="{StaticResource PreviewBrush}">
         <Grid.RowDefinitions>
+          <RowDefinition Height="Auto" />
           <RowDefinition Height="*" />
           <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
-        <ScrollViewer x:Name="PreviewScroller" Background="{StaticResource PreviewBrush}" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto"
+        <Border BorderBrush="{StaticResource MenuBrush}" BorderThickness="0,0,0,1" Height="40" Padding="12,0,8,0">
+          <Grid>
+            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+              <TextBlock Text="Program" FontWeight="Medium" VerticalAlignment="Center" />
+              <TextBlock x:Name="CanvasText" Style="{StaticResource Secondary}" Margin="10,0,0,0" VerticalAlignment="Center" />
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+              <ToggleButton x:Name="SafeAreaToggle" Style="{StaticResource IconToggle}" Click="OnOverlay" AutomationProperties.Name="Safe area guides"
+                            ToolTip="Safe area: the title-safe margin, and on a vertical canvas the strips the Shorts player covers, as check_project checks them">
+                <local:Icon Data="{StaticResource SafeAreaShape}" Thickness="1.8" Width="15" Height="15" />
+              </ToggleButton>
+              <ToggleButton x:Name="GridToggle" Style="{StaticResource IconToggle}" Margin="4,0,0,0" Click="OnOverlay" AutomationProperties.Name="Grid overlay"
+                            ToolTip="Thirds grid">
+                <local:Icon Data="{StaticResource GridShape}" Thickness="1.8" Width="15" Height="15" />
+              </ToggleButton>
+              <Button x:Name="ZoomButton" Background="{StaticResource PanelBrush}" Padding="8,3" Margin="8,0,0,0" Click="OnZoomMenu" ToolTip="How big the frame is shown">
+                <StackPanel Orientation="Horizontal">
+                  <TextBlock x:Name="ZoomText" FontWeight="Medium" VerticalAlignment="Center" />
+                  <local:Icon Data="{StaticResource ChevronDownShape}" Thickness="2.5" Width="10" Height="10" Margin="6,0,0,0" />
+                </StackPanel>
+              </Button>
+            </StackPanel>
+          </Grid>
+        </Border>
+        <ScrollViewer x:Name="PreviewScroller" Grid.Row="1" Background="{StaticResource PreviewBrush}" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto"
                       Focusable="False" SizeChanged="OnPreviewSizeChanged">
           <Grid MinWidth="{Binding ViewportWidth, ElementName=PreviewScroller}" MinHeight="{Binding ViewportHeight, ElementName=PreviewScroller}">
             <Image x:Name="PreviewImage" Stretch="Fill" HorizontalAlignment="Center" VerticalAlignment="Center" RenderOptions.BitmapScalingMode="HighQuality"
@@ -472,35 +497,66 @@
                    LostMouseCapture="OnPreviewLostCapture" SizeChanged="OnPreviewImageSized" />
             <Canvas Width="{Binding ActualWidth, ElementName=PreviewImage}" Height="{Binding ActualHeight, ElementName=PreviewImage}"
                     HorizontalAlignment="Center" VerticalAlignment="Center" IsHitTestVisible="False" ClipToBounds="False">
-              <Polygon x:Name="SelectionOutline" Stroke="{StaticResource AccentBrush}" StrokeThickness="1.5" Visibility="Collapsed" />
+              <Path x:Name="GridLines" Stroke="#40FFFFFF" StrokeThickness="1" Visibility="Collapsed" />
+              <Rectangle x:Name="SafeAreaBox" Stroke="#59FFFFFF" StrokeThickness="1" StrokeDashArray="4 4" Visibility="Collapsed" />
+              <Polygon x:Name="SelectionOutline" Stroke="{StaticResource AccentBrush}" StrokeThickness="2" Visibility="Collapsed" />
               <Ellipse x:Name="SelectionAnchor" Width="7" Height="7" Stroke="{StaticResource AccentBrush}" StrokeThickness="1.5" Visibility="Collapsed" />
             </Canvas>
           </Grid>
         </ScrollViewer>
-        <TextBlock x:Name="PreviewMessage" Foreground="{StaticResource ErrorBrush}" TextWrapping="Wrap" MaxWidth="520" Margin="24"
+        <TextBlock x:Name="PreviewMessage" Grid.Row="1" Foreground="{StaticResource ErrorBrush}" TextWrapping="Wrap" MaxWidth="520" Margin="24"
                    HorizontalAlignment="Center" VerticalAlignment="Center" TextAlignment="Center" Visibility="Collapsed" />
-        <Border x:Name="PreviewBusy" Background="#B0111114" CornerRadius="3" Padding="8,3" Margin="8" HorizontalAlignment="Right" VerticalAlignment="Top" Visibility="Collapsed">
+        <Border x:Name="PreviewBusy" Grid.Row="1" Background="#B0111114" CornerRadius="6" Padding="8,3" Margin="8" HorizontalAlignment="Right" VerticalAlignment="Top" Visibility="Collapsed">
           <TextBlock Text="drawing…" Style="{StaticResource Secondary}" />
         </Border>
 
-        <Border Grid.Row="1" Background="{StaticResource HeaderBrush}" Padding="6,3">
+        <Border Grid.Row="2" BorderBrush="{StaticResource MenuBrush}" BorderThickness="0,1,0,0" MinHeight="52" Padding="16,4,10,4">
           <Grid>
-            <StackPanel Orientation="Horizontal" HorizontalAlignment="Left">
-              <Button Style="{StaticResource IconButton}" Content="&#xE892;" ToolTip="First frame (Home)" Click="OnFirstFrame" />
-              <Button Style="{StaticResource IconButton}" Content="&#xE76B;" ToolTip="Previous frame (Left; Shift+Left: 1 second)" Click="OnPreviousFrame" />
-              <Button x:Name="PlayButton" Style="{StaticResource IconButton}" Content="&#xE768;" FontSize="14" ToolTip="Play (Space)" Click="OnPlay" />
-              <Button Style="{StaticResource IconButton}" Content="&#xE76C;" ToolTip="Next frame (Right; Shift+Right: 1 second)" Click="OnNextFrame" />
-              <Button Style="{StaticResource IconButton}" Content="&#xE893;" ToolTip="Last frame (End)" Click="OnLastFrame" />
-              <TextBlock x:Name="TimecodeText" FontFamily="Consolas" FontSize="14" VerticalAlignment="Center" Margin="12,0,10,0" Text="00:00:00:00" ToolTip="hours:minutes:seconds:frame" />
-              <TextBlock x:Name="FrameText" Style="{StaticResource Secondary}" VerticalAlignment="Center" />
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="*" />
+              <ColumnDefinition Width="Auto" />
+              <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+              <TextBlock x:Name="TimecodeText" FontFamily="Consolas" FontSize="14" Text="00:00:00:00" ToolTip="hours:minutes:seconds:frame" VerticalAlignment="Center" />
+              <TextBlock x:Name="TotalText" FontFamily="Consolas" FontSize="14" Foreground="{StaticResource DisabledTextBrush}" Margin="6,0,0,0" VerticalAlignment="Center"
+                         ToolTip="The last frame" />
             </StackPanel>
-            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-              <TextBlock x:Name="SoundText" Style="{StaticResource Secondary}" Foreground="{StaticResource WarningBrush}" VerticalAlignment="Center" Margin="0,0,12,0" MaxWidth="260" />
-              <TextBlock x:Name="ZoomText" Style="{StaticResource Secondary}" VerticalAlignment="Center" Margin="0,0,8,0" />
-              <RadioButton GroupName="Zoom" Style="{StaticResource SegmentButton}" Content="Fit" Tag="fit" IsChecked="True" Checked="OnZoom" ToolTip="As big as the panel allows" />
-              <RadioButton GroupName="Zoom" Style="{StaticResource SegmentButton}" Content="50%" Tag="0.5" Checked="OnZoom" />
-              <RadioButton GroupName="Zoom" Style="{StaticResource SegmentButton}" Content="100%" Tag="1" Checked="OnZoom" ToolTip="One pixel of the frame on one pixel of the screen" />
-              <RadioButton GroupName="Zoom" Style="{StaticResource SegmentButton}" Content="200%" Tag="2" Checked="OnZoom" />
+            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+              <Button Style="{StaticResource HeaderIcon}" ToolTip="First frame (Home)" AutomationProperties.Name="First frame" Click="OnFirstFrame">
+                <local:Icon Data="{StaticResource FirstFrameShape}" />
+              </Button>
+              <Button Style="{StaticResource HeaderIcon}" ToolTip="Previous frame (Left; Shift+Left: 1 second)" AutomationProperties.Name="Previous frame" Click="OnPreviousFrame">
+                <local:Icon Data="{StaticResource PreviousShape}" />
+              </Button>
+              <Button x:Name="PlayButton" Style="{StaticResource RoundPlay}" ToolTip="Play (Space)" AutomationProperties.Name="Play" Click="OnPlay">
+                <local:Icon x:Name="PlayIcon" Data="{StaticResource PlayShape}" Filled="True" Width="18" Height="18" />
+              </Button>
+              <Button Style="{StaticResource HeaderIcon}" ToolTip="Next frame (Right; Shift+Right: 1 second)" AutomationProperties.Name="Next frame" Click="OnNextFrame">
+                <local:Icon Data="{StaticResource NextShape}" />
+              </Button>
+              <Button Style="{StaticResource HeaderIcon}" ToolTip="Last frame (End)" AutomationProperties.Name="Last frame" Click="OnLastFrame">
+                <local:Icon Data="{StaticResource LastFrameShape}" />
+              </Button>
+              <ToggleButton x:Name="LoopToggle" Style="{StaticResource IconToggle}" Width="32" Height="32" Margin="4,0,0,0" Click="OnLoop" AutomationProperties.Name="Loop"
+                            ToolTip="Loop: play on from the start at the end">
+                <local:Icon Data="{StaticResource LoopShape}" />
+              </ToggleButton>
+            </StackPanel>
+            <StackPanel Grid.Column="2" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+              <TextBlock x:Name="SoundText" Style="{StaticResource Secondary}" Foreground="{StaticResource WarningBrush}" VerticalAlignment="Center" Margin="0,0,12,0" MaxWidth="220" />
+              <TextBlock Text="Preview" Style="{StaticResource Secondary}" VerticalAlignment="Center" Margin="0,0,8,0" />
+              <Button x:Name="ScaleButton" Background="{StaticResource PanelBrush}" Padding="8,2" Click="OnScaleMenu"
+                      ToolTip="The size frames are drawn at while playing; a paused frame is always drawn at the canvas size">
+                <StackPanel Orientation="Horizontal">
+                  <TextBlock x:Name="ScaleText" FontWeight="Medium" VerticalAlignment="Center" />
+                  <local:Icon Data="{StaticResource ChevronDownShape}" Thickness="2.5" Width="10" Height="10" Margin="6,0,0,0" />
+                </StackPanel>
+              </Button>
+              <Button Style="{StaticResource HeaderIcon}" Width="28" Height="28" Margin="4,0,0,0" ToolTip="Full screen (F; Esc leaves)" AutomationProperties.Name="Full screen preview"
+                      Click="OnFullScreen">
+                <local:Icon Data="{StaticResource FullScreenShape}" Width="15" Height="15" />
+              </Button>
             </StackPanel>
           </Grid>
         </Border>
@@ -536,13 +592,6 @@
             <RadioButton GroupName="Speed" Style="{StaticResource SegmentButton}" Content="0.5×" Tag="0.5" Checked="OnSpeed" VerticalAlignment="Center" />
             <RadioButton GroupName="Speed" Style="{StaticResource SegmentButton}" Content="1×" Tag="1" IsChecked="True" Checked="OnSpeed" VerticalAlignment="Center" />
             <RadioButton GroupName="Speed" Style="{StaticResource SegmentButton}" Content="2×" Tag="2" Checked="OnSpeed" VerticalAlignment="Center" />
-            <TextBlock Text="Playback" Style="{StaticResource Secondary}" VerticalAlignment="Center" Margin="16,0,4,0" />
-            <RadioButton x:Name="FullScale" GroupName="Scale" Style="{StaticResource SegmentButton}" Content="Full" Tag="1" Checked="OnPlaybackScale" VerticalAlignment="Center"
-                         ToolTip="Draw frames at the canvas size while playing" />
-            <RadioButton x:Name="HalfScale" GroupName="Scale" Style="{StaticResource SegmentButton}" Content="½" Tag="0.5" Checked="OnPlaybackScale" VerticalAlignment="Center"
-                         ToolTip="Draw frames at half the canvas size while playing; a paused frame is always full size" />
-            <RadioButton x:Name="QuarterScale" GroupName="Scale" Style="{StaticResource SegmentButton}" Content="¼" Tag="0.25" Checked="OnPlaybackScale" VerticalAlignment="Center"
-                         ToolTip="Draw frames at a quarter of the canvas size while playing; a paused frame is always full size" />
             <Button Style="{StaticResource IconButton}" Content="&#xE71F;" Margin="16,0,0,0" ToolTip="Zoom out (-)" Click="OnTimelineZoomOut" />
             <Button Style="{StaticResource IconButton}" Content="&#xE8A3;" ToolTip="Zoom in (=)" Click="OnTimelineZoomIn" />
             <Button Content="Fit" Padding="10,2" VerticalAlignment="Center" ToolTip="The whole project in view (Shift+Z)" Click="OnTimelineFit" />
@@ -574,13 +623,15 @@
           <ColumnDefinition Width="*" />
           <ColumnDefinition Width="Auto" />
           <ColumnDefinition Width="Auto" />
+          <ColumnDefinition Width="Auto" />
         </Grid.ColumnDefinitions>
         <TextBlock x:Name="SelectionText" Style="{StaticResource Secondary}" MaxWidth="280" TextTrimming="CharacterEllipsis" Margin="0,0,16,0" />
         <TextBlock x:Name="LayersText" Grid.Column="1" Style="{StaticResource Secondary}" Margin="0,0,16,0" />
         <TextBlock x:Name="SaveStatus" Grid.Column="2" Style="{StaticResource Secondary}" MaxWidth="560" Margin="0,0,16,0" Visibility="Collapsed" />
         <TextBlock x:Name="MessageText" Grid.Column="3" Style="{StaticResource Secondary}" Margin="0,0,16,0" />
         <TextBlock x:Name="JobsText" Grid.Column="4" Style="{StaticResource Secondary}" Margin="0,0,16,0" MaxWidth="420" />
-        <TextBlock x:Name="RenderText" Grid.Column="5" Style="{StaticResource Secondary}" />
+        <TextBlock x:Name="FrameText" Grid.Column="5" Style="{StaticResource Secondary}" Margin="0,0,16,0" />
+        <TextBlock x:Name="RenderText" Grid.Column="6" Style="{StaticResource Secondary}" />
       </Grid>
     </Border>
   </Grid>

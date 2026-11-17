@@ -10,7 +10,8 @@ public sealed record WindowPlacement(double Left, double Top, double Width, doub
 
 // The editor's own settings, in %LOCALAPPDATA%\ZeyoCut\editor.json (or the file ZEYOCUT_EDITOR_SETTINGS
 // names) and never in a project: the recent projects, newest first, the panel sizes and window
-// placement as you left them, the playback size and whether the timeline snaps.
+// placement as you left them, the playback size, whether playback loops, the preview's guides and
+// whether the timeline snaps.
 public sealed class EditorSettings
 {
     public const int MaxRecent = 10;
@@ -35,6 +36,13 @@ public sealed class EditorSettings
     public double PlaybackScale { get; set; } = 0.5;
 
     public bool Snapping { get; set; } = true;
+
+    public bool Loop { get; set; }
+
+    // The preview's safe-area guide and thirds grid, drawn over the frame and never into it.
+    public bool SafeArea { get; set; }
+
+    public bool Grid { get; set; }
 
     public WindowPlacement? Window { get; set; }
 

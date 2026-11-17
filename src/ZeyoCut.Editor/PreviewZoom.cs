@@ -16,4 +16,16 @@ public static class PreviewZoom
             : Math.Max(0, Math.Min(availableWidth / canvasWidth, availableHeight / canvasHeight));
         return (canvasWidth * scale, canvasHeight * scale, scale * pixelsPerDip);
     }
+
+    // The canvas's shape as the viewer's header names it: 16:9, 9:16, 4:5, or 1.85:1 when the
+    // whole numbers that make it are big.
+    public static string Ratio(int width, int height)
+    {
+        static int Divisor(int a, int b) => b == 0 ? a : Divisor(b, a % b);
+        var divisor = Math.Max(1, Divisor(width, height));
+        var (w, h) = (width / divisor, height / divisor);
+        return w <= 32 && h <= 32
+            ? $"{w}:{h}"
+            : $"{((double)width / Math.Max(1, height)).ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)}:1";
+    }
 }

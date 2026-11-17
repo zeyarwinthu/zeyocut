@@ -158,7 +158,10 @@ public partial class MainWindow : Window
             0.25 => 0.25,
             _ => 0.5,
         };
-        (_prefs.PlaybackScale == 1 ? FullScale : _prefs.PlaybackScale == 0.25 ? QuarterScale : HalfScale).IsChecked = true;
+        ShowScale();
+        SafeAreaToggle.IsChecked = _prefs.SafeArea;
+        GridToggle.IsChecked = _prefs.Grid;
+        LoopToggle.IsChecked = _prefs.Loop;
         SourceInitialized += (_, _) => DarkTitleBar.Apply(this);
         _settle = new DispatcherTimer(DispatcherPriority.Background, Dispatcher) { Interval = TimeSpan.FromMilliseconds(250) };
         _settle.Tick += (_, _) =>
@@ -342,6 +345,10 @@ public partial class MainWindow : Window
         else if (open && plain && key is Key.Home or Key.End)
         {
             Seek(key == Key.Home ? 0 : _frames - 1);
+        }
+        else if (open && plain && key == Key.F)
+        {
+            ShowFullScreen();
         }
         else if (open && plain && key is Key.Up or Key.Down)
         {
@@ -631,6 +638,7 @@ public partial class MainWindow : Window
         var project = document.View;
         _shownRevision = document.Revision;
         Title = $"{Path.GetFileName(document.Session.Directory)} — ZeyoCut Editor";
+        CanvasText.Text = $"{PreviewZoom.Ratio(project.Width, project.Height)} · {project.Width}×{project.Height} · {project.Fps} fps";
         ProjectName.Text = Path.GetFileName(document.Session.Directory);
         ProjectName.ToolTip = document.Session.Directory;
         _claudeSaved = ProjectHistory.LastByClaude(document.Session.Directory);
@@ -1082,6 +1090,7 @@ public partial class MainWindow : Window
         DeleteButton.IsEnabled = open && _selectedLayer is not null;
         ShowText(SelectionText, open && _selectedLayer is { } selected ? $"{selected} selected" : "");
         ShowText(LayersText, open ? _counts : "");
+        FrameText.Visibility = open ? Visibility.Visible : Visibility.Collapsed;
         PackButton.IsEnabled = open && _packable;
         PackButton.ToolTip = PackButton.IsEnabled || !open
             ? "Put clips that never show at the same time on shared lanes; every frame stays as it is"
@@ -1197,7 +1206,9 @@ public partial class MainWindow : Window
         var project = _document!.View;
         Timeline.Playhead = _frame;
         TimecodeText.Text = Timecode.Of(_frame, project.Fps);
-        FrameText.Text = $"{Number(Math.Round(FrameMath.TimeOf(project, _frame), 3))} s · frame {_frame} of {_frames - 1}";
+        TotalText.Text = $"/ {Timecode.Of(_frames - 1, project.Fps)}";
+        FrameText.Text = $"Frame {_frame} / {_frames - 1}";
+        FrameText.ToolTip = $"{Number(Math.Round(FrameMath.TimeOf(project, _frame), 3))} s";
     }
 
     private void OnFrame(PreviewFrame frame)
@@ -1261,9 +1272,11 @@ public partial class MainWindow : Window
         return null;
     }
 
-    // The selected layer's box and anchor over the preview, when the frame shown has it.
+    // The selected layer's box and anchor over the preview, when the frame shown has it, and the
+    // guides.
     private void ShowSelection()
     {
+        ShowOverlays();
         var outline = _document is not null && _selectedLayer is { } id ? _outlines.FirstOrDefault(o => o.LayerId == id) : null;
         if (outline is null || PreviewImage.Visibility != Visibility.Visible || PreviewImage.ActualWidth <= 0)
         {
@@ -1484,7 +1497,7 @@ public partial class MainWindow : Window
         }
 
         _playing = true;
-        PlayButton.Content = "";
+        PlayIcon.Data = (Geometry)FindResource("PauseShape");
         PlayButton.ToolTip = "Pause (Space)";
         PreviewBusy.Visibility = Visibility.Collapsed;
         _drawingSince = null;
@@ -1517,7 +1530,7 @@ public partial class MainWindow : Window
         _clock.Stop();
         _sound?.Pause();
         _preview?.Pause();
-        PlayButton.Content = "";
+        PlayIcon.Data = (Geometry)FindResource("PlayShape");
         PlayButton.ToolTip = "Play (Space)";
         RenderText.Text = "";
         RequestFrame();
@@ -1562,6 +1575,16 @@ public partial class MainWindow : Window
         }
 
         var frame = (int)Math.Floor(_clock.Now * fps + 1e-6);
+        if (frame >= _frames && _prefs.Loop && _frames > 1)
+        {
+            // Looping: on from the first frame, drawn ahead again before the clock starts.
+            _frame = 0;
+            ShowPosition();
+            Timeline.Reveal(0);
+            StartPlayback();
+            return;
+        }
+
         if (frame >= _frames)
         {
             _frame = _frames - 1;
@@ -1649,7 +1672,120 @@ public partial class MainWindow : Window
         var (width, height, zoom) = PreviewZoom.Layout(project.Width, project.Height, _zoom, PreviewScroller.ActualWidth - 16, PreviewScroller.ActualHeight - 16, dpi);
         PreviewImage.Width = width;
         PreviewImage.Height = height;
-        ZoomText.Text = $"{Math.Round(zoom * 100):0}%";
+        ZoomText.Text = _zoom is null ? $"Fit · {Math.Round(zoom * 100):0}%" : $"{Math.Round(zoom * 100):0}%";
+    }
+
+    // The safe-area guide and the thirds grid over the frame shown, as their switches are.
+    private void ShowOverlays()
+    {
+        var shown = _document is not null && PreviewImage.Visibility == Visibility.Visible && PreviewImage.ActualWidth > 0;
+        SafeAreaBox.Visibility = shown && _prefs.SafeArea ? Visibility.Visible : Visibility.Collapsed;
+        GridLines.Visibility = shown && _prefs.Grid ? Visibility.Visible : Visibility.Collapsed;
+        if (!shown)
+        {
+            return;
+        }
+
+        var project = _document!.View;
+        var scale = PreviewImage.ActualWidth / project.Width;
+        var area = ProjectChecker.SafeArea(project);
+        Canvas.SetLeft(SafeAreaBox, area.Left * scale);
+        Canvas.SetTop(SafeAreaBox, area.Top * scale);
+        SafeAreaBox.Width = Math.Max(0, (area.Right - area.Left) * scale);
+        SafeAreaBox.Height = Math.Max(0, (area.Bottom - area.Top) * scale);
+        var (width, height) = (PreviewImage.ActualWidth, PreviewImage.ActualHeight);
+        var lines = new GeometryGroup();
+        foreach (var third in new[] { 1 / 3.0, 2 / 3.0 })
+        {
+            lines.Children.Add(new LineGeometry(new Point(width * third, 0), new Point(width * third, height)));
+            lines.Children.Add(new LineGeometry(new Point(0, height * third), new Point(width, height * third)));
+        }
+
+        GridLines.Data = lines;
+    }
+
+    private void ShowScale() => ScaleText.Text = _prefs.PlaybackScale switch
+    {
+        1 => "Full res",
+        0.25 => "¼ res",
+        _ => "½ res",
+    };
+
+    // A drop-down list under a button, with the current choice checked.
+    private void ShowChoices(Button under, IEnumerable<(string Name, bool Chosen, Action Choose)> choices)
+    {
+        var menu = new ContextMenu { PlacementTarget = under, Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom };
+        foreach (var (name, chosen, choose) in choices)
+        {
+            var item = new MenuItem { Header = name, IsChecked = chosen };
+            item.Click += (_, _) => choose();
+            menu.Items.Add(item);
+        }
+
+        menu.IsOpen = true;
+    }
+
+    // The frame alone on the whole screen, as the preview shows it, until Esc or F.
+    private void ShowFullScreen()
+    {
+        if (_document is null)
+        {
+            return;
+        }
+
+        var image = new Image { Stretch = Stretch.Uniform };
+        System.Windows.Media.RenderOptions.SetBitmapScalingMode(image, BitmapScalingMode.HighQuality);
+        image.SetBinding(Image.SourceProperty, new System.Windows.Data.Binding(nameof(Image.Source)) { Source = PreviewImage });
+        var hint = new TextBlock
+        {
+            Text = "Esc leaves full screen · Space plays",
+            Foreground = (Brush)FindResource("SecondaryTextBrush"),
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Bottom,
+            Margin = new Thickness(12),
+        };
+        var screen = new Window
+        {
+            Owner = this,
+            Title = Title,
+            WindowStyle = WindowStyle.None,
+            ResizeMode = ResizeMode.NoResize,
+            ShowInTaskbar = false,
+            Background = Brushes.Black,
+            Left = Left + 20,
+            Top = Top + 20,
+            Width = 640,
+            Height = 360,
+            Content = new Grid { Children = { image, hint } },
+        };
+        screen.PreviewKeyDown += (_, e) =>
+        {
+            var plain = Keyboard.Modifiers == ModifierKeys.None;
+            if (plain && e.Key is Key.Escape or Key.F)
+            {
+                screen.Close();
+            }
+            else if (plain && e.Key == Key.Space)
+            {
+                TogglePlay();
+            }
+            else if (e.Key is Key.Left or Key.Right && Keyboard.Modifiers is ModifierKeys.None or ModifierKeys.Shift)
+            {
+                Pause();
+                var step = Keyboard.Modifiers == ModifierKeys.Shift ? _document?.View.Fps ?? 1 : 1;
+                Seek(_frame + (e.Key == Key.Left ? -step : step));
+            }
+            else
+            {
+                return;
+            }
+
+            e.Handled = true;
+        };
+        screen.Closed += (_, _) => Activate();
+        screen.Show();
+        screen.WindowState = WindowState.Maximized;
+        screen.Activate();
     }
 
     // Shows the preview's busy sign once a frame takes a moment, keeps the jobs' progress current,
@@ -2699,9 +2835,12 @@ public partial class MainWindow : Window
         }
     }
 
-    private void OnPlaybackScale(object sender, RoutedEventArgs e)
+    private void OnScaleMenu(object sender, RoutedEventArgs e) =>
+        ShowChoices(ScaleButton, new (string, double)[] { ("Full res", 1), ("½ res", 0.5), ("¼ res", 0.25) }
+            .Select(c => (c.Item1, c.Item2 == _prefs.PlaybackScale, (Action)(() => SetPlaybackScale(c.Item2)))));
+
+    private void SetPlaybackScale(double scale)
     {
-        var scale = double.Parse((string)((FrameworkElement)sender).Tag, CultureInfo.InvariantCulture);
         if (scale == _prefs.PlaybackScale)
         {
             return;
@@ -2709,6 +2848,7 @@ public partial class MainWindow : Window
 
         _prefs.PlaybackScale = scale;
         _step = 1;
+        ShowScale();
         SavePrefs();
         if (_playing)
         {
@@ -2736,10 +2876,27 @@ public partial class MainWindow : Window
 
     private void OnPreviewSizeChanged(object sender, SizeChangedEventArgs e) => ApplyZoom();
 
-    private void OnZoom(object sender, RoutedEventArgs e)
+    private void OnZoomMenu(object sender, RoutedEventArgs e) =>
+        ShowChoices(ZoomButton, new (string, double?)[] { ("Fit", null), ("50%", 0.5), ("100%", 1), ("200%", 2) }
+            .Select(c => (c.Item1, c.Item2 == _zoom, (Action)(() =>
+            {
+                _zoom = c.Item2;
+                ApplyZoom();
+            }))));
+
+    private void OnOverlay(object sender, RoutedEventArgs e)
     {
-        var tag = (string)((FrameworkElement)sender).Tag;
-        _zoom = tag == "fit" ? null : double.Parse(tag, CultureInfo.InvariantCulture);
-        ApplyZoom();
+        _prefs.SafeArea = SafeAreaToggle.IsChecked == true;
+        _prefs.Grid = GridToggle.IsChecked == true;
+        SavePrefs();
+        ShowOverlays();
     }
+
+    private void OnLoop(object sender, RoutedEventArgs e)
+    {
+        _prefs.Loop = LoopToggle.IsChecked == true;
+        SavePrefs();
+    }
+
+    private void OnFullScreen(object sender, RoutedEventArgs e) => ShowFullScreen();
 }

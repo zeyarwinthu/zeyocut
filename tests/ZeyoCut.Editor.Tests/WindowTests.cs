@@ -358,6 +358,86 @@ public class WindowTests
         Assert.EndsWith(" by Claude: update_layer title.", Text(window, "ActivitySaved"));
     });
 
+    // The safe-area guide and the thirds grid are drawn over the frame, never into it, and kept in
+    // the editor's settings, not the project.
+    [Fact]
+    public void TheGuidesAreDrawnOverTheFrameAndKeptInTheEditorsSettings() => TestWindow.Run("window-guides", (window, folder) =>
+    {
+        var directory = WithTitle(window, folder);
+        var image = (Image)window.FindName("PreviewImage");
+        for (var i = 0; i < 500 && Text(window, "RenderText").Length == 0; i++)
+        {
+            TestWindow.Pump(10);
+        }
+
+        byte[] Pixels()
+        {
+            var bitmap = (WriteableBitmap)image.Source;
+            var pixels = new byte[bitmap.PixelWidth * bitmap.PixelHeight * 4];
+            bitmap.CopyPixels(pixels, bitmap.PixelWidth * 4, 0);
+            return pixels;
+        }
+
+        Assert.Equal("16:9 · 320×180 · 30 fps", Text(window, "CanvasText"));
+        var before = Pixels();
+        Assert.Equal(Visibility.Collapsed, Shown(window, "SafeAreaBox"));
+        Assert.Equal(Visibility.Collapsed, Shown(window, "GridLines"));
+        foreach (var name in new[] { "SafeAreaToggle", "GridToggle" })
+        {
+            var toggle = (System.Windows.Controls.Primitives.ToggleButton)window.FindName(name);
+            toggle.IsChecked = true;
+            toggle.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+        }
+
+        TestWindow.Pump();
+        var box = (System.Windows.Shapes.Rectangle)window.FindName("SafeAreaBox");
+        var scale = image.ActualWidth / 320;
+        Assert.Equal(Visibility.Visible, box.Visibility);
+        Assert.Equal(Visibility.Visible, Shown(window, "GridLines"));
+        Assert.Equal((16 * scale, 9 * scale, 288 * scale), (Canvas.GetLeft(box), Canvas.GetTop(box), box.Width), new ToleranceComparer());
+        Assert.Equal(before, Pixels());
+        Assert.Equal(1, ProjectStore.Load(directory).Revision);
+        var settings = EditorSettings.Load(Path.Combine(folder, "editor.json"));
+        Assert.True(settings.SafeArea && settings.Grid);
+    });
+
+    // With Loop on, playing past the last frame goes on from the first.
+    [Fact]
+    public void WithLoopOnPlayingGoesOnFromTheStart() => TestWindow.Run("window-loop", (window, folder) =>
+    {
+        WithTitle(window, folder);
+        var loop = (System.Windows.Controls.Primitives.ToggleButton)window.FindName("LoopToggle");
+        loop.IsChecked = true;
+        loop.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+        TestWindow.Press(window, Key.End);
+        for (var i = 0; i < 10; i++)
+        {
+            TestWindow.Press(window, Key.Left);
+        }
+
+        int Frame() => int.Parse(Text(window, "FrameText").Split(' ')[1]);
+        Assert.Equal(49, Frame());
+        var play = (Button)window.FindName("PlayButton");
+        TestWindow.Press(window, Key.Space);
+        for (var i = 0; i < 800 && Frame() >= 49; i++)
+        {
+            TestWindow.Pump(10);
+        }
+
+        Assert.True(Frame() < 49, $"still at frame {Frame()}");
+        Assert.Equal("Pause (Space)", play.ToolTip);
+        TestWindow.Press(window, Key.Space);
+        Assert.Equal("Play (Space)", play.ToolTip);
+    });
+
+    private sealed class ToleranceComparer : IEqualityComparer<(double, double, double)>
+    {
+        public bool Equals((double, double, double) a, (double, double, double) b) =>
+            Math.Abs(a.Item1 - b.Item1) < 0.01 && Math.Abs(a.Item2 - b.Item2) < 0.01 && Math.Abs(a.Item3 - b.Item3) < 0.01;
+
+        public int GetHashCode((double, double, double) value) => 0;
+    }
+
     // A project with a title from 0 to 2 s, open with the title selected.
     private static string WithTitle(MainWindow window, string folder)
     {
@@ -596,21 +676,21 @@ public class WindowTests
             }
         }
 
-        Assert.EndsWith("frame 0 of 59", Frame());
+        Assert.Equal("Frame 0 / 59", Frame());
         TestWindow.Press(window, Key.Space);
         Assert.Equal("Pause (Space)", play.ToolTip);
-        PumpWhile(() => Frame().EndsWith("frame 0 of 59", StringComparison.Ordinal));
+        PumpWhile(() => Frame() == "Frame 0 / 59");
         TestWindow.Press(window, Key.Space);
         Assert.Equal("Play (Space)", play.ToolTip);
         var paused = Frame();
-        Assert.DoesNotContain("frame 0 of", paused);
+        Assert.NotEqual("Frame 0 / 59", paused);
         TestWindow.Pump(300);
         Assert.Equal(paused, Frame());
 
         TestWindow.Press(window, Key.Space);
         PumpWhile(() => (string)play.ToolTip == "Pause (Space)");
         Assert.Equal("Play (Space)", play.ToolTip);
-        Assert.EndsWith("frame 59 of 59", Frame());
+        Assert.Equal("Frame 59 / 59", Frame());
         Assert.Equal("00:00:01:29", Text(window, "TimecodeText"));
     });
 
