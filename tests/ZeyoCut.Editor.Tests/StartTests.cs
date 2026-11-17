@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 using ZeyoCut.Core.Editing;
+using ZeyoCut.Core.Model;
 
 namespace ZeyoCut.Editor.Tests;
 
@@ -67,14 +68,80 @@ public class StartTests
         File.SetLastWriteTime(Path.Combine(newer, ProjectStore.ProjectFileName), new DateTime(2026, 3, 1, 12, 0, 0));
         File.SetLastWriteTime(Path.Combine(broken, ProjectStore.ProjectFileName), new DateTime(2026, 2, 1, 12, 0, 0));
 
-        var projects = ProjectList.In(root);
+        var projects = ProjectList.In(root, new DateTime(2026, 11, 17, 12, 0, 0));
         Assert.Equal(["newer", "broken", "older"], projects.Select(p => p.Name));
-        Assert.Equal("320×180 · 30 fps · 0:02 · 0 layers", projects[0].Details);
-        Assert.Equal("1280×720 · 30 fps · 0:06 · 0 layers", projects[2].Details);
+        Assert.Equal("320×180 · 30 fps · 0 layers · 2026-03-01 12:00", projects[0].Details);
+        Assert.Equal("1280×720 · 30 fps · 0 layers · 2026-01-01 12:00", projects[2].Details);
+        Assert.Equal(("0:02", "0:06"), (projects[0].Length, projects[2].Length));
+        Assert.True(projects[0].Empty);
         Assert.StartsWith("can't be read: ", projects[1].Details);
+        Assert.Null(projects[1].Length);
         Assert.Equal(older, projects[2].Directory);
 
         Assert.Empty(ProjectList.In(Path.Combine(root, "missing")));
+    }
+
+    [Fact]
+    public void ACardsBadgesGiveTheLengthTheLanguagesAndClaudesEditThatDay()
+    {
+        var directory = TestFiles.NewProject("card-badges");
+        ProjectSession.Open(directory).Mutate("add_text_layer en and ja", p =>
+        {
+            ProjectEditor.AddTextLayer(p, new TextLayerOptions { Id = "en", Text = "Hello", Language = "en" });
+            ProjectEditor.AddTextLayer(p, new TextLayerOptions { Id = "ja", Text = "Konnichiwa", Language = "ja" });
+            return 0;
+        });
+        var saved = ProjectHistory.Saves(directory)[0].Time;
+        var card = ProjectList.Describe(directory, saved.AddMinutes(2));
+        Assert.Equal(("0:02", "2 languages", "Claude edited 2 min ago"), (card.Length, card.Languages, card.ClaudeEdited));
+        Assert.False(card.Empty);
+        Assert.Equal(ProjectStore.Load(directory).Revision, card.Revision);
+        Assert.Equal((320, 180), (card.Width, card.Height));
+
+        // A day on there's no Claude badge, nor once the editor has saved since; one language has no badge.
+        Assert.Null(ProjectList.Describe(directory, saved.AddDays(1)).ClaudeEdited);
+        ProjectSession.Open(directory, ProjectBackups.EditorProgram).Mutate("remove_layer ja", p => new RemoveLayerOperation("ja", true).Apply(p));
+        card = ProjectList.Describe(directory, DateTime.Now);
+        Assert.Equal((null, null), (card.Languages, card.ClaudeEdited));
+    }
+
+    [Fact]
+    public void HomeListsTheRecentProjectsThenTheFoldersOthersOnceEachAndSearchesTheirNames()
+    {
+        static ProjectEntry Entry(string directory) => new(Path.GetFileName(Path.TrimEndingDirectorySeparator(directory)), directory, "", DateTime.MinValue);
+        var root = @"C:\Videos\ZeyoCut";
+        var tora = Entry(Path.Combine(root, "tora-jump"));
+        var comic = Entry(Path.Combine(root, "comic-panels"));
+        var street = Entry(Path.Combine(root, "street-demo"));
+        ProjectEntry[] recent = [Entry(@"C:\VIDEOS\ZeyoCut\Comic-Panels\"), Entry(@"D:\work\Tora-Short")];
+
+        var (first, rest) = ProjectList.Group(recent, [tora, comic, street], "");
+        Assert.Equal(["Comic-Panels", "Tora-Short"], first.Select(p => p.Name));
+        Assert.Equal(["tora-jump", "street-demo"], rest.Select(p => p.Name));
+
+        (first, rest) = ProjectList.Group(recent, [tora, comic, street], " TORA ");
+        Assert.Equal(["Tora-Short"], first.Select(p => p.Name));
+        Assert.Equal(["tora-jump"], rest.Select(p => p.Name));
+    }
+
+    [Fact]
+    public void HomeSaysWhenAndWhereShortlyAndFitsItsCardsToTheWidth()
+    {
+        var now = new DateTime(2026, 11, 17, 9, 30, 0);
+        Assert.Equal("Today 08:05", ProjectList.When(new DateTime(2026, 11, 17, 8, 5, 0), now));
+        Assert.Equal("Yesterday 23:59", ProjectList.When(new DateTime(2026, 11, 16, 23, 59, 0), now));
+        Assert.Equal("2026-11-15 18:24", ProjectList.When(new DateTime(2026, 11, 15, 18, 24, 0), now));
+        Assert.Equal("2026-11-18 10:00", ProjectList.When(new DateTime(2026, 11, 18, 10, 0, 0), now));
+
+        Assert.Equal(@"…\scratchpad\edemo\projects", ProjectList.Shorten(@"C:\Users\me\AppData\Local\Temp\scratchpad\edemo\projects"));
+        Assert.Equal(@"…\me\Videos\ZeyoCut", ProjectList.Shorten(@"C:\Users\me\Videos\ZeyoCut\"));
+        Assert.Equal(@"C:\Users\me\Videos", ProjectList.Shorten(@"C:\Users\me\Videos"));
+        Assert.Equal(@"…\b\c\d", ProjectList.Shorten(@"\\server\share\a\b\c\d"));
+
+        // Cards at least 240 px wide with 20 px between them, their pictures 16:9.
+        Assert.Equal(new HomeLayout(4, 146.25), ProjectList.Layout(1100));
+        Assert.Equal(new HomeLayout(3, 180), ProjectList.Layout(1000));
+        Assert.Equal(1, ProjectList.Layout(100).Columns);
     }
 
     [Fact]
@@ -100,10 +167,12 @@ public class StartTests
 
         // Saved and read back; only the ones that still hold a project are offered.
         settings.MediaWidth = 333;
+        settings.ProjectsAsList = true;
         settings.Window = new WindowPlacement(10, 20, 1200, 800, true);
         settings.Save(path);
         var loaded = EditorSettings.Load(path);
         Assert.Equal(settings.Recent, loaded.Recent);
+        Assert.True(loaded.ProjectsAsList);
         Assert.Equal((333.0, new WindowPlacement(10, 20, 1200, 800, true)), (loaded.MediaWidth, loaded.Window));
         Assert.Empty(loaded.ExistingRecent());
         ProjectSession.Create(Path.Combine(folder, "p11"), TestFiles.Project());

@@ -11,8 +11,9 @@ when they open.
 ### Added
 
 - **The ZeyoCut editor:** `ZeyoCut.Editor.exe`, a window for working on a project by hand,
-  in the release zip and the bundle. It opens a project (from a start page with the projects
-  folder and recent projects, Open project folder, or a folder on the command line), lists its media,
+  in the release zip and the bundle. It opens a project (from Home, which shows the recent projects and
+  the projects folder as cards with a picture of each, its length, its languages and Claude's latest
+  edit, with a search box and a list view; Open folder; or a folder on the command line), lists its media,
   imports images, audio, fonts and video (from the file picker or dropped on the window, normalizing
   video as `import_video` does, with progress) and shows the frame at any time, drawn by the same
   renderer as exports, with frame stepping, fit and zoom. It plays the edit at 0.5×, 1× or 2× with

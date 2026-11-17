@@ -44,6 +44,9 @@ public sealed class EditorSettings
 
     public bool Grid { get; set; }
 
+    // Home shows the projects as a list, not as cards.
+    public bool ProjectsAsList { get; set; }
+
     public WindowPlacement? Window { get; set; }
 
     // The settings saved at path; the defaults when there are none or they can't be read.

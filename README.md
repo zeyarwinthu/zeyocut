@@ -56,10 +56,10 @@ Then ask for something. ZeyoCut imports files from your Desktop, Documents, Down
 
 ![The editor with the Tora Jumps example open: the media on the left, the frame in the middle, the inspector on the right with Tora's Y keyed at the playhead, and the timeline below with the keyframes on Tora's clip](docs/editor-edit.png)
 
-- **Open a project** from the start page, which lists your projects folder and recent projects, with Open project folder (Ctrl+O), from the command line (`ZeyoCut.Editor.exe C:\Users\you\ZeyoCut\projects\my-video`), or by asking the model to open it in the editor (`open_in_editor`). A project is open in one window at a time: opening it again brings that window to the front.
+- **Open a project** from Home, which shows your recent projects and the rest of your projects folder as cards with a picture of each and a search box, with Open folder… (Ctrl+O), from the command line (`ZeyoCut.Editor.exe C:\Users\you\ZeyoCut\projects\my-video`), or by asking the model to open it in the editor (`open_in_editor`). A project is open in one window at a time: opening it again brings that window to the front.
 - **Three views:** Edit and Activity, switched in the header, and Export, opened by the header's Export button (or Ctrl+1, Ctrl+2 and Ctrl+3: Activity, Edit and Export). The header names the project, shows whether it's saved, undoes and redoes, and says when Claude last saved; the logo goes back to the projects.
 - **Import** images, audio, fonts and video with Import above the media list (Ctrl+I). Video that needs normalizing (variable frame rate, rotation, HDR) is converted first, as `import_video` does, with its progress in the media list. Files you pick yourself can come from any folder; the import folders limit only what the model can read.
-- **Drag files** from File Explorer onto the window to import them. A project folder dropped on the start page opens.
+- **Drag files** from File Explorer onto the window to import them. A project folder dropped on Home opens.
 - **Put media on the timeline** by dragging it from the media list onto a lane, or right-click it → Add at the playhead. A video or picture dropped on a picture lane is drawn at that lane's level, and anywhere else on a level of its own on top. Sound takes the role of the sound lane it's dropped on, else music.
 - **The preview** draws the frame at the playhead with the same renderer as exports, from proxies for footage over 2560 px. Step with ←/→ (Shift: a second at a time), Home and End. Fit, 50%, 100% and 200% set the zoom. A safe-area guide (as `check_project` checks it) and a thirds grid can be drawn over the frame, and F shows it on the whole screen.
     - Click a video, picture or text in the preview to select it: the one drawn on top there, a layer attached to a clip (a logo on a video, a part of a rig) too. Its box and anchor are outlined, and the timeline highlights the clip that holds it.
@@ -90,7 +90,7 @@ Then ask for something. ZeyoCut imports files from your Desktop, Documents, Down
 - **Every change is saved at once**, as one step that Ctrl+Z undoes and Ctrl+Y redoes. The header shows "Saved · rev N"; there's no Save button.
 - **With Claude at the same time.** When the server saves the project, the editor shows the new version and says what changed. The server's next reply lists what the editor changed. See [Saving alongside another program](docs/project-format.md#saving-alongside-another-program).
 
-The editor reads `FfmpegPath`, `ProjectsRoot`, `LibraryPath` and `VideoEncoder` from the same `appsettings.json` and environment variables as the server. It keeps its own settings (recent projects, panel sizes, window position, snapping, playback size) in `%LOCALAPPDATA%\ZeyoCut\editor.json`, or the file `ZEYOCUT_EDITOR_SETTINGS` names, never in the project.
+The editor reads `FfmpegPath`, `ProjectsRoot`, `LibraryPath` and `VideoEncoder` from the same `appsettings.json` and environment variables as the server. It keeps its own settings (recent projects, cards or list on Home, panel sizes, window position, snapping, playback size) in `%LOCALAPPDATA%\ZeyoCut\editor.json`, or the file `ZEYOCUT_EDITOR_SETTINGS` names, never in the project.
 
 ## Privacy
 

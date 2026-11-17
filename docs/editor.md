@@ -10,8 +10,9 @@ It imports media, plays the edit with its sound, moves, trims and splits clips o
 
 `ZeyoCut.Editor.exe` is in the release zip, next to `ZeyoCut.Mcp.exe`; [Install](install.md#the-editor-optional) says how it finds FFmpeg and your projects. Then:
 
-- The start page lists your projects folder and recent projects.
-- Open project folder (Ctrl+O) opens any project folder, and so does dropping one on the start page.
+- **Home**, the start page, shows your recent projects and then the rest of your projects folder. Each card has a picture of the project (its frame a second in, kept in the project's `cache\thumbnails` folder and drawn again once it's saved), its length, how many languages it's in, and "Claude edited 2 min ago" when Claude saved it last that day. The full folder is in its tooltip.
+- The search box keeps the projects whose names have what you type, and the buttons on the right show them as cards or as a list. Show folder, at the bottom, opens the projects folder.
+- Open folder… (Ctrl+O) opens any project folder, and so does dropping one on Home.
 - From the command line: `ZeyoCut.Editor.exe C:\Users\you\ZeyoCut\projects\my-video`.
 - Or ask the model to open the project in the editor ([`open_in_editor`](GUIDE.md#open_in_editor)).
 
@@ -19,7 +20,7 @@ A project is open in one window at a time: opening it again brings that window t
 
 A `project.json` with problems still opens, such as one edited by hand whose asset names a file outside `assets\`. The status bar names the problems and the media list marks those files; changes and exports are refused until they're fixed.
 
-The header across the top names the project and whether it's saved ("Saved · rev N"). The logo and **Projects** close the project and go back to the start page. In the middle, **Edit** and **Activity** switch views; on the right are Undo and Redo, when Claude last saved the project, and **Export**, which opens the Export view (Ctrl+1, Ctrl+2 and Ctrl+3 go to Activity, Edit and Export). The status bar at the bottom names the selected clip, counts the layers and lanes, and says what the last change did.
+The header across the top names the project and whether it's saved ("Saved · rev N"). The logo and **Projects** close the project and go back to Home. In the middle, **Edit** and **Activity** switch views; on the right are Undo and Redo, when Claude last saved the project, and **Export**, which opens the Export view (Ctrl+1, Ctrl+2 and Ctrl+3 go to Activity, Edit and Export). The status bar at the bottom names the selected clip, counts the layers and lanes, and says what the last change did.
 
 ## Media
 
@@ -161,7 +162,7 @@ It shows the progress, Stop ends it, and Show in folder opens File Explorer on t
 
 ## Settings
 
-The editor reads `FfmpegPath`, `ProjectsRoot`, `LibraryPath` and `VideoEncoder` from the same `appsettings.json` and environment variables as the server (see [Configuration](https://github.com/zeyarwinthu/zeyocut#configuration)). It keeps its own settings (recent projects, panel sizes, window position, snapping, playback size) in `%LOCALAPPDATA%\ZeyoCut\editor.json`, or the file `ZEYOCUT_EDITOR_SETTINGS` names, never in the project.
+The editor reads `FfmpegPath`, `ProjectsRoot`, `LibraryPath` and `VideoEncoder` from the same `appsettings.json` and environment variables as the server (see [Configuration](https://github.com/zeyarwinthu/zeyocut#configuration)). It keeps its own settings (recent projects, cards or list on Home, panel sizes, window position, snapping, playback size) in `%LOCALAPPDATA%\ZeyoCut\editor.json`, or the file `ZEYOCUT_EDITOR_SETTINGS` names, never in the project.
 
 ## What it leaves to the model
 

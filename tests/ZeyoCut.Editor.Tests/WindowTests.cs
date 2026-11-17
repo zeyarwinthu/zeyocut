@@ -59,6 +59,18 @@ public class WindowTests
         return list.Items.Cast<ProjectEntry>().Select(p => p.Directory).ToList();
     }
 
+    // Home's projects after the recent ones, once it has listed as many.
+    private static List<string> Others(MainWindow window, int count)
+    {
+        var list = (ItemsControl)window.FindName("ProjectsList");
+        for (var i = 0; i < 500 && list.Items.Count != count; i++)
+        {
+            TestWindow.Pump(10);
+        }
+
+        return list.Items.Cast<ProjectEntry>().Select(p => p.Name).ToList();
+    }
+
     // Lets the window finish the saves it started, and those of the commands that waited for them;
     // its status line says "Saving…" until then.
     private static void WaitForSaves(MainWindow window)
@@ -290,6 +302,42 @@ public class WindowTests
         window.OpenProject(first);
         Click(window, "LogoButton");
         Assert.Equal([first], Recent(window, 1));
+    });
+
+    [Fact]
+    public void HomeShowsTheRecentProjectsThenTheOthersAndSearchesTheirNames() => TestWindow.Run("window-home", (window, folder) =>
+    {
+        var projects = Path.Combine(folder, "projects");
+        var alpha = Saved(projects, "alpha");
+        Saved(projects, "beta");
+        window.OpenProject(alpha);
+        Click(window, "LogoButton");
+        Assert.Equal([alpha], Recent(window, 1));
+        Assert.Equal(["beta"], Others(window, 1));
+        Assert.Equal(("RECENT", Visibility.Visible), (Text(window, "RecentTitle"), Shown(window, "ProjectsTitle")));
+        Assert.Equal(ProjectList.Shorten(projects), Text(window, "HomeFolder"));
+        Assert.Equal(Visibility.Collapsed, Shown(window, "HomeNoMatch"));
+
+        // The search keeps the projects whose names have it in them, recent or not.
+        var search = (TextBox)window.FindName("HomeSearch");
+        search.Text = "BET";
+        Assert.Empty(Recent(window, 0));
+        Assert.Equal(["beta"], Others(window, 1));
+        Assert.Equal(("PROJECTS", Visibility.Collapsed, Visibility.Collapsed), (Text(window, "RecentTitle"), Shown(window, "ProjectsTitle"), Shown(window, "RecentList")));
+        search.Text = "gamma";
+        Assert.Empty(Others(window, 0));
+        Assert.Equal(Visibility.Visible, Shown(window, "HomeNoMatch"));
+        Assert.Equal("No project's name has “gamma” in it.", Text(window, "HomeNoMatch"));
+        Assert.Equal(Visibility.Collapsed, Shown(window, "HomeListHeader"));
+
+        // Shown as a list, which the editor's settings keep.
+        search.Text = "";
+        Assert.Equal(["beta"], Others(window, 1));
+        var list = (ItemsControl)window.FindName("ProjectsList");
+        Assert.Same(window.FindResource("ProjectCard"), list.ItemTemplate);
+        ((RadioButton)window.FindName("HomeRows")).IsChecked = true;
+        Assert.Same(window.FindResource("ProjectRow"), list.ItemTemplate);
+        Assert.True(EditorSettings.Load(Path.Combine(folder, "editor.json")).ProjectsAsList);
     });
 
     [Fact]

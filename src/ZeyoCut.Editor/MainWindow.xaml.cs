@@ -84,6 +84,7 @@ public partial class MainWindow : Window
     private MediaImporter? _importer;
     private FramePreview? _preview;
     private MediaThumbnails? _thumbnails;
+    private ProjectThumbnails? _projectPictures;
     private PreviewSound? _sound;
     private FileSystemWatcher? _watcher;
     private WriteableBitmap? _bitmap;
@@ -103,6 +104,13 @@ public partial class MainWindow : Window
 
     // Thumbnails made since the media panel and the timeline were last drawn, waiting to be shown.
     private bool _thumbnailsDue;
+
+    // Home's projects as last listed, before the search: the recent ones and the projects folder's.
+    private IReadOnlyList<ProjectEntry> _homeRecent = [];
+    private IReadOnlyList<ProjectEntry> _homeProjects = [];
+
+    // Project pictures drawn since Home was last shown, waiting to be shown.
+    private bool _picturesDue;
 
     // The zoom slider being set to the timeline's zoom, which isn't a change of the user's.
     private bool _zoomShowing;
@@ -198,6 +206,7 @@ public partial class MainWindow : Window
         SafeAreaToggle.IsChecked = _prefs.SafeArea;
         GridToggle.IsChecked = _prefs.Grid;
         LoopToggle.IsChecked = _prefs.Loop;
+        (_prefs.ProjectsAsList ? HomeRows : HomeCards).IsChecked = true;
         SourceInitialized += (_, _) => DarkTitleBar.Apply(this);
         _settle = new DispatcherTimer(DispatcherPriority.Background, Dispatcher) { Interval = TimeSpan.FromMilliseconds(250) };
         _settle.Tick += (_, _) =>
@@ -474,6 +483,7 @@ public partial class MainWindow : Window
         _poll.Stop();
         _settle.Stop();
         _ticker.Stop();
+        _projectPictures?.Dispose();
         var running = _jobs.All.Where(j => j.State == JobState.Running).ToList();
         foreach (var job in running)
         {
@@ -587,6 +597,7 @@ public partial class MainWindow : Window
         _exportLanguage = ExportChoices.EveryLanguage;
         ExportStatus.Text = "";
         StartPage.Visibility = Visibility.Collapsed;
+        _projectPictures?.Forget();
         EditMode.IsChecked = true;
         ShowMode();
         Message(document.Session.MigratedFrom is { } from
@@ -2213,12 +2224,13 @@ public partial class MainWindow : Window
     {
         var root = _settings.ProjectsRoot;
         var recent = _prefs.ExistingRecent();
-        ProjectsTitle.Text = $"PROJECTS  ·  {root}";
+        HomeFolder.Text = ProjectList.Shorten(root);
+        HomeFolder.ToolTip = root;
         List<ProjectEntry> recentEntries;
         IReadOnlyList<ProjectEntry> projects;
         try
         {
-            (recentEntries, projects) = await Task.Run(() => (recent.Select(ProjectList.Describe).ToList(), ProjectList.In(root)));
+            (recentEntries, projects) = await Task.Run(() => (recent.Select(d => ProjectList.Describe(d)).ToList(), ProjectList.In(root)));
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
@@ -2227,11 +2239,115 @@ public partial class MainWindow : Window
             return;
         }
 
-        RecentList.ItemsSource = recentEntries;
-        RecentTitle.Visibility = RecentList.Visibility = recentEntries.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
-        ProjectsList.ItemsSource = projects;
-        ProjectsEmpty.Text = $"No projects in {root} yet. Ask Claude to create one, or open a project folder from somewhere else.";
-        ProjectsEmpty.Visibility = projects.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        _homeRecent = recentEntries;
+        _homeProjects = projects;
+        ShowHome();
+    }
+
+    // Home: the recent projects, then the projects folder's others, as cards or rows, each with its
+    // picture once ProjectThumbnails has drawn it, and only those whose names have the search text.
+    private void ShowHome()
+    {
+        _projectPictures ??= new ProjectThumbnails(() => Ffmpeg().Ffmpeg, _ => Dispatcher.InvokeAsync(ShowPictures));
+        var search = HomeSearch.Text.Trim();
+        var (recent, others) = ProjectList.Group(_homeRecent, _homeProjects, search);
+        RecentList.ItemsSource = recent.Select(WithPicture).ToList();
+        ProjectsList.ItemsSource = others.Select(WithPicture).ToList();
+        var any = recent.Count + others.Count > 0;
+        RecentTitle.Text = recent.Count > 0 ? "RECENT" : "PROJECTS";
+        RecentList.Visibility = recent.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        ProjectsTitle.Visibility = recent.Count > 0 && others.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        HomeListHeader.Visibility = any ? Visibility.Visible : Visibility.Collapsed;
+        HomeNoMatch.Text = $"No project's name has “{search}” in it.";
+        HomeNoMatch.Visibility = !any && search.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
+        ProjectsEmpty.Text = $"No projects in {_settings.ProjectsRoot} yet. Ask Claude to create one, or open a project folder from somewhere else.";
+        ProjectsEmpty.Visibility = _homeProjects.Count == 0 && search.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    // A picture fits its card whole: a Shorts project's stands in the middle.
+    private ProjectEntry WithPicture(ProjectEntry entry)
+    {
+        if (_projectPictures?.Get(entry) is not { } picture)
+        {
+            return entry;
+        }
+
+        var brush = new ImageBrush(picture) { Stretch = Stretch.Uniform };
+        brush.Freeze();
+        return entry with { Picture = brush };
+    }
+
+    // Pictures drawn in a row are shown together.
+    private void ShowPictures()
+    {
+        if (_picturesDue)
+        {
+            return;
+        }
+
+        _picturesDue = true;
+        Dispatcher.BeginInvoke(DispatcherPriority.Background, () =>
+        {
+            _picturesDue = false;
+            if (StartPage.Visibility == Visibility.Visible)
+            {
+                ShowHome();
+            }
+        });
+    }
+
+    private void OnHomeSearch(object sender, TextChangedEventArgs e)
+    {
+        HomeSearchHint.Visibility = HomeSearch.Text.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
+        ShowHome();
+    }
+
+    private void OnHomeView(object sender, RoutedEventArgs e)
+    {
+        if (RecentList is null)
+        {
+            return;
+        }
+
+        var rows = HomeRows.IsChecked == true;
+        foreach (var list in new[] { RecentList, ProjectsList })
+        {
+            list.ItemTemplate = (DataTemplate)FindResource(rows ? "ProjectRow" : "ProjectCard");
+            list.ItemsPanel = (ItemsPanelTemplate)FindResource(rows ? "ProjectRows" : "ProjectCards");
+        }
+
+        if (_prefs.ProjectsAsList != rows)
+        {
+            _prefs.ProjectsAsList = rows;
+            SavePrefs();
+        }
+    }
+
+    private void OnHomeSized(object sender, SizeChangedEventArgs e) =>
+        RecentList.Tag = ProjectsList.Tag = ProjectList.Layout(HomeContent.ActualWidth);
+
+    private void OnShowProjectsFolder(object sender, RoutedEventArgs e)
+    {
+        var root = _settings.ProjectsRoot;
+        string? error = null;
+        if (!Directory.Exists(root))
+        {
+            error = $"The projects folder {root} isn't there yet. It's made with the first project.";
+        }
+        else
+        {
+            try
+            {
+                using var _ = Process.Start(new ProcessStartInfo("explorer.exe", $"\"{root}\"") { UseShellExecute = false });
+            }
+            catch (System.ComponentModel.Win32Exception ex)
+            {
+                error = $"Couldn't open File Explorer: {ex.Message}";
+            }
+        }
+
+        StartError.Text = error ?? "";
+        StartError.Visibility = error is null ? Visibility.Collapsed : Visibility.Visible;
     }
 
     private void ChooseProject()

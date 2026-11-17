@@ -303,16 +303,112 @@
       </DataTemplate.Triggers>
     </DataTemplate>
 
-    <DataTemplate x:Key="ProjectTemplate">
-      <Button Style="{StaticResource ListButton}" Click="OnOpenListed" Tag="{Binding Directory}">
+    <!-- Home's projects: cards in as many columns as fit (the list's Tag is its HomeLayout), or rows. -->
+    <ItemsPanelTemplate x:Key="ProjectCards">
+      <UniformGrid Columns="{Binding Tag.Columns, RelativeSource={RelativeSource AncestorType=ItemsControl}}" VerticalAlignment="Top" />
+    </ItemsPanelTemplate>
+
+    <ItemsPanelTemplate x:Key="ProjectRows">
+      <StackPanel />
+    </ItemsPanelTemplate>
+
+    <SolidColorBrush x:Key="PictureBrush" Color="#14161B" />
+    <SolidColorBrush x:Key="BadgeBrush" Color="#CC0A0C10" />
+
+    <DataTemplate x:Key="ProjectCard">
+      <Button x:Name="Card" Style="{StaticResource CardButton}" Click="OnOpenListed" Tag="{Binding Directory}" ToolTip="{Binding Directory}" Margin="0,0,20,24"
+              AutomationProperties.Name="{Binding Name}">
         <StackPanel>
-          <TextBlock Text="{Binding Name}" FontSize="13" TextTrimming="CharacterEllipsis" />
-          <TextBlock Style="{StaticResource Secondary}" Margin="0,2,0,0">
-            <Run Text="{Binding Details, Mode=OneWay}" /><Run Text="{Binding Saved, Mode=OneWay, StringFormat=' · saved {0:yyyy-MM-dd HH:mm}'}" />
-          </TextBlock>
-          <TextBlock Text="{Binding Directory}" Style="{StaticResource Secondary}" Foreground="{StaticResource DisabledTextBrush}" />
+          <Border x:Name="Frame" Height="{Binding Tag.PictureHeight, RelativeSource={RelativeSource AncestorType=ItemsControl}}" CornerRadius="10"
+                  Background="{StaticResource PictureBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1">
+            <Grid>
+              <Border CornerRadius="9" Background="{Binding Picture}" />
+              <Grid x:Name="EmptyBox" Visibility="Collapsed">
+                <Grid.RowDefinitions>
+                  <RowDefinition Height="12*" />
+                  <RowDefinition Height="76*" />
+                  <RowDefinition Height="12*" />
+                </Grid.RowDefinitions>
+                <Viewbox Grid.Row="1" Stretch="Uniform">
+                  <Rectangle Width="{Binding EmptyWidth}" Height="{Binding EmptyHeight}" RadiusX="6" RadiusY="6" Stroke="#4A5060" StrokeThickness="1.5" StrokeDashArray="3 2" />
+                </Viewbox>
+                <TextBlock Grid.Row="1" Text="Empty" Style="{StaticResource Secondary}" HorizontalAlignment="Center" VerticalAlignment="Center" />
+              </Grid>
+              <WrapPanel HorizontalAlignment="Left" VerticalAlignment="Top" Margin="8,8,8,0">
+                <Border x:Name="ClaudeBadge" Background="{StaticResource AccentBrush}" CornerRadius="5" Padding="7,2" Margin="0,0,6,6">
+                  <TextBlock Text="{Binding ClaudeEdited}" Foreground="{StaticResource OnAccentBrush}" FontSize="11" FontWeight="SemiBold" />
+                </Border>
+                <Border x:Name="LanguagesBadge" Background="{StaticResource BadgeBrush}" CornerRadius="5" Padding="7,2" Margin="0,0,6,6">
+                  <TextBlock Text="{Binding Languages}" FontSize="11" />
+                </Border>
+              </WrapPanel>
+              <Border x:Name="LengthBadge" Background="{StaticResource BadgeBrush}" CornerRadius="5" Padding="6,2" Margin="8" HorizontalAlignment="Right" VerticalAlignment="Bottom">
+                <TextBlock Text="{Binding Length}" FontFamily="Consolas" FontSize="11" />
+              </Border>
+            </Grid>
+          </Border>
+          <TextBlock Text="{Binding Name}" FontSize="14" FontWeight="SemiBold" Margin="0,10,0,0" TextTrimming="CharacterEllipsis" />
+          <TextBlock Text="{Binding Details}" Style="{StaticResource Secondary}" FontSize="12" Margin="0,3,0,0" />
         </StackPanel>
       </Button>
+      <DataTemplate.Triggers>
+        <DataTrigger Binding="{Binding Empty}" Value="True">
+          <Setter TargetName="EmptyBox" Property="Visibility" Value="Visible" />
+        </DataTrigger>
+        <DataTrigger Binding="{Binding ClaudeEdited}" Value="{x:Null}">
+          <Setter TargetName="ClaudeBadge" Property="Visibility" Value="Collapsed" />
+        </DataTrigger>
+        <DataTrigger Binding="{Binding Languages}" Value="{x:Null}">
+          <Setter TargetName="LanguagesBadge" Property="Visibility" Value="Collapsed" />
+        </DataTrigger>
+        <DataTrigger Binding="{Binding Length}" Value="{x:Null}">
+          <Setter TargetName="LengthBadge" Property="Visibility" Value="Collapsed" />
+        </DataTrigger>
+        <DataTrigger Binding="{Binding IsMouseOver, ElementName=Card}" Value="True">
+          <Setter TargetName="Frame" Property="BorderBrush" Value="{StaticResource ScrollThumbHoverBrush}" />
+        </DataTrigger>
+        <DataTrigger Binding="{Binding IsKeyboardFocused, ElementName=Card}" Value="True">
+          <Setter TargetName="Frame" Property="BorderBrush" Value="{StaticResource AccentBrush}" />
+        </DataTrigger>
+      </DataTemplate.Triggers>
+    </DataTemplate>
+
+    <DataTemplate x:Key="ProjectRow">
+      <Button Style="{StaticResource ListButton}" Click="OnOpenListed" Tag="{Binding Directory}" ToolTip="{Binding Directory}" Margin="0,0,20,2"
+              AutomationProperties.Name="{Binding Name}">
+        <Grid>
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="Auto" />
+          </Grid.ColumnDefinitions>
+          <Border Width="96" Height="54" CornerRadius="6" Background="{StaticResource PictureBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1">
+            <Grid>
+              <Border CornerRadius="5" Background="{Binding Picture}" />
+              <TextBlock x:Name="EmptyText" Text="Empty" Style="{StaticResource Secondary}" HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="Collapsed" />
+            </Grid>
+          </Border>
+          <StackPanel Grid.Column="1" Margin="14,0" VerticalAlignment="Center">
+            <TextBlock Text="{Binding Name}" FontSize="13" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+            <TextBlock Text="{Binding Details}" Style="{StaticResource Secondary}" FontSize="12" Margin="0,3,0,0" />
+          </StackPanel>
+          <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+            <Border x:Name="ClaudeBadge" Background="{StaticResource AccentBrush}" CornerRadius="5" Padding="7,2" Margin="0,0,8,0">
+              <TextBlock Text="{Binding ClaudeEdited}" Foreground="{StaticResource OnAccentBrush}" FontSize="11" FontWeight="SemiBold" />
+            </Border>
+            <TextBlock x:Name="LanguagesText" Text="{Binding Languages}" Style="{StaticResource Secondary}" FontSize="12" Margin="0,0,14,0" VerticalAlignment="Center" />
+            <TextBlock Text="{Binding Length}" FontFamily="Consolas" FontSize="12" Foreground="{StaticResource SecondaryTextBrush}" VerticalAlignment="Center" />
+          </StackPanel>
+        </Grid>
+      </Button>
+      <DataTemplate.Triggers>
+        <DataTrigger Binding="{Binding ClaudeEdited}" Value="{x:Null}">
+          <Setter TargetName="ClaudeBadge" Property="Visibility" Value="Collapsed" />
+        </DataTrigger>
+        <DataTrigger Binding="{Binding Empty}" Value="True">
+          <Setter TargetName="EmptyText" Property="Visibility" Value="Visible" />
+        </DataTrigger>
+      </DataTemplate.Triggers>
     </DataTemplate>
   </Window.Resources>
 
@@ -388,19 +484,64 @@
     </Border>
 
     <ScrollViewer x:Name="StartPage" Grid.Row="1" VerticalScrollBarVisibility="Auto" Focusable="False">
-      <StackPanel Width="720" Margin="32,48,32,32" HorizontalAlignment="Center">
-        <TextBlock Text="ZeyoCut Editor" FontSize="26" FontWeight="SemiBold" />
-        <TextBlock Style="{StaticResource Secondary}" FontSize="13" TextWrapping="Wrap" TextTrimming="None" Margin="0,6,0,20"
-                   Text="Open a project to see what Claude made and fine-tune it. Each change is saved as you make it, and Claude sees it on its next step." />
-        <StackPanel Orientation="Horizontal">
-          <Button Style="{StaticResource AccentButton}" Content="Open project folder…" Click="OnOpen" />
-        </StackPanel>
+      <StackPanel x:Name="HomeContent" MaxWidth="1200" Margin="48,40,48,32" SizeChanged="OnHomeSized">
+        <Grid>
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="Auto" />
+          </Grid.ColumnDefinitions>
+          <StackPanel Margin="0,0,24,0">
+            <TextBlock Text="Projects" FontSize="28" FontWeight="SemiBold" />
+            <TextBlock Style="{StaticResource Secondary}" FontSize="14" TextWrapping="Wrap" TextTrimming="None" Margin="0,6,0,0" LineHeight="21"
+                       Text="Claude builds the first cut over MCP. Open a project to fine-tune it: every change is saved as you make it, and Claude sees it on its next step." />
+          </StackPanel>
+          <Grid Grid.Column="1" Width="280" Height="40" VerticalAlignment="Bottom">
+            <TextBox x:Name="HomeSearch" Background="{StaticResource HeaderBrush}" Padding="34,10,10,0" FontSize="14" TextChanged="OnHomeSearch"
+                     AutomationProperties.Name="Search projects" ToolTip="Show the projects whose names have this in them" />
+            <local:Icon Data="{StaticResource SearchShape}" Width="15" Height="15" Margin="12,0,0,0" HorizontalAlignment="Left" IsHitTestVisible="False"
+                        Foreground="{StaticResource SecondaryTextBrush}" />
+            <TextBlock x:Name="HomeSearchHint" Text="Search projects" FontSize="14" Margin="36,0,0,0" VerticalAlignment="Center" IsHitTestVisible="False"
+                       Foreground="{StaticResource SecondaryTextBrush}" />
+          </Grid>
+        </Grid>
         <TextBlock x:Name="StartError" Foreground="{StaticResource ErrorBrush}" TextWrapping="Wrap" Margin="0,14,0,0" Visibility="Collapsed" />
-        <TextBlock x:Name="RecentTitle" Text="RECENT" Style="{StaticResource PanelTitle}" Margin="0,28,0,6" />
-        <ItemsControl x:Name="RecentList" ItemTemplate="{StaticResource ProjectTemplate}" Focusable="False" />
-        <TextBlock x:Name="ProjectsTitle" Style="{StaticResource PanelTitle}" Margin="0,28,0,6" TextTrimming="CharacterEllipsis" />
-        <ItemsControl x:Name="ProjectsList" ItemTemplate="{StaticResource ProjectTemplate}" Focusable="False" />
-        <TextBlock x:Name="ProjectsEmpty" Style="{StaticResource Secondary}" FontSize="12" TextWrapping="Wrap" TextTrimming="None" Margin="12,4,0,0" Visibility="Collapsed" />
+        <Button Style="{StaticResource OpenCard}" Click="OnOpen" HorizontalAlignment="Left" Width="260" Margin="0,32,0,0" ToolTip="Open a ZeyoCut project folder from anywhere (Ctrl+O)">
+          <StackPanel Orientation="Horizontal">
+            <local:Icon Data="{StaticResource FolderShape}" Width="22" Height="22" Margin="10,0,22,0" Foreground="{StaticResource IconTextBrush}" />
+            <StackPanel>
+              <TextBlock Text="Open folder…" FontSize="14" FontWeight="SemiBold" />
+              <TextBlock Text="Ctrl + O" Style="{StaticResource Secondary}" FontSize="12" Margin="0,2,0,0" />
+            </StackPanel>
+          </StackPanel>
+        </Button>
+        <Grid x:Name="HomeListHeader" Margin="0,40,0,14">
+          <TextBlock x:Name="RecentTitle" Text="RECENT" Style="{StaticResource PanelTitle}" FontSize="12" />
+          <Border Background="{StaticResource HeaderBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="8" Padding="2" HorizontalAlignment="Right">
+            <StackPanel Orientation="Horizontal">
+              <RadioButton x:Name="HomeCards" GroupName="HomeView" Style="{StaticResource SegmentButton}" Width="32" Height="28" IsChecked="True" Checked="OnHomeView"
+                           ToolTip="Show the projects as cards" AutomationProperties.Name="Cards">
+                <local:Icon Data="{StaticResource CardsShape}" Width="14" Height="14" />
+              </RadioButton>
+              <RadioButton x:Name="HomeRows" GroupName="HomeView" Style="{StaticResource SegmentButton}" Width="32" Height="28" Checked="OnHomeView"
+                           ToolTip="Show the projects as a list" AutomationProperties.Name="List">
+                <local:Icon Data="{StaticResource RowsShape}" Width="14" Height="14" />
+              </RadioButton>
+            </StackPanel>
+          </Border>
+        </Grid>
+        <ItemsControl x:Name="RecentList" ItemTemplate="{StaticResource ProjectCard}" ItemsPanel="{StaticResource ProjectCards}" Margin="0,0,-20,0" Focusable="False" />
+        <TextBlock x:Name="ProjectsTitle" Text="OTHER PROJECTS" Style="{StaticResource PanelTitle}" FontSize="12" Margin="0,16,0,14" />
+        <ItemsControl x:Name="ProjectsList" ItemTemplate="{StaticResource ProjectCard}" ItemsPanel="{StaticResource ProjectCards}" Margin="0,0,-20,0" Focusable="False" />
+        <TextBlock x:Name="ProjectsEmpty" Style="{StaticResource Secondary}" FontSize="13" TextWrapping="Wrap" TextTrimming="None" Margin="0,40,0,0" Visibility="Collapsed" />
+        <TextBlock x:Name="HomeNoMatch" Style="{StaticResource Secondary}" FontSize="13" TextWrapping="Wrap" TextTrimming="None" Margin="0,40,0,0" Visibility="Collapsed" />
+        <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+          <TextBlock Text="Projects folder: " Style="{StaticResource Secondary}" FontSize="12" VerticalAlignment="Center" />
+          <TextBlock x:Name="HomeFolder" FontFamily="Consolas" FontSize="12" Foreground="{StaticResource IconTextBrush}" VerticalAlignment="Center" />
+          <TextBlock Text=" · " Style="{StaticResource Secondary}" FontSize="12" VerticalAlignment="Center" />
+          <Button Style="{StaticResource LinkButton}" Click="OnShowProjectsFolder" Foreground="{StaticResource AccentSoftTextBrush}" ToolTip="Open the projects folder in File Explorer">
+            <TextBlock Text="Show folder" FontSize="12" />
+          </Button>
+        </StackPanel>
       </StackPanel>
     </ScrollViewer>
 
