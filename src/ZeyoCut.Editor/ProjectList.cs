@@ -68,7 +68,7 @@ public static class ProjectList
             var project = ProjectStore.Load(directory);
             var layers = project.Layers.Count == 1 ? "1 layer" : $"{project.Layers.Count} layers";
             var languages = Languages.Used(project).Count;
-            var newest = ProjectHistory.Saves(directory).FirstOrDefault();
+            var newest = ProjectHistory.Newest(directory);
             return new ProjectEntry(name, directory, $"{project.Width}×{project.Height} · {project.Fps} fps · {layers} · {When(saved, at)}", saved)
             {
                 Revision = project.Revision,

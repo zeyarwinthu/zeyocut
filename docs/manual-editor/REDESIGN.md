@@ -1,7 +1,7 @@
 # Editor redesign: plan for the existing screens
 
 - Written 2026-11-17 on `feature/manual-editor` at `2c5a72d`.
-- Status: R1–R8 decided as recommended (2026-11-17). Phases A–E done; F–H wait for a go.
+- Status: R1–R8 decided as recommended (2026-11-17). Phases A–F done; G–H wait for a go.
 - Compares the design canvas "ZeyoCut Editor — modern redesign" (19 artboards) with screenshots of the editor as it is now (`screenshots/01`–`09`, taken 2026-11-17 from the installed Release editor).
 - Covers the four screens the editor already has. The 15 new screens are left for later (see Scope).
 - The rules in PLAN.md still hold: no control without real project data and real render output behind it; the UI has no editing logic of its own; a new project property is saved, rendered on export and reachable over MCP; tests pass at every commit; stop and report after each phase.
@@ -142,7 +142,7 @@ The design moves from grey panels with a bright blue accent to near-black layers
 | Now | Design | Plan |
 |---|---|---|
 | "Assistant", revision line, how-to box | "Activity", one-line intro, side card "Try asking Claude" | Do; the how-to text moves to the side card, which says this app has no AI built in |
-| Flat list: time, You/Claude badge, edit label | Filter All / You / Claude; date headings; saves grouped into steps with a title, avatar, time range, "rev N", tool chips, Restore | Do: a group is consecutive saves by the same side under 5 minutes apart. Its title is built by rule from the labels (the first label + "and N more"), never written by AI. Restore puts back the state after that group as a new revision (from the backup kept before the next save, through the same path as `restore_backup`). The newest group has no Restore: it's the current state |
+| Flat list: time, You/Claude badge, edit label | Filter All / You / Claude; date headings; saves grouped into steps with a title, avatar, time range, "rev N", tool chips, Restore | Do: a group is consecutive saves by the same side under 5 minutes apart. Its title is built by rule from the labels (the first label + ", then N more", since "and N more" ran into the editor's own labels for edits to several layers), never written by AI. A restore is a step of its own, so the step before it can still be restored. Restore puts back the state after that group as a new revision (from the backup kept before the next save, through the same path as `restore_backup`). The newest group has no Restore: it's the current state |
 | None | "Claude is connected · MCP · stdio" card with "saves today" counts | Left out |
 | "Nothing saved yet…" | Not shown | Keep, and add "Older saves aren't kept" under the list (the backups keep the last 20 of each side) |
 
@@ -187,7 +187,7 @@ Each phase: tests first where behavior changes, full suite green before each com
 | C · Media panel and timeline (done) | Thumbnail cache; media tiles and filters; timeline toolbar (Blade, Add marker, zoom slider), lane names and eye buttons, new clip drawing, playhead head; Core: `AddMarkersOperation` | `AddMarkersOperation` matches `add_markers`; Blade splits where clicked; eye hides a whole lane and undoes as one step; pixel checks on clip drawing |
 | D · Home (done) | App bar, search, Open folder card, project cards with thumbnails and badges, grid/list toggle, shortened paths | Search filter; Recent and the rest never repeat a project; thumbnail cache refreshes when the revision changes |
 | E · Export (done) | Two-column layout, preset cards, Quality, summary card, Play and Show in folder, Claude's running exports; Core: SRT writer moved out of `export_srt`, then the .srt option | `export_srt` output unchanged after the move; the .srt option writes the same file; Quality reaches the encoder as `crf` |
-| F · Activity | Filter, date headings, grouping, Restore, side card | Grouping rule; Restore saves a new revision, and Claude's next tool call sees it in its reply note |
+| F · Activity (done) | Filter, date headings, grouping, Restore, side card | Grouping rule; Restore saves a new revision, and Claude's next tool call sees it in its reply note |
 | G · Waveforms | Audio peaks per asset, made in the background and cached in the project's cache folder; drawn on media tiles and audio clips | Peaks match a known test tone; a missing or changed file rebuilds them |
 | H · Docs | docs/editor.md and its screenshots retaken, CHANGELOG | Docs build |
 

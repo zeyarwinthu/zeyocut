@@ -47,8 +47,10 @@ when they open.
   project, progress and stop, Claude's running exports of the project read from the jobs folder,
   and the exports folder's files with Play and Show in folder. The project's Duration is set in the inspector, and the lanes are
   shaded past the end, as the ruler is. Its header names the project, whether it's saved and when
-  Claude last saved, with undo, redo and the way to Export; the Activity view shows the revision
-  and the 20 most recent saves, yours and Claude's. The preview names the canvas, can draw the
+  Claude last saved, with undo, redo and the way to Export; the Activity view lists the saves the
+  backups folder keeps, yours and Claude's, as steps under their days (saves in a row by one side,
+  under 5 minutes apart), with a filter by who saved and Restore, which puts a step back as a new
+  revision the way `restore_backup` does. The preview names the canvas, can draw the
   safe area (as `check_project` checks it) and a thirds grid over the frame, loops, and shows the
   frame full screen (F). The inspector's header says where the clip comes from and what goes with
   it, with the timeline's menu under ⋯; its fields are on tabs by kind, with timing, position and

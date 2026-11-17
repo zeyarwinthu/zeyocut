@@ -303,6 +303,89 @@
       </DataTemplate.Triggers>
     </DataTemplate>
 
+    <!-- The Activity view: a step under its day, after a note when the saves before it aren't kept:
+         who made it, with a line down to the next, its title, who, when and the revision, Restore
+         (or "Current" for the newest), and its edits. -->
+    <DataTemplate x:Key="ActivityStepTemplate">
+      <StackPanel>
+        <TextBlock x:Name="DayText" Text="{Binding Day}" Style="{StaticResource PanelTitle}" Margin="0,0,0,12" />
+        <TextBlock x:Name="GapText" Text="Saves in between aren't kept" Style="{StaticResource Secondary}" FontSize="12" FontStyle="Italic" Margin="42,0,0,14" />
+        <Grid>
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="28" />
+            <ColumnDefinition Width="*" />
+          </Grid.ColumnDefinitions>
+          <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+          </Grid.RowDefinitions>
+          <Border x:Name="Avatar" Width="28" Height="28" CornerRadius="14" Background="{StaticResource ClaudeBrush}">
+            <TextBlock x:Name="AvatarText" Text="{Binding Initial}" FontSize="11" FontWeight="Bold" Foreground="{StaticResource AccentSoftTextBrush}"
+                       HorizontalAlignment="Center" VerticalAlignment="Center" />
+          </Border>
+          <Rectangle Grid.Row="1" Width="2" MinHeight="16" Fill="{StaticResource DividerBrush}" HorizontalAlignment="Center" />
+          <StackPanel Grid.Column="1" Grid.RowSpan="2" Margin="14,2,0,20">
+            <DockPanel>
+              <Button x:Name="RestoreButton" DockPanel.Dock="Right" Content="Restore" Tag="{Binding}" Click="OnRestoreStep" Height="28" Padding="10,0" FontSize="12"
+                      Background="Transparent" VerticalAlignment="Top" Margin="12,0,0,0"
+                      ToolTip="Put the project back as it was after this step, as a new save; undo takes it back" />
+              <TextBlock x:Name="CurrentText" DockPanel.Dock="Right" Text="Current" FontSize="12" Foreground="{StaticResource SecondaryTextBrush}" VerticalAlignment="Top"
+                         Margin="12,5,0,0" Visibility="Collapsed" ToolTip="The project as it is now" />
+              <WrapPanel VerticalAlignment="Center" Margin="0,3,0,0">
+                <TextBlock Text="{Binding Title}" FontSize="14" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,8,0" />
+                <Border x:Name="WhoTag" CornerRadius="9" Padding="7,1,7,2" Background="{StaticResource ClaudeBrush}" VerticalAlignment="Center" Margin="0,0,8,0">
+                  <TextBlock x:Name="WhoText" Text="{Binding Who}" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource AccentSoftTextBrush}" />
+                </Border>
+                <TextBlock Text="{Binding Details}" FontSize="12" Foreground="{StaticResource SecondaryTextBrush}" VerticalAlignment="Center" />
+              </WrapPanel>
+            </DockPanel>
+            <ItemsControl ItemsSource="{Binding Edits}" Focusable="False" Margin="0,8,0,0">
+              <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                  <WrapPanel />
+                </ItemsPanelTemplate>
+              </ItemsControl.ItemsPanel>
+              <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                  <Border Background="{StaticResource HeaderBrush}" BorderBrush="{StaticResource DividerBrush}" BorderThickness="1" CornerRadius="6" Padding="8,3" Margin="0,0,6,6">
+                    <TextBlock Text="{Binding}" FontFamily="Consolas" FontSize="11" Foreground="{StaticResource IconTextBrush}" />
+                  </Border>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </StackPanel>
+        </Grid>
+      </StackPanel>
+      <DataTemplate.Triggers>
+        <DataTrigger Binding="{Binding ByEditor}" Value="True">
+          <Setter TargetName="Avatar" Property="Background" Value="{StaticResource YouBrush}" />
+          <Setter TargetName="AvatarText" Property="Foreground" Value="{StaticResource YouTextBrush}" />
+          <Setter TargetName="WhoTag" Property="Background" Value="{StaticResource YouBrush}" />
+          <Setter TargetName="WhoText" Property="Foreground" Value="{StaticResource YouTextBrush}" />
+        </DataTrigger>
+        <DataTrigger Binding="{Binding Day}" Value="{x:Null}">
+          <Setter TargetName="DayText" Property="Visibility" Value="Collapsed" />
+        </DataTrigger>
+        <DataTrigger Binding="{Binding Gap}" Value="False">
+          <Setter TargetName="GapText" Property="Visibility" Value="Collapsed" />
+        </DataTrigger>
+        <DataTrigger Binding="{Binding Restore}" Value="{x:Null}">
+          <Setter TargetName="RestoreButton" Property="Visibility" Value="Collapsed" />
+        </DataTrigger>
+        <DataTrigger Binding="{Binding Newest}" Value="True">
+          <Setter TargetName="CurrentText" Property="Visibility" Value="Visible" />
+        </DataTrigger>
+      </DataTemplate.Triggers>
+    </DataTemplate>
+
+    <!-- A request to type in the Claude chat, on the Activity view's side card. -->
+    <Style x:Key="AskExample" TargetType="Border">
+      <Setter Property="Background" Value="{StaticResource InputBrush}" />
+      <Setter Property="CornerRadius" Value="8" />
+      <Setter Property="Padding" Value="12,10" />
+      <Setter Property="Margin" Value="0,10,0,0" />
+    </Style>
+
     <!-- The Export view: a preset's card (its title, then the size and frame rate, or what it needs),
          a caption group to save as an .srt file, Claude's running export, and an exported file. -->
     <DataTemplate x:Key="PresetCardTemplate">
@@ -599,40 +682,54 @@
     </ScrollViewer>
 
     <ScrollViewer x:Name="ActivityPage" Grid.Row="1" VerticalScrollBarVisibility="Auto" Focusable="False" Visibility="Collapsed">
-      <StackPanel Width="720" Margin="32,40,32,32" HorizontalAlignment="Center">
-        <TextBlock Text="Activity" FontSize="22" FontWeight="SemiBold" />
-        <TextBlock x:Name="ActivitySaved" FontSize="13" TextWrapping="Wrap" Margin="0,10,0,0" />
-        <Border Background="{StaticResource PanelBrush}" CornerRadius="4" Padding="14,10" Margin="0,16,0,0">
-          <TextBlock Foreground="{StaticResource SecondaryTextBrush}" FontSize="12" TextWrapping="Wrap"
-                     Text="Ask Claude in your chat to change this project, for example &#x201C;add Japanese captions&#x201D; or &#x201C;cut the long pauses&#x201D;. Each change you make here is saved as you make it, so Claude works on top of it on its next step; what Claude changes shows here within a second. Undo here takes back only your own changes." />
+      <Grid MaxWidth="1280" Margin="40,32">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="*" />
+          <ColumnDefinition Width="32" />
+          <ColumnDefinition Width="340" />
+        </Grid.ColumnDefinitions>
+        <StackPanel>
+          <DockPanel>
+            <Border DockPanel.Dock="Right" Background="{StaticResource HeaderBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="8" Padding="2"
+                    VerticalAlignment="Bottom" Margin="16,0,0,0">
+              <StackPanel Orientation="Horizontal">
+                <RadioButton x:Name="ActivityAll" GroupName="ActivityFilter" Style="{StaticResource SegmentButton}" Content="All" IsChecked="True" Checked="OnActivityFilter" />
+                <RadioButton x:Name="ActivityYou" GroupName="ActivityFilter" Style="{StaticResource SegmentButton}" Content="You" Checked="OnActivityFilter" />
+                <RadioButton x:Name="ActivityClaude" GroupName="ActivityFilter" Style="{StaticResource SegmentButton}" Content="Claude" Checked="OnActivityFilter" />
+              </StackPanel>
+            </Border>
+            <StackPanel>
+              <TextBlock Text="Activity" FontSize="24" FontWeight="SemiBold" />
+              <TextBlock Style="{StaticResource Secondary}" FontSize="13" TextWrapping="Wrap" TextTrimming="None" Margin="0,6,0,0"
+                         Text="Every save by you and by Claude, grouped into steps. Restore puts a step back as a new save, so what it replaces stays here too." />
+            </StackPanel>
+          </DockPanel>
+          <ItemsControl x:Name="ActivitySteps" Focusable="False" Margin="0,24,0,0" ItemTemplate="{StaticResource ActivityStepTemplate}" />
+          <TextBlock x:Name="ActivityEmpty" Style="{StaticResource Secondary}" FontSize="12" TextWrapping="Wrap" TextTrimming="None" Visibility="Collapsed" />
+          <TextBlock x:Name="ActivityOlder" Style="{StaticResource Secondary}" FontSize="12" TextWrapping="Wrap" TextTrimming="None" Margin="42,0,0,0"
+                     Text="Older saves aren't kept: the backups folder keeps your last 20 and Claude's last 20." />
+        </StackPanel>
+
+        <Border Grid.Column="2" VerticalAlignment="Top" CornerRadius="14" Background="{StaticResource HeaderBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" Padding="18">
+          <StackPanel>
+            <TextBlock Text="Try asking Claude" FontWeight="SemiBold" />
+            <Border Style="{StaticResource AskExample}">
+              <TextBlock Text="&#x201C;Add Japanese captions&#x201D;" Foreground="{StaticResource AccentSoftTextBrush}" TextWrapping="Wrap" />
+            </Border>
+            <Border Style="{StaticResource AskExample}">
+              <TextBlock Text="&#x201C;Cut the long pauses&#x201D;" Foreground="{StaticResource AccentSoftTextBrush}" TextWrapping="Wrap" />
+            </Border>
+            <Border Style="{StaticResource AskExample}">
+              <TextBlock Text="&#x201C;Blur every licence plate&#x201D;" Foreground="{StaticResource AccentSoftTextBrush}" TextWrapping="Wrap" />
+            </Border>
+            <TextBlock Style="{StaticResource Secondary}" FontSize="12" TextWrapping="Wrap" TextTrimming="None" Margin="0,12,0,0"
+                       Text="Type these in your Claude chat: this app has no AI built in." />
+            <Rectangle Height="1" Fill="{StaticResource DividerBrush}" Margin="0,16" />
+            <TextBlock Style="{StaticResource Secondary}" FontSize="12" TextWrapping="Wrap" TextTrimming="None" LineHeight="18"
+                       Text="Each change you make here is saved as you make it, so Claude works on top of it on its next step, and what Claude changes shows here within a second. Undo here takes back only your own changes; Restore puts back any step." />
+          </StackPanel>
         </Border>
-        <TextBlock Text="RECENT SAVES" Style="{StaticResource PanelTitle}" Margin="0,28,0,6" />
-        <ItemsControl x:Name="ActivitySaves" Focusable="False">
-          <ItemsControl.ItemTemplate>
-            <DataTemplate>
-              <Grid Margin="0,4">
-                <Grid.ColumnDefinitions>
-                  <ColumnDefinition Width="150" />
-                  <ColumnDefinition Width="70" />
-                  <ColumnDefinition Width="*" />
-                </Grid.ColumnDefinitions>
-                <TextBlock Text="{Binding Time, StringFormat='{}{0:yyyy-MM-dd HH:mm:ss}'}" Style="{StaticResource Secondary}" VerticalAlignment="Center" />
-                <Border x:Name="WhoBadge" Grid.Column="1" CornerRadius="3" Padding="6,1" HorizontalAlignment="Left" Background="#6A4FB0">
-                  <TextBlock Text="{Binding Who}" FontSize="11" Foreground="#FFFFFF" />
-                </Border>
-                <TextBlock Grid.Column="2" Text="{Binding Edit}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" ToolTip="{Binding Edit}" />
-              </Grid>
-              <DataTemplate.Triggers>
-                <DataTrigger Binding="{Binding ByEditor}" Value="True">
-                  <Setter TargetName="WhoBadge" Property="Background" Value="#2D6A9F" />
-                </DataTrigger>
-              </DataTemplate.Triggers>
-            </DataTemplate>
-          </ItemsControl.ItemTemplate>
-        </ItemsControl>
-        <TextBlock x:Name="ActivityEmpty" Style="{StaticResource Secondary}" FontSize="12" TextWrapping="Wrap" TextTrimming="None" Visibility="Collapsed"
-                   Text="Nothing saved yet since the project was made." />
-      </StackPanel>
+      </Grid>
     </ScrollViewer>
 
     <ScrollViewer x:Name="ExportPage" Grid.Row="1" VerticalScrollBarVisibility="Auto" Focusable="False" Visibility="Collapsed">

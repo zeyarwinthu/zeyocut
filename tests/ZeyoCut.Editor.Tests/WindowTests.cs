@@ -423,11 +423,64 @@ public class WindowTests
         Assert.Equal(Visibility.Collapsed, Shown(window, "ExportCrumb"));
         Assert.Equal("title selected", Text(window, "SelectionText"));
 
-        // The Activity tab names Claude's save.
+        // The Activity tab shows Claude's save first.
         ((RadioButton)window.FindName("ActivityMode")).IsChecked = true;
         Assert.Equal(Visibility.Visible, Shown(window, "ActivityPage"));
-        Assert.StartsWith("Revision 4, saved ", Text(window, "ActivitySaved"));
-        Assert.EndsWith(" by Claude: update_layer title.", Text(window, "ActivitySaved"));
+        var newest = (SavedStep)((ItemsControl)window.FindName("ActivitySteps")).Items[0];
+        Assert.Equal(("update_layer title", "Claude", "Today", 4L), (newest.Title, newest.Who, newest.Day, newest.Revision));
+    });
+
+    // The Activity view groups the saves into steps, filters them by who saved, and puts a step back
+    // as the next revision, which undo takes back.
+    [Fact]
+    public void TheActivityViewRestoresAStepAsTheNextRevision() => TestWindow.Run("window-activity", (window, folder) =>
+    {
+        var directory = WithTitle(window, folder);
+        ProjectSession.Open(directory).Mutate("move_layer title", p => new MoveLayerOperation("title", 0.5).Apply(p));
+        var editor = ProjectSession.Open(directory, ProjectBackups.EditorProgram);
+        editor.Mutate("trim_layer title", p => new TrimLayerOperation("title", null, 2).Apply(p));
+        editor.Mutate("trim_layer title", p => new TrimLayerOperation("title", null, 1.5).Apply(p));
+        for (var i = 0; i < 300 && Text(window, "SaveBadgeText") != "Saved · rev 4"; i++)
+        {
+            TestWindow.Pump(10);
+        }
+
+        ((RadioButton)window.FindName("ActivityMode")).IsChecked = true;
+        TestWindow.Pump();
+        var list = (ItemsControl)window.FindName("ActivitySteps");
+        List<SavedStep> Steps() => list.Items.Cast<SavedStep>().ToList();
+        Assert.Equal([("trim_layer title, then 1 more", "You", 4L), ("move_layer title", "Claude", 2L)], Steps().Select(s => (s.Title, s.Who, s.Revision)));
+        Assert.Equal(["trim_layer title ×2"], Steps()[0].Edits);
+        Assert.Equal(Visibility.Visible, Shown(window, "ActivityOlder"));
+        Assert.Equal(Visibility.Collapsed, Shown(window, "ActivityEmpty"));
+
+        // The newest step is the project as it is, with nothing to restore; the one before has Restore.
+        var restores = Descendants<Button>(list).Where(b => b.IsVisible).ToList();
+        Assert.Equal([Steps()[1]], restores.Select(b => b.Tag));
+        Assert.Equal("Restore", restores[0].Content);
+        Assert.Equal("Put the project back as it was after this step, as a new save; undo takes it back", restores[0].ToolTip);
+
+        ((RadioButton)window.FindName("ActivityClaude")).IsChecked = true;
+        Assert.Equal(["Claude"], Steps().Select(s => s.Who));
+        ((RadioButton)window.FindName("ActivityYou")).IsChecked = true;
+        Assert.Equal(["You"], Steps().Select(s => s.Who));
+        ((RadioButton)window.FindName("ActivityAll")).IsChecked = true;
+        TestWindow.Pump();
+
+        // Restoring Claude's step saves the project as it left it: moved, not yet trimmed.
+        var claudes = Steps()[1];
+        Descendants<Button>(list).Single(b => b.IsVisible).RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+        WaitForSaves(window);
+        var saved = ProjectStore.Load(directory);
+        Assert.Equal((5L, 0.5, 2.5), (saved.Revision, Title(directory).Start, Title(directory).End));
+        Assert.Equal($"Restored the project as it was after {claudes.Title} ({claudes.Details}). Undo takes it back.", Text(window, "MessageText"));
+        var label = ProjectBackups.RestoreLabel(claudes.Restore!);
+        Assert.Equal([(label, "You", 5L), ("trim_layer title, then 1 more", "You", 4L), ("move_layer title", "Claude", 2L)], Steps().Select(s => (s.Title, s.Who, s.Revision)));
+        Assert.Equal("editor " + label, ProjectBackups.List(directory)[0].Before);
+
+        Click(window, "UndoButton");
+        WaitForSaves(window);
+        Assert.Equal((6L, 1.5), (ProjectStore.Load(directory).Revision, Title(directory).End));
     });
 
     // The safe-area guide and the thirds grid are drawn over the frame, never into it, and kept in

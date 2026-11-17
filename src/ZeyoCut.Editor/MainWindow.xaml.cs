@@ -193,6 +193,9 @@ public partial class MainWindow : Window
     private bool _readingClaudeExports;
     private string? _encoderWarning;
 
+    // Whose steps the Activity view shows: yours (true), Claude's (false) or both (null).
+    private bool? _activityFilter;
+
     public MainWindow(Settings settings, string settingsPath)
     {
         _settings = settings;
@@ -2903,16 +2906,43 @@ public partial class MainWindow : Window
         }
     }
 
-    // The Activity view: who saved last and the recent saves, from the backups folder.
+    // The Activity view: the saves the backups folder keeps, in steps, by the side the filter shows.
     private void ShowActivity()
     {
-        var document = _document!;
-        var saves = ProjectHistory.Saves(document.Session.Directory);
-        ActivitySaves.ItemsSource = saves;
-        ActivityEmpty.Visibility = saves.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
-        ActivitySaved.Text = saves.Count == 0
-            ? $"Revision {document.Revision}."
-            : $"Revision {document.Revision}, saved {saves[0].Time:yyyy-MM-dd HH:mm:ss} by {(saves[0].ByEditor ? "you" : "Claude")}: {saves[0].Edit}.";
+        var steps = ProjectHistory.Steps(_document!.Session.Directory);
+        var shown = ProjectHistory.Shown(steps, _activityFilter, DateTime.Now);
+        ActivitySteps.ItemsSource = shown;
+        ActivityEmpty.Text = steps.Count == 0 ? "Nothing saved yet since the project was made."
+            : _activityFilter == true ? "None of the saves kept are yours."
+            : "None of the saves kept are Claude's.";
+        ActivityEmpty.Visibility = shown.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        ActivityOlder.Visibility = steps.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
+    }
+
+    private void OnActivityFilter(object sender, RoutedEventArgs e)
+    {
+        _activityFilter = ReferenceEquals(sender, ActivityYou) ? true : ReferenceEquals(sender, ActivityClaude) ? false : null;
+        if (_document is not null && ActivityMode.IsChecked == true)
+        {
+            ShowActivity();
+        }
+    }
+
+    // Puts the project back as a step on the Activity view left it, once the edits being saved are.
+    private void OnRestoreStep(object sender, RoutedEventArgs e)
+    {
+        if (((FrameworkElement)sender).Tag is SavedStep { Restore: { } backup } step)
+        {
+            WhenSaved(() => Restore(step, backup));
+        }
+    }
+
+    private async void Restore(SavedStep step, ProjectBackup backup)
+    {
+        if (await Save(document => document.Restore(backup)) is { } restored)
+        {
+            Message(restored ? $"Restored the project as it was after {step.Title} ({step.Details}). Undo takes it back." : "");
+        }
     }
 
     // The Export view's choices for the project as it is, keeping the ones made while they fit.
