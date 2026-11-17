@@ -102,7 +102,7 @@ public static class ProjectChecker
 
             var users = Users(project, asset.Id).ToList();
             issues.Add(new CheckIssue(CheckKind.MissingFile, asset.Id,
-                $"asset '{asset.Id}' ({asset.File}) has no file{(users.Count > 0 ? $"; used by {Ids.List(users)}, which won't render or export" : "")}; put the file back, or import it again"));
+                $"asset '{asset.Id}' ({asset.File}) has no file{(users.Count > 0 ? $"; used by {Ids.List(users)}, which won't render or export" : "")}; put the file back, or point the asset at it with relink_asset"));
         }
 
         foreach (var pending in MatteFiles.Pending(project, projectDirectory))

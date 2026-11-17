@@ -308,6 +308,16 @@ public sealed record AddAssetOperation(PreparedAsset Asset, string? Id = null, s
     }
 }
 
+// An asset pointed at a file Prepare copied into assets\, as relink_asset does: Relink.
+public sealed record RelinkAssetOperation(string AssetId, PreparedAsset Asset) : EditOperation
+{
+    public override string Label => $"relink_asset {AssetId}";
+
+    public override IReadOnlyList<string> Layers => [];
+
+    public override string Apply(Project project) => AssetRelinker.Relink(project, AssetId, Asset).Summary;
+}
+
 // Several operations as one undo step, such as a drag to another lane (move and reorder). They run
 // in order; if one fails, none is kept.
 public sealed record BatchOperation(string Name, IReadOnlyList<EditOperation> Operations) : EditOperation

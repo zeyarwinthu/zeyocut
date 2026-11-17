@@ -415,4 +415,87 @@ public class EditOperationTests
         Assert.True(document.Undo());
         Assert.Equal(original, TestProjects.WithoutRevision(File.ReadAllText(file)));
     }
+
+    // relink_asset and the editor's Relink: the asset keeps its id and takes the new file's details.
+    [Fact]
+    public void RelinkingKeepsTheIdAndTakesTheNewFilesDetails()
+    {
+        var project = TestProjects.Footage();
+        var clip = project.FindAsset("clip")!;
+        clip.OriginalFile = @"D:\phone\clip.mov";
+        clip.Normalized = "variable frame rate";
+        var bigger = new PreparedAsset(@"D:\moved\clip.mp4", @"C:\p\assets\clip_2.mp4", AssetType.Video,
+            new AssetInfo(Width: 1280, Height: 720, Duration: 10, FrameRate: "30", FrameCount: 300, HasAudio: false, Codec: "hevc"));
+        var relink = new RelinkAssetOperation("clip", bigger);
+        Assert.Equal("relink_asset clip", relink.Label);
+        Assert.Empty(relink.Layers);
+        var summary = relink.Apply(project);
+        Assert.Equal(AssetRelinker.Relink(TestProjects.Footage(), "clip", bigger).Summary, summary);
+        Assert.Equal("relinked 'clip' to assets/clip_2.mp4; 'clip' was 640x360, 10s and is now 1280x720, 10s", summary);
+        var relinked = project.FindAsset("clip")!;
+        Assert.Equal(("assets/clip_2.mp4", 1280, 720, false, "hevc", null, null),
+            (relinked.File, relinked.Width, relinked.Height, relinked.HasAudio, relinked.Codec, relinked.OriginalFile, relinked.Normalized));
+        Assert.Equal(["clip_1", "clip_2"], ProjectChecker.Users(project, "clip"));
+
+        var sound = new PreparedAsset(@"D:\moved\music.wav", @"C:\p\assets\music.wav", AssetType.Audio, new AssetInfo(Duration: 20.01));
+        Assert.Equal("relinked 'music' to assets/music.wav", new RelinkAssetOperation("music", sound).Apply(project));
+        Assert.Equal(20.01, project.FindAsset("music")!.Duration);
+
+        Assert.Equal("'music.wav' is an audio file, and asset 'clip' needs a video",
+            Assert.Throws<ZeyoCutException>(() => new RelinkAssetOperation("clip", sound).Apply(project)).Message);
+        Assert.Equal("'notes.txt' isn't a file ZeyoCut imports, and asset 'music' needs an audio file",
+            Assert.Throws<ZeyoCutException>(() => AssetRelinker.Check(project, "music", @"D:\notes.txt")).Message);
+        Assert.Equal(AssetType.Audio, AssetRelinker.Check(project, "music", @"D:\other\Music.MP3").Type);
+        Assert.StartsWith("asset 'logo' not found; assets: clip, music", Assert.Throws<ZeyoCutException>(() => AssetRelinker.Check(project, "logo", @"D:\logo.png")).Message);
+    }
+
+    // Relink's likely matches: the same name and kind in the folders or below them, and the same
+    // size, length (within a frame) or font family.
+    [Fact]
+    public void ALikelyMatchHasTheSameNameKindAndSizeOrLength()
+    {
+        var root = TestPaths.NewDirectory("relink-matches");
+        string File(string relative, double length)
+        {
+            var path = Path.Combine(root, relative);
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            System.IO.File.WriteAllBytes(path, [0]);
+            Lengths[path] = length;
+            return path;
+        }
+
+        var near = File(@"sounds\music.wav", 20.02);
+        File(@"old\music.wav", 19);
+        File(@"music.mp3", 20);
+        var deep = File(@"a\b\c\MUSIC.WAV", 20);
+        File(@"a\b\c\d\e\f\music.wav", 20);
+        var other = TestPaths.NewDirectory("relink-matches-picked");
+        var picked = Path.Combine(other, "music.wav");
+        System.IO.File.WriteAllBytes(picked, [0]);
+        Lengths[picked] = 20;
+
+        var project = TestProjects.Footage();
+        var music = project.FindAsset("music")!;
+        var matches = AssetRelinker.Matches(project, music, [root, Path.Combine(root, "missing folder"), other, root], new LengthProbe());
+        Assert.Equal([(deep, "same length 20s"), (near, "same length 20s"), (picked, "same length 20s")],
+            matches.Select(m => (m.Path, m.Reason)).OrderBy(m => m.Path == picked).ThenBy(m => m.Path, StringComparer.OrdinalIgnoreCase));
+
+        // An asset with no length on record matches by name and kind alone.
+        music.Duration = null;
+        Assert.Equal(4, AssetRelinker.Matches(project, music, [root, other], new LengthProbe()).Count(m => m.Reason == "same name"));
+
+        // A file the probe can't read is passed over; cancelling stops the search.
+        Lengths.Remove(near);
+        music.Duration = 20;
+        Assert.DoesNotContain(near, AssetRelinker.Matches(project, music, [root], new LengthProbe()).Select(m => m.Path));
+        Assert.Throws<OperationCanceledException>(() => AssetRelinker.Matches(project, music, [root], new LengthProbe(), new CancellationToken(true)));
+    }
+
+    private static readonly Dictionary<string, double> Lengths = new(StringComparer.OrdinalIgnoreCase);
+
+    private sealed class LengthProbe : IAssetProbe
+    {
+        public AssetInfo Probe(string path, AssetType type) =>
+            Lengths.TryGetValue(path, out var length) ? new AssetInfo(Duration: length) : throw new ZeyoCutException($"can't read {path}");
+    }
 }

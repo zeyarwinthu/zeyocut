@@ -2,6 +2,7 @@
 
 using System.Text.Json.Nodes;
 using SkiaSharp;
+using ZeyoCut.Core;
 using ZeyoCut.Core.Editing;
 using ZeyoCut.Core.Model;
 using ZeyoCut.Mcp;
@@ -24,6 +25,42 @@ public class RenderTests
 
     private static Asset Import(ProjectSession session, string file) =>
         session.Mutate("import", p => AssetImporter.Import(p, session.Directory, file, null, new AssetProbe()));
+
+    // A picture whose file is gone draws again once relinked to the file found elsewhere.
+    [Fact]
+    public void ARelinkedPictureRendersAgain()
+    {
+        var (session, directory) = NewProject("render-relink");
+        var clouds = Import(session, TestImages.Solid(Path.Combine(directory, "clouds.png"), 20, 20, Red));
+        session.Mutate("add", p => ProjectEditor.AddImageLayer(p, new ImageLayerOptions
+        {
+            Id = "sky",
+            Drawings = new Dictionary<string, string> { ["normal"] = clouds.Id },
+            AnchorX = 0,
+            AnchorY = 0,
+            X = 10,
+            Y = 10,
+        }));
+        File.Delete(Path.Combine(directory, "clouds.png"));
+        File.Delete(ProjectStore.AssetPath(directory, clouds));
+
+        using var renderer = new FrameRenderer(directory);
+        Assert.StartsWith("image file is missing", Assert.Throws<ZeyoCutException>(() => renderer.RenderImage(session.Snapshot(), 0)).Message);
+
+        // Moved to a folder of its own, and painted green there; one of another size isn't it.
+        Directory.CreateDirectory(Path.Combine(directory, "art"));
+        Directory.CreateDirectory(Path.Combine(directory, "old"));
+        var moved = TestImages.Solid(Path.Combine(directory, "art", "clouds.png"), 20, 20, SKColors.Lime);
+        TestImages.Solid(Path.Combine(directory, "old", "clouds.png"), 30, 20, SKColors.Blue);
+        var matches = AssetRelinker.Matches(session.Snapshot(), clouds, [directory], new AssetProbe());
+        Assert.Equal([new RelinkMatch(moved, "same size 20x20 px")], matches);
+
+        var prepared = AssetImporter.Prepare(directory, moved, new AssetProbe(), AssetType.Image);
+        Assert.Equal("relinked 'clouds' to assets/clouds.png", session.Mutate("relink_asset clouds", p => new RelinkAssetOperation(clouds.Id, prepared).Apply(p)));
+        using var image = renderer.RenderImage(session.Snapshot(), 0);
+        Assert.Equal(SKColors.Lime, TestImages.Pixel(image, 15, 15));
+        Assert.Equal(SKColors.White, TestImages.Pixel(image, 5, 5));
+    }
 
     [Fact]
     public void RotationIsClockwiseAroundAnchor()
