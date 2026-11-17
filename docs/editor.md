@@ -123,9 +123,15 @@ To blur seconds 2 to 4, say:
 
 ![The Export view exporting the Japanese version of comic-panels, at 56%, with an earlier export listed in the exports folder](editor-export.png)
 
-Export in the header (Ctrl+3) opens the Export view, and Back to edit returns to the timeline. It renders the project as it's saved to an MP4 in its `exports` folder, as the model's `start_export` does, in the editor's own process: with the project's settings or a preset of the same shape, and one language's version when layers are tagged with languages. Edits made while it runs aren't in it.
+Export in the header (Ctrl+3) opens the Export view, and Back to edit returns to the timeline. It renders the project as it's saved to an MP4 in its `exports` folder, as the model's `start_export` does, in the editor's own process. Edits made while it runs aren't in it.
 
-It shows the progress, Stop ends it, and Show in folder opens File Explorer on the file. Replacing a file asks first, and closing the window or the project while an export runs asks whether to stop it. The files already in the `exports` folder are listed below; click one to show it.
+- **File name**, and **Save to**: the project's `exports` folder, which Show folder opens. Exports always go there.
+- **Preset** cards: the project's settings or a preset, each with the size and frame rate it exports at (a preset keeps the project's frame rate). A preset of another shape than the canvas says what it needs ("Needs a 9:16 project"); ask Claude to change the canvas first.
+- **Language version**, when layers are tagged with languages: every layer, or one language's version. **Also save .srt files** saves each caption track you tick next to the video once the export is done, as `export_srt` writes it: `talk.mp4`'s English captions in `talk.en.srt`, captions without a language in `talk.srt`.
+- **Quality**: High (`start_export`'s crf 18, the default), Balanced (23) or Small (28), a smaller file with a softer picture. The format is always MP4 with H.264 video.
+- The card on the right shows a picture of the project, the resolution, frame rate, duration and captions the export will have, and **Export**.
+
+Under **Exports folder**, an export running here has its progress and Stop; exports Claude runs on this project (from the server's job records) show their progress and can't be stopped here. Each file in the folder has Play, which opens it in the default video player, and Show in folder. Replacing a file asks first, and closing the window or the project while an export runs asks whether to stop it.
 
 ## Working with the model
 

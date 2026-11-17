@@ -294,13 +294,66 @@
     </local:InspectorTemplates>
 
     <DataTemplate x:Key="ChoiceTemplate">
-      <RadioButton x:Name="Choice" Style="{StaticResource SegmentButton}" Content="{Binding Name}" GroupName="{Binding Group}" IsChecked="{Binding Selected, Mode=OneTime}"
+      <RadioButton x:Name="Choice" Style="{StaticResource SegmentButton}" Content="{Binding Label}" GroupName="{Binding Group}" IsChecked="{Binding Selected, Mode=OneTime}"
                    IsEnabled="{Binding Usable}" ToolTip="{Binding Tip}" ToolTipService.ShowOnDisabled="True" Tag="{Binding}" Click="OnPageChoice" />
       <DataTemplate.Triggers>
         <DataTrigger Binding="{Binding Usable}" Value="False">
           <Setter TargetName="Choice" Property="Opacity" Value="0.45" />
         </DataTrigger>
       </DataTemplate.Triggers>
+    </DataTemplate>
+
+    <!-- The Export view: a preset's card (its title, then the size and frame rate, or what it needs),
+         a caption group to save as an .srt file, Claude's running export, and an exported file. -->
+    <DataTemplate x:Key="PresetCardTemplate">
+      <RadioButton Style="{StaticResource ChoiceCard}" GroupName="{Binding Group}" IsChecked="{Binding Selected, Mode=OneTime}" IsEnabled="{Binding Usable}"
+                   ToolTip="{Binding Tip}" ToolTipService.ShowOnDisabled="True" Tag="{Binding}" Click="OnPageChoice" Margin="0,0,10,0">
+        <StackPanel>
+          <TextBlock Text="{Binding Label}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+          <TextBlock x:Name="Detail" Text="{Binding Detail}" FontSize="12" Foreground="{StaticResource SecondaryTextBrush}" TextTrimming="CharacterEllipsis" Margin="0,4,0,0" />
+        </StackPanel>
+      </RadioButton>
+      <DataTemplate.Triggers>
+        <DataTrigger Binding="{Binding Usable}" Value="False">
+          <Setter TargetName="Detail" Property="Foreground" Value="{StaticResource UnusableTextBrush}" />
+        </DataTrigger>
+      </DataTemplate.Triggers>
+    </DataTemplate>
+
+    <DataTemplate x:Key="SrtChoiceTemplate">
+      <CheckBox Content="{Binding Label}" IsChecked="{Binding Selected, Mode=OneTime}" Tag="{Binding}" ToolTip="{Binding Tip}" Click="OnSrtChoice" Margin="16,0,0,0" />
+    </DataTemplate>
+
+    <DataTemplate x:Key="RunningExportCard">
+      <Border Background="{StaticResource HeaderBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="10" Padding="14,12" Margin="0,0,0,8">
+        <StackPanel>
+          <DockPanel>
+            <TextBlock DockPanel.Dock="Right" Text="{Binding Status}" FontSize="12" Foreground="{StaticResource AccentSoftTextBrush}" Margin="8,0,0,0" />
+            <TextBlock Text="{Binding Name}" FontWeight="Medium" TextTrimming="CharacterEllipsis" />
+          </DockPanel>
+          <ProgressBar Height="4" Maximum="100" Value="{Binding Percent, Mode=OneWay}" Margin="0,8" />
+          <TextBlock Text="{Binding By}" Style="{StaticResource Secondary}" />
+        </StackPanel>
+      </Border>
+    </DataTemplate>
+
+    <DataTemplate x:Key="ExportFileCard">
+      <Border Background="{StaticResource HeaderBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="10" Padding="14,12" Margin="0,0,0,8">
+        <DockPanel>
+          <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center" Margin="10,0,0,0">
+            <Button Style="{StaticResource SquareButton}" Click="OnPlayExportFile" Tag="{Binding Path}" ToolTip="Play it in the default video player" AutomationProperties.Name="Play">
+              <local:Icon Data="{StaticResource PlayShape}" Filled="True" Width="12" Height="12" />
+            </Button>
+            <Button Style="{StaticResource SquareButton}" Margin="8,0,0,0" Click="OnShowExportFile" Tag="{Binding Path}" ToolTip="Show it in its folder" AutomationProperties.Name="Show in folder">
+              <local:Icon Data="{StaticResource FolderShape}" Width="14" Height="14" />
+            </Button>
+          </StackPanel>
+          <StackPanel VerticalAlignment="Center">
+            <TextBlock Text="{Binding Name}" FontWeight="Medium" TextTrimming="CharacterEllipsis" />
+            <TextBlock Text="{Binding Details}" Style="{StaticResource Secondary}" Margin="0,2,0,0" />
+          </StackPanel>
+        </DockPanel>
+      </Border>
     </DataTemplate>
 
     <!-- Home's projects: cards in as many columns as fit (the list's Tag is its HomeLayout), or rows. -->
@@ -583,62 +636,182 @@
     </ScrollViewer>
 
     <ScrollViewer x:Name="ExportPage" Grid.Row="1" VerticalScrollBarVisibility="Auto" Focusable="False" Visibility="Collapsed">
-      <StackPanel Width="720" Margin="32,40,32,32" HorizontalAlignment="Center">
-        <TextBlock Text="Export" FontSize="22" FontWeight="SemiBold" />
-        <TextBlock Style="{StaticResource Secondary}" FontSize="12" TextWrapping="Wrap" TextTrimming="None" Margin="0,6,0,18"
-                   Text="Renders the project as it is saved now to an MP4 in its exports folder, as Claude's start_export does. Edits made while it runs aren't in it." />
-        <Grid Grid.IsSharedSizeScope="True">
-          <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="110" />
-            <ColumnDefinition Width="*" />
-          </Grid.ColumnDefinitions>
-          <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-          </Grid.RowDefinitions>
-          <TextBlock Text="File name" Foreground="{StaticResource SecondaryTextBrush}" VerticalAlignment="Center" />
-          <TextBox x:Name="ExportName" Grid.Column="1" Width="360" HorizontalAlignment="Left" ToolTip="Saved in the project's exports folder" />
-          <TextBlock Grid.Row="1" Text="Preset" Foreground="{StaticResource SecondaryTextBrush}" VerticalAlignment="Center" Margin="0,12,0,0" />
-          <ItemsControl x:Name="ExportPresets" Grid.Row="1" Grid.Column="1" Margin="0,12,0,0" Focusable="False" ItemTemplate="{StaticResource ChoiceTemplate}">
+      <Grid MaxWidth="1280" Margin="40,32">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="*" />
+          <ColumnDefinition Width="32" />
+          <ColumnDefinition Width="340" />
+        </Grid.ColumnDefinitions>
+        <StackPanel>
+          <TextBlock Text="Export video" FontSize="24" FontWeight="SemiBold" />
+          <TextBlock Foreground="{StaticResource SecondaryTextBrush}" TextWrapping="Wrap" LineHeight="20" Margin="0,6,0,0">
+            <Run Text="Renders the project as it is saved now, the same as Claude's" />
+            <Run Text="start_export" FontFamily="Consolas" Foreground="{StaticResource AccentSoftTextBrush}" /><Run Text=". Edits made while it runs aren't in it." />
+          </TextBlock>
+          <Grid Margin="0,28,0,0">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition />
+              <ColumnDefinition Width="14" />
+              <ColumnDefinition />
+            </Grid.ColumnDefinitions>
+            <StackPanel>
+              <TextBlock Text="File name" Foreground="{StaticResource IconTextBrush}" FontWeight="Medium" Margin="0,0,0,6" />
+              <TextBox x:Name="ExportName" Background="{StaticResource HeaderBrush}" FontWeight="Medium" Padding="12,9" ToolTip="The MP4's name in the project's exports folder" />
+            </StackPanel>
+            <StackPanel Grid.Column="2">
+              <TextBlock Text="Save to" Foreground="{StaticResource IconTextBrush}" FontWeight="Medium" Margin="0,0,0,6" />
+              <Border Height="38" CornerRadius="8" Background="{StaticResource HeaderBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" Padding="12,0,4,0">
+                <DockPanel>
+                  <Button DockPanel.Dock="Right" Content="Show folder" Height="28" Padding="10,0" FontSize="12" Background="{StaticResource ChosenBrush}" BorderBrush="Transparent" VerticalAlignment="Center"
+                          Click="OnShowExportsFolder" ToolTip="Open the exports folder in File Explorer; exports always go there, as start_export's do" />
+                  <TextBlock x:Name="ExportFolder" FontFamily="Consolas" FontSize="12" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" Margin="0,0,8,0" />
+                </DockPanel>
+              </Border>
+            </StackPanel>
+          </Grid>
+          <TextBlock Text="PRESET" Style="{StaticResource PanelTitle}" Margin="0,28,0,10" />
+          <ItemsControl x:Name="ExportPresets" Focusable="False" Margin="0,0,-10,0" ItemTemplate="{StaticResource PresetCardTemplate}">
             <ItemsControl.ItemsPanel>
               <ItemsPanelTemplate>
-                <WrapPanel />
+                <UniformGrid Rows="1" />
               </ItemsPanelTemplate>
             </ItemsControl.ItemsPanel>
           </ItemsControl>
-          <TextBlock x:Name="ExportLanguageLabel" Grid.Row="2" Text="Language" Foreground="{StaticResource SecondaryTextBrush}" VerticalAlignment="Center" Margin="0,12,0,0" />
-          <ItemsControl x:Name="ExportLanguages" Grid.Row="2" Grid.Column="1" Margin="0,12,0,0" Focusable="False" ItemTemplate="{StaticResource ChoiceTemplate}">
-            <ItemsControl.ItemsPanel>
-              <ItemsPanelTemplate>
-                <WrapPanel />
-              </ItemsPanelTemplate>
-            </ItemsControl.ItemsPanel>
-          </ItemsControl>
-        </Grid>
-        <StackPanel Orientation="Horizontal" Margin="0,20,0,0">
-          <Button x:Name="ExportButton" Style="{StaticResource AccentButton}" Content="Export" Click="OnExport" />
-          <Button x:Name="StopExportButton" Content="Stop" Margin="8,0,0,0" Click="OnStopExport" Visibility="Collapsed" />
-          <Button x:Name="ShowExportButton" Content="Show in folder" Margin="8,0,0,0" Click="OnShowExport" Visibility="Collapsed" />
-        </StackPanel>
-        <ProgressBar x:Name="ExportProgress" Height="6" Maximum="100" Margin="0,16,0,0" Visibility="Collapsed" />
-        <TextBlock x:Name="ExportStatus" TextWrapping="Wrap" Margin="0,8,0,0" />
-        <TextBlock Text="IN THE EXPORTS FOLDER" Style="{StaticResource PanelTitle}" Margin="0,28,0,6" />
-        <ItemsControl x:Name="ExportFiles" Focusable="False">
-          <ItemsControl.ItemTemplate>
-            <DataTemplate>
-              <Button Style="{StaticResource ListButton}" Click="OnShowExportFile" Tag="{Binding Path}" ToolTip="Show it in its folder">
-                <StackPanel>
-                  <TextBlock Text="{Binding Name}" FontSize="13" TextTrimming="CharacterEllipsis" />
-                  <TextBlock Text="{Binding Details}" Style="{StaticResource Secondary}" Margin="0,2,0,0" />
-                </StackPanel>
+          <StackPanel x:Name="ExportCaptionsSection" Margin="0,28,0,0">
+            <TextBlock Text="LANGUAGE &amp; CAPTIONS" Style="{StaticResource PanelTitle}" Margin="0,0,0,10" />
+            <Border CornerRadius="10" Background="{StaticResource HeaderBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1">
+              <StackPanel>
+                <DockPanel x:Name="ExportLanguageRow" Margin="14,12">
+                  <Border DockPanel.Dock="Right" Background="{StaticResource InputBrush}" CornerRadius="7" Padding="2" VerticalAlignment="Center">
+                    <ItemsControl x:Name="ExportLanguages" Focusable="False" ItemTemplate="{StaticResource ChoiceTemplate}">
+                      <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                          <StackPanel Orientation="Horizontal" />
+                        </ItemsPanelTemplate>
+                      </ItemsControl.ItemsPanel>
+                    </ItemsControl>
+                  </Border>
+                  <StackPanel VerticalAlignment="Center" Margin="0,0,12,0">
+                    <TextBlock Text="Language version" FontWeight="Medium" />
+                    <TextBlock Text="Layers tagged with another language are left out" Style="{StaticResource Secondary}" FontSize="12" Margin="0,2,0,0" />
+                  </StackPanel>
+                </DockPanel>
+                <Border x:Name="ExportCaptionsDivider" Height="1" Background="{StaticResource DividerBrush}" />
+                <DockPanel x:Name="ExportSrtRow" Margin="14,12">
+                  <ItemsControl x:Name="ExportSubtitles" DockPanel.Dock="Right" Focusable="False" VerticalAlignment="Center" ItemTemplate="{StaticResource SrtChoiceTemplate}">
+                    <ItemsControl.ItemsPanel>
+                      <ItemsPanelTemplate>
+                        <StackPanel Orientation="Horizontal" />
+                      </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                  </ItemsControl>
+                  <StackPanel VerticalAlignment="Center" Margin="0,0,12,0">
+                    <TextBlock Text="Also save .srt files" FontWeight="Medium" />
+                    <TextBlock Text="Upload these to YouTube as subtitle tracks" Style="{StaticResource Secondary}" FontSize="12" Margin="0,2,0,0" />
+                  </StackPanel>
+                </DockPanel>
+              </StackPanel>
+            </Border>
+          </StackPanel>
+          <TextBlock Text="FORMAT &amp; QUALITY" Style="{StaticResource PanelTitle}" Margin="0,28,0,10" />
+          <Grid>
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition />
+              <ColumnDefinition Width="10" />
+              <ColumnDefinition />
+              <ColumnDefinition Width="10" />
+              <ColumnDefinition />
+            </Grid.ColumnDefinitions>
+            <StackPanel>
+              <TextBlock Text="Format" Foreground="{StaticResource IconTextBrush}" FontWeight="Medium" Margin="0,0,0,6" />
+              <TextBlock Text="MP4 · H.264" FontWeight="Medium" Height="36" Padding="0,9,0,0" ToolTip="H.264 video and AAC sound in an MP4 file, as start_export makes them" />
+            </StackPanel>
+            <StackPanel Grid.Column="2">
+              <TextBlock Text="Quality" Foreground="{StaticResource IconTextBrush}" FontWeight="Medium" Margin="0,0,0,6" />
+              <Button x:Name="QualityButton" Style="{StaticResource FieldButton}" Click="OnQualityMenu" ToolTip="How much the video is compressed: start_export's crf">
+                <DockPanel>
+                  <local:Icon DockPanel.Dock="Right" Data="{StaticResource ChevronDownShape}" Thickness="2.5" Width="10" Height="10" />
+                  <TextBlock x:Name="QualityText" VerticalAlignment="Center" />
+                </DockPanel>
               </Button>
-            </DataTemplate>
-          </ItemsControl.ItemTemplate>
-        </ItemsControl>
-        <TextBlock x:Name="ExportFilesEmpty" Style="{StaticResource Secondary}" FontSize="12" TextWrapping="Wrap" TextTrimming="None" Visibility="Collapsed"
-                   Text="No exports yet." />
-      </StackPanel>
+            </StackPanel>
+          </Grid>
+        </StackPanel>
+
+        <StackPanel Grid.Column="2">
+          <Border CornerRadius="14" Background="{StaticResource HeaderBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1">
+            <StackPanel>
+              <Grid Height="190">
+                <Border CornerRadius="13,13,0,0" Background="{StaticResource PictureBrush}" />
+                <Border x:Name="ExportPicture" CornerRadius="13,13,0,0" />
+                <Border Background="{StaticResource BadgeBrush}" CornerRadius="5" Padding="6,2" Margin="10" HorizontalAlignment="Right" VerticalAlignment="Bottom">
+                  <TextBlock x:Name="ExportLength" FontFamily="Consolas" FontSize="11" />
+                </Border>
+              </Grid>
+              <StackPanel Margin="16">
+                <Grid TextElement.FontSize="12">
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                  </Grid.ColumnDefinitions>
+                  <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                  </Grid.RowDefinitions>
+                  <TextBlock Text="Resolution" Foreground="{StaticResource SecondaryTextBrush}" />
+                  <TextBlock x:Name="ExportResolution" Grid.Column="1" TextAlignment="Right" />
+                  <TextBlock Grid.Row="1" Text="Frame rate" Foreground="{StaticResource SecondaryTextBrush}" Margin="0,8,0,0" />
+                  <TextBlock x:Name="ExportFps" Grid.Row="1" Grid.Column="1" TextAlignment="Right" Margin="0,8,0,0" />
+                  <TextBlock Grid.Row="2" Text="Duration" Foreground="{StaticResource SecondaryTextBrush}" Margin="0,8,0,0" />
+                  <TextBlock x:Name="ExportDuration" Grid.Row="2" Grid.Column="1" TextAlignment="Right" Margin="0,8,0,0" />
+                  <TextBlock Grid.Row="3" Text="Captions" Foreground="{StaticResource SecondaryTextBrush}" Margin="0,8,0,0" />
+                  <TextBlock x:Name="ExportCaptions" Grid.Row="3" Grid.Column="1" TextAlignment="Right" TextWrapping="Wrap" Margin="16,8,0,0" />
+                </Grid>
+                <Button x:Name="ExportButton" Style="{StaticResource AccentButton}" Height="44" FontSize="14" Margin="0,16,0,0" Click="OnExport"
+                        ToolTip="Export the project as it is saved now with these settings">
+                  <StackPanel Orientation="Horizontal">
+                    <local:Icon Data="{StaticResource ExportShape}" Thickness="2.2" Width="16" Height="16" />
+                    <TextBlock Text="Export" Margin="8,0,0,0" />
+                  </StackPanel>
+                </Button>
+              </StackPanel>
+            </StackPanel>
+          </Border>
+          <TextBlock x:Name="ExportStatus" TextWrapping="Wrap" FontSize="12" Margin="0,12,0,0">
+            <TextBlock.Style>
+              <Style TargetType="TextBlock">
+                <Style.Triggers>
+                  <Trigger Property="Text" Value="">
+                    <Setter Property="Visibility" Value="Collapsed" />
+                  </Trigger>
+                </Style.Triggers>
+              </Style>
+            </TextBlock.Style>
+          </TextBlock>
+          <TextBlock Text="EXPORTS FOLDER" Style="{StaticResource PanelTitle}" Margin="0,20,0,8" />
+          <Border x:Name="OwnExport" Background="{StaticResource HeaderBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="10" Padding="14,12" Margin="0,0,0,8"
+                  Visibility="Collapsed">
+            <StackPanel>
+              <DockPanel>
+                <TextBlock x:Name="OwnExportStatus" DockPanel.Dock="Right" FontSize="12" Foreground="{StaticResource AccentSoftTextBrush}" Margin="8,0,0,0" />
+                <TextBlock x:Name="OwnExportName" FontWeight="Medium" TextTrimming="CharacterEllipsis" />
+              </DockPanel>
+              <ProgressBar x:Name="ExportProgress" Height="4" Maximum="100" Margin="0,8" />
+              <DockPanel>
+                <Button x:Name="StopExportButton" DockPanel.Dock="Right" Style="{StaticResource LinkButton}" Content="Stop" FontSize="11" FontWeight="Medium" Foreground="{StaticResource AccentHoverBrush}"
+                        Click="OnStopExport" ToolTip="Stop this export; nothing is written to its file" />
+                <TextBlock x:Name="OwnExportBy" Style="{StaticResource Secondary}" VerticalAlignment="Center" />
+              </DockPanel>
+            </StackPanel>
+          </Border>
+          <ItemsControl x:Name="ExportClaude" Focusable="False" ItemTemplate="{StaticResource RunningExportCard}" />
+          <ItemsControl x:Name="ExportFiles" Focusable="False" ItemTemplate="{StaticResource ExportFileCard}" />
+          <TextBlock x:Name="ExportFilesEmpty" Style="{StaticResource Secondary}" FontSize="12" TextWrapping="Wrap" TextTrimming="None" Visibility="Collapsed"
+                     Text="No exports yet." />
+        </StackPanel>
+      </Grid>
     </ScrollViewer>
 
     <Grid x:Name="Workspace" Grid.Row="1" Visibility="Collapsed">

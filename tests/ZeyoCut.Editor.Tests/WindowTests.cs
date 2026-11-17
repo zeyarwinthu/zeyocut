@@ -839,6 +839,83 @@ public class WindowTests
     }
 
     // A project with a title from 0 to 2 s, open with the title selected.
+    // The Export view exports at the quality chosen, which reaches the encoder as start_export's crf,
+    // and saves the captions chosen as .srt files, the same files export_srt writes. Its cards say what
+    // a preset needs, and a file's card plays the file or shows it in its folder.
+    [Fact]
+    public void TheExportViewExportsAtTheQualityChosenWithTheSrtFilesExportSrtWrites() => TestWindow.Run("window-export", (window, folder) =>
+    {
+        var project = TestFiles.Project(duration: 1);
+        ProjectEditor.AddTextLayer(project, new TextLayerOptions { Id = "title", Text = "Hello", Start = 0, End = 1 });
+        CaptionTracks.Add(project, "en", CaptionTracks.Check([new CueEntry(0, 0.5, "Hello"), new CueEntry(0.5, 1, "there")], project.Duration).Cues, new CaptionOptions(), [], null);
+        var directory = Path.Combine(folder, "talk");
+        ProjectSession.Create(directory, project);
+        window.OpenProject(directory);
+        Click(window, "ExportViewButton");
+        TestWindow.Pump();
+
+        var presets = ((ItemsControl)window.FindName("ExportPresets")).Items.Cast<PageChoice>().ToList();
+        Assert.Equal(["Project settings", "YouTube 1080p", "Shorts 1080p"], presets.Select(p => p.Label));
+        Assert.Equal(["320×180 · 30 fps", "1920×1080 · 30 fps", "Needs a 9:16 project"], presets.Select(p => p.Detail));
+        Assert.Equal([true, true, false], Descendants<RadioButton>((ItemsControl)window.FindName("ExportPresets")).Select(b => b.IsEnabled));
+        Assert.Equal(ProjectList.Shorten(Path.Combine(directory, ProjectStore.ExportsFolder)), Text(window, "ExportFolder"));
+        Assert.Equal(["320×180", "30 fps", "0:01.0", "EN burned in"], new[] { "ExportResolution", "ExportFps", "ExportDuration", "ExportCaptions" }.Select(n => Text(window, n)));
+        Assert.Equal("High", Text(window, "QualityText"));
+        Assert.Equal(Visibility.Visible, Shown(window, "ExportFilesEmpty"));
+
+        // Small, from the Quality list, and the English captions as an .srt file too.
+        Click(window, "QualityButton");
+        ChooseInMenu("Small");
+        Assert.Equal("Small", Text(window, "QualityText"));
+        var srt = Descendants<CheckBox>((ItemsControl)window.FindName("ExportSubtitles")).Single();
+        Assert.Equal("EN", srt.Content);
+        srt.IsChecked = true;
+        srt.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+        Assert.Equal("EN burned in + .srt", Text(window, "ExportCaptions"));
+
+        // While it runs, its card can stop it; once it's done, the status says what was saved.
+        Click(window, "ExportButton");
+        Assert.Equal(Visibility.Visible, Shown(window, "OwnExport"));
+        Assert.Equal("talk.mp4", Text(window, "OwnExportName"));
+        for (var i = 0; i < 12000 && Shown(window, "OwnExport") == Visibility.Visible; i++)
+        {
+            TestWindow.Pump(10);
+        }
+
+        var status = Text(window, "ExportStatus");
+        Assert.StartsWith("Saved talk.mp4 — ", status);
+        Assert.Matches(@"encoder: \S+ \([^)]*\b(CRF 28|QP 29|CQ 29|global_quality 29)\)", status);
+        Assert.Contains("Saved talk.en.srt next to it.", status);
+
+        // The .srt file is the one export_srt writes for the English captions.
+        var written = CaptionBuilder.WriteSrt(Path.Combine(folder, "export_srt"), CaptionBuilder.SrtFileName("talk.en.srt"), CaptionBuilder.GroupCues(ProjectStore.Load(directory), CaptionTracks.GroupId("en")));
+        Assert.Equal(File.ReadAllBytes(written), File.ReadAllBytes(Path.Combine(directory, ProjectStore.ExportsFolder, "talk.en.srt")));
+
+        // The file's card plays it in the default player or shows it in its folder.
+        TestWindow.Pump();
+        var file = Assert.Single(((ItemsControl)window.FindName("ExportFiles")).Items.Cast<ExportFile>());
+        Assert.Equal("talk.mp4", file.Name);
+        Assert.Contains(" · Today ", file.Details);
+        var buttons = Descendants<Button>((ItemsControl)window.FindName("ExportFiles")).ToList();
+        Assert.Equal(["Play it in the default video player", "Show it in its folder"], buttons.Select(b => (string)b.ToolTip));
+        Assert.All(buttons, b => Assert.Equal(file.Path, b.Tag));
+        Assert.Equal(Visibility.Collapsed, Shown(window, "ExportFilesEmpty"));
+    });
+
+    // Clicks the item of the drop-down list open now whose header starts with text, and closes it.
+    private static void ChooseInMenu(string text)
+    {
+        TestWindow.Pump();
+        var item = PresentationSource.CurrentSources.OfType<System.Windows.Interop.HwndSource>()
+            .Where(s => s.RootVisual is not null)
+            .SelectMany(s => Descendants<MenuItem>(s.RootVisual))
+            .First(i => i.Header is string header && header.StartsWith(text, StringComparison.Ordinal));
+        var menu = (ContextMenu)ItemsControl.ItemsControlFromItemContainer(item);
+        item.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+        menu.IsOpen = false;
+        TestWindow.Pump();
+    }
+
     private static string WithTitle(MainWindow window, string folder)
     {
         var project = TestFiles.Project();

@@ -59,7 +59,7 @@ public static class TimelineLayout
         foreach (var group in groups)
         {
             var cues = project.Layers.Where(l => l.ParentId == group.Id && l is VisualLayer).ToList();
-            var language = group.Language ?? (group.Id.StartsWith(CaptionBuilder.DefaultGroup + "_", StringComparison.Ordinal) ? group.Id[(CaptionBuilder.DefaultGroup.Length + 1)..] : null);
+            var language = CaptionLanguage(group);
             var title = language is null ? "Captions" : $"Captions · {language.ToUpperInvariant()}";
             visual.Add(Lane($"captions:{group.Id}", LaneKind.Captions, title, group.ZIndex, null, cues.Select(c => Clip(project, c, ClipKind.Caption, 0, marks)).ToList()));
         }
@@ -102,6 +102,10 @@ public static class TimelineLayout
     // The null image layer generate_captions and add_caption_track hold their cues in.
     public static bool IsCaptionGroup(Layer layer) =>
         layer is ImageLayer { Drawings.Count: 0 } && (layer.Id == CaptionBuilder.DefaultGroup || layer.Id.StartsWith(CaptionBuilder.DefaultGroup + "_", StringComparison.Ordinal));
+
+    // A caption group's language: its tag, or else what its id has after captions_ (captions_ja).
+    public static string? CaptionLanguage(Layer group) =>
+        group.Language ?? (group.Id.StartsWith(CaptionBuilder.DefaultGroup + "_", StringComparison.Ordinal) ? group.Id[(CaptionBuilder.DefaultGroup.Length + 1)..] : null);
 
     // Every clip's start and end, in time order, once each.
     public static IReadOnlyList<double> EditPoints(IEnumerable<TimelineLane> lanes) =>

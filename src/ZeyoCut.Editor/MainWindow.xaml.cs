@@ -35,8 +35,9 @@ public sealed record MediaItem(string Id, string Kind, Brush Badge, string Detai
     public string Tip { get; init; } = "";
 }
 
-// An option of the Export view's preset and language choices.
-public sealed record PageChoice(string Group, string Name, bool Selected, bool Usable, string? Tip);
+// An option of the Export view: a preset's card (its title, and its size or what it needs), a
+// language, or a caption group to save as an .srt file.
+public sealed record PageChoice(string Group, string Name, string Label, string? Detail, bool Selected, bool Usable, string? Tip);
 
 // The editor window: the start page until a project is open, then the media library (left), the
 // preview at the playhead (center), the inspector (right) and the timeline (bottom). Every change
@@ -73,6 +74,9 @@ public partial class MainWindow : Window
     private readonly JobManager _jobs = new();
     private readonly ExportJobManager _exports;
     private readonly ExportStart _exportStart;
+
+    // The jobs folder ZeyoCut servers keep their records in, where Claude's running exports are read.
+    private readonly JobStore? _serverJobs;
     private readonly HashSet<string> _running = new(StringComparer.Ordinal);
     private readonly DispatcherTimer _poll;
     private readonly DispatcherTimer _settle;
@@ -173,6 +177,20 @@ public partial class MainWindow : Window
     private ExportState? _exportShown;
     private string _exportPreset = ExportChoices.ProjectSettings;
     private string _exportLanguage = ExportChoices.EveryLanguage;
+    private string _exportQuality = ExportChoices.Qualities[0].Name;
+
+    // The caption groups to save as .srt files with the next export.
+    private readonly HashSet<string> _exportSrt = new(StringComparer.Ordinal);
+
+    // The .srt files the export this window started saves once it's done, with their cues from the
+    // project as it was exported, and what saving them said.
+    private IReadOnlyList<(string Name, List<(double Start, double End, string Text)> Cues)> _exportSrtFiles = [];
+    private string? _exportSrtNote;
+
+    // Claude's exports of the project, as last read from the jobs folder, and when.
+    private IReadOnlyList<RunningExport> _claudeExports = [];
+    private DateTime _claudeExportsRead;
+    private bool _readingClaudeExports;
     private string? _encoderWarning;
 
     public MainWindow(Settings settings, string settingsPath)
@@ -192,6 +210,7 @@ public partial class MainWindow : Window
 
         _exportStart = new ExportStart(encoder, settings.LibraryPath ?? Settings.DefaultLibraryPath, Ffmpeg);
         _exports = new ExportJobManager { ChooseEncoder = crf => _exportStart.ChooseEncoder(crf) };
+        _serverJobs = settings.JobsDirectory is { } jobs ? new JobStore(jobs) : null;
         InitializeComponent();
         RestorePlacement();
         SnapToggle.IsChecked = Timeline.Snapping = _prefs.Snapping;
@@ -595,6 +614,9 @@ public partial class MainWindow : Window
         ExportName.Text = ExportChoices.DefaultFileName(directory);
         _exportPreset = ExportChoices.ProjectSettings;
         _exportLanguage = ExportChoices.EveryLanguage;
+        _exportSrt.Clear();
+        _claudeExports = [];
+        ExportClaude.ItemsSource = null;
         ExportStatus.Text = "";
         StartPage.Visibility = Visibility.Collapsed;
         _projectPictures?.Forget();
@@ -1966,6 +1988,11 @@ public partial class MainWindow : Window
             }
             else if (_exportShown == ExportState.Running)
             {
+                if (export.State == ExportState.Completed)
+                {
+                    SaveSubtitles(export);
+                }
+
                 Message(ExportOutcome(export));
                 ExportFilesChanged();
             }
@@ -1975,6 +2002,11 @@ public partial class MainWindow : Window
             {
                 ShowExportState();
             }
+        }
+
+        if (ExportPage.Visibility == Visibility.Visible && DateTime.UtcNow - _claudeExportsRead > TimeSpan.FromSeconds(2))
+        {
+            _ = ReadClaudeExports();
         }
 
         JobsText.Text = string.Join(" · ", progress);
@@ -2248,7 +2280,6 @@ public partial class MainWindow : Window
     // picture once ProjectThumbnails has drawn it, and only those whose names have the search text.
     private void ShowHome()
     {
-        _projectPictures ??= new ProjectThumbnails(() => Ffmpeg().Ffmpeg, _ => Dispatcher.InvokeAsync(ShowPictures));
         var search = HomeSearch.Text.Trim();
         var (recent, others) = ProjectList.Group(_homeRecent, _homeProjects, search);
         RecentList.ItemsSource = recent.Select(WithPicture).ToList();
@@ -2264,17 +2295,21 @@ public partial class MainWindow : Window
         ProjectsEmpty.Visibility = _homeProjects.Count == 0 && search.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
     }
 
-    // A picture fits its card whole: a Shorts project's stands in the middle.
-    private ProjectEntry WithPicture(ProjectEntry entry)
+    private ProjectEntry WithPicture(ProjectEntry entry) => PictureOf(entry) is { } picture ? entry with { Picture = picture } : entry;
+
+    // A project's picture (on Home's cards and the Export view's summary) once it's drawn. It fits
+    // whole: a Shorts project's stands in the middle.
+    private Brush? PictureOf(ProjectEntry entry)
     {
-        if (_projectPictures?.Get(entry) is not { } picture)
+        _projectPictures ??= new ProjectThumbnails(() => Ffmpeg().Ffmpeg, _ => Dispatcher.InvokeAsync(ShowPictures));
+        if (_projectPictures.Get(entry) is not { } picture)
         {
-            return entry;
+            return null;
         }
 
         var brush = new ImageBrush(picture) { Stretch = Stretch.Uniform };
         brush.Freeze();
-        return entry with { Picture = brush };
+        return brush;
     }
 
     // Pictures drawn in a row are shown together.
@@ -2292,6 +2327,10 @@ public partial class MainWindow : Window
             if (StartPage.Visibility == Visibility.Visible)
             {
                 ShowHome();
+            }
+            else if (ExportPage.Visibility == Visibility.Visible)
+            {
+                ShowExportSummary();
             }
         });
     }
@@ -2886,42 +2925,91 @@ public partial class MainWindow : Window
             _exportPreset = ExportChoices.ProjectSettings;
         }
 
-        ExportPresets.ItemsSource = presets.Select(p => new PageChoice("ExportPreset", p.Name, p.Name == _exportPreset, p.Usable, p.Tip)).ToList();
+        ExportPresets.ItemsSource = presets.Select(p => new PageChoice("ExportPreset", p.Name, p.Title, p.Detail, p.Name == _exportPreset, p.Usable, p.Tip)).ToList();
         var languages = ExportChoices.Languages(project);
         if (!languages.Contains(_exportLanguage))
         {
             _exportLanguage = ExportChoices.EveryLanguage;
         }
 
-        ExportLanguages.ItemsSource = languages.Select(l => new PageChoice("ExportLanguage", l, l == _exportLanguage, true, l == ExportChoices.EveryLanguage
-            ? "Every layer, whatever its language"
-            : $"The layers in {l} and those without a language; clips whose sound is in another language are muted")).ToList();
-        ExportLanguageLabel.Visibility = ExportLanguages.Visibility = languages.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        ExportLanguages.ItemsSource = languages.Select(l => l == ExportChoices.EveryLanguage
+            ? new PageChoice("ExportLanguage", l, l, null, l == _exportLanguage, true, "Every layer, whatever its language")
+            : new PageChoice("ExportLanguage", l, l.ToUpperInvariant(), null, l == _exportLanguage, true,
+                $"The layers in {l} and those without a language; clips whose sound is in another language are muted")).ToList();
+        var subtitles = ExportChoices.Subtitles(project);
+        _exportSrt.IntersectWith(subtitles.Select(s => s.GroupId));
+        ExportSubtitles.ItemsSource = subtitles.Select(s => new PageChoice("ExportSrt", s.GroupId, s.Label, null, _exportSrt.Contains(s.GroupId), true,
+            $"Also save the captions in '{s.GroupId}' as an .srt file next to the video, as export_srt writes it")).ToList();
+        ExportLanguageRow.Visibility = languages.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        ExportSrtRow.Visibility = subtitles.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        ExportCaptionsDivider.Visibility = languages.Count > 0 && subtitles.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        ExportCaptionsSection.Visibility = languages.Count > 0 || subtitles.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        var exports = Path.Combine(_document.Session.Directory, ProjectStore.ExportsFolder);
+        ExportFolder.Text = ProjectList.Shorten(exports);
+        ExportFolder.ToolTip = exports;
+        QualityText.Text = _exportQuality;
+        ShowExportSummary();
         ShowExportState();
         ExportFilesChanged();
+        _ = ReadClaudeExports();
     }
 
-    // The export this window started last: progress while it runs, what it made when it's done.
+    // The summary card: the project's picture, and what the export will be with these choices.
+    private void ShowExportSummary()
+    {
+        if (_document is not { } document)
+        {
+            return;
+        }
+
+        var project = document.View;
+        var preset = ExportChoices.Presets(project).First(p => p.Name == _exportPreset).Preset;
+        ExportResolution.Text = $"{preset?.Width ?? project.Width}×{preset?.Height ?? project.Height}";
+        ExportFps.Text = $"{project.Fps} fps";
+        ExportDuration.Text = Timecode.Short(project.Duration, tenths: true);
+        ExportLength.Text = Timecode.Short(project.Duration);
+        ExportCaptions.Text = ExportChoices.CaptionsSummary(project, ExportLanguage(), ExportChoices.Subtitles(project).Where(s => _exportSrt.Contains(s.GroupId)).ToList());
+        var directory = document.Session.Directory;
+        ExportPicture.Background = PictureOf(new ProjectEntry(Path.GetFileName(Path.TrimEndingDirectorySeparator(directory)), directory, "", DateTime.Now)
+        {
+            Revision = document.Revision,
+            Width = project.Width,
+            Height = project.Height,
+            Empty = project.Layers.Count == 0,
+            Length = ExportLength.Text,
+        });
+    }
+
+    private string? ExportLanguage() => _exportLanguage == ExportChoices.EveryLanguage ? null : _exportLanguage;
+
+    // The export this window started last: its card while it runs, what it made when it's done.
     private void ShowExportState()
     {
         var job = _export?.Job;
         var running = job is { State: ExportState.Running };
         ExportButton.IsEnabled = !running;
         ExportName.IsEnabled = !running;
-        StopExportButton.Visibility = running ? Visibility.Visible : Visibility.Collapsed;
-        ExportProgress.Visibility = running ? Visibility.Visible : Visibility.Collapsed;
-        ShowExportButton.Visibility = job is { State: ExportState.Completed } && File.Exists(job.OutputPath) ? Visibility.Visible : Visibility.Collapsed;
+        OwnExport.Visibility = running ? Visibility.Visible : Visibility.Collapsed;
         if (job is null)
         {
             return;
         }
 
-        ExportProgress.Value = job.Percent;
-        ExportStatus.Foreground = (Brush)FindResource(job.State == ExportState.Failed ? "ErrorBrush" : "TextBrush");
-        ExportStatus.Text = ExportText(job, _export!.Version);
+        if (running)
+        {
+            OwnExportName.Text = Path.GetFileName(job.OutputPath);
+            OwnExportStatus.Text = $"{(job.FramesDone >= job.TotalFrames ? "Finishing" : "Rendering")} · {job.Percent.ToString("0", CultureInfo.InvariantCulture)}%";
+            OwnExportBy.Text = "Started here" + JobTime.LeftText(job.Percent / 100, DateTime.UtcNow - job.StartedUtc);
+            ExportProgress.Value = job.Percent;
+        }
+
+        ExportStatus.Foreground = (Brush)FindResource(job.State == ExportState.Failed ? "ErrorBrush" : "SecondaryTextBrush");
+        ExportStatus.Text = ExportText(job, _export!.Version, _exportSrtNote);
     }
 
-    private static string ExportText(ExportJob job, LanguageVersion version)
+    // What the export says once it's done (its card shows it while it runs), with the language
+    // version's warnings.
+    private static string ExportText(ExportJob job, LanguageVersion version, string? subtitles)
     {
         var name = Path.GetFileName(job.OutputPath);
         var elapsed = (job.FinishedUtc ?? DateTime.UtcNow) - job.StartedUtc;
@@ -2929,12 +3017,15 @@ public partial class MainWindow : Window
         switch (job.State)
         {
             case ExportState.Running:
-                lines.Add(job.FramesDone >= job.TotalFrames
-                    ? $"Finishing the encode of {name}…"
-                    : $"Exporting {name}: {job.Percent.ToString("0.0", CultureInfo.InvariantCulture)}% ({job.FramesDone}/{job.TotalFrames} frames){JobTime.LeftText(job.Percent / 100, elapsed)}");
                 break;
             case ExportState.Completed:
-                lines.Add($"Saved {ExportSummary.Describe(job.Result!)}");
+                // By its name: the view shows the exports folder it's in.
+                lines.Add($"Saved {name}{ExportSummary.Describe(job.Result!)[job.Result!.OutputPath.Length..]}");
+                if (subtitles is not null)
+                {
+                    lines.Add(subtitles);
+                }
+
                 lines.AddRange((job.Result!.Notes ?? []).Select(n => $"Processing: {n}"));
                 lines.AddRange(job.Result.Warnings.Select(w => $"Warning: {w}"));
                 break;
@@ -2968,6 +3059,71 @@ public partial class MainWindow : Window
         var files = ExportChoices.Files(_document.Session.Directory);
         ExportFiles.ItemsSource = files;
         ExportFilesEmpty.Visibility = files.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    // Claude's exports of this project that ZeyoCut servers run now, read from the jobs folder off
+    // the UI thread, read-only; when one is gone, it's done, and the files are listed again.
+    private async Task ReadClaudeExports()
+    {
+        if (_serverJobs is not { } store || _document is not { } document || _readingClaudeExports)
+        {
+            return;
+        }
+
+        _readingClaudeExports = true;
+        _claudeExportsRead = DateTime.UtcNow;
+        var directory = document.Session.Directory;
+        IReadOnlyList<RunningExport> exports;
+        try
+        {
+            exports = await Task.Run(() => ExportChoices.ServerExports(store.Running(), directory));
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException or ArgumentException)
+        {
+            return;
+        }
+        finally
+        {
+            _readingClaudeExports = false;
+        }
+
+        if (_document?.Session.Directory != directory || exports.SequenceEqual(_claudeExports))
+        {
+            return;
+        }
+
+        var done = _claudeExports.Any(e => exports.All(x => x.Name != e.Name));
+        _claudeExports = exports;
+        ExportClaude.ItemsSource = exports;
+        if (done)
+        {
+            ExportFilesChanged();
+        }
+    }
+
+    // Saves the .srt files chosen for the export that's done, as export_srt writes them.
+    private void SaveSubtitles(ExportJob job)
+    {
+        if (_exportSrtFiles.Count == 0)
+        {
+            return;
+        }
+
+        try
+        {
+            foreach (var (name, cues) in _exportSrtFiles)
+            {
+                CaptionBuilder.WriteSrt(job.ProjectDirectory, name, cues);
+            }
+
+            _exportSrtNote = $"Saved {string.Join(", ", _exportSrtFiles.Select(f => f.Name))} next to it.";
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            _exportSrtNote = $"Couldn't save the .srt files: {ex.Message}";
+        }
+
+        _exportSrtFiles = [];
     }
 
     // Before something that would end the running export: asks whether to stop it. True when no
@@ -3007,8 +3163,34 @@ public partial class MainWindow : Window
             {
                 _exportLanguage = choice.Name;
             }
+
+            ShowExportSummary();
         }
     }
+
+    private void OnSrtChoice(object sender, RoutedEventArgs e)
+    {
+        if (sender is CheckBox { Tag: PageChoice choice } box)
+        {
+            if (box.IsChecked == true)
+            {
+                _exportSrt.Add(choice.Name);
+            }
+            else
+            {
+                _exportSrt.Remove(choice.Name);
+            }
+
+            ShowExportSummary();
+        }
+    }
+
+    private void OnQualityMenu(object sender, RoutedEventArgs e) =>
+        ShowChoices(QualityButton, ExportChoices.Qualities.Select(q => ($"{q.Name} · {q.Tip}", q.Name == _exportQuality, (Action)(() =>
+        {
+            _exportQuality = q.Name;
+            QualityText.Text = q.Name;
+        }))));
 
     // An edit still being saved goes into the export: it waits for it.
     private void OnExport(object sender, RoutedEventArgs e) => WhenSaved(Export);
@@ -3035,8 +3217,15 @@ public partial class MainWindow : Window
             }
 
             var preset = ExportChoices.Presets(document.View).First(p => p.Name == _exportPreset).Preset;
-            var language = _exportLanguage == ExportChoices.EveryLanguage ? null : _exportLanguage;
-            _export = _exportStart.Start(_exports, document.Session.Snapshot(), directory, name, null, preset, language, null);
+            var quality = ExportChoices.Qualities.First(q => q.Name == _exportQuality);
+
+            // The .srt files' cues come from the snapshot before the language version is made of it.
+            var snapshot = document.Session.Snapshot();
+            var subtitles = ExportChoices.Subtitles(snapshot).Where(s => _exportSrt.Contains(s.GroupId));
+            var srt = ExportChoices.SrtFiles(name, subtitles).Select(f => (f.Name, CaptionBuilder.GroupCues(snapshot, f.GroupId))).ToList();
+            _export = _exportStart.Start(_exports, snapshot, directory, name, quality.Crf, preset, ExportLanguage(), null);
+            _exportSrtFiles = srt;
+            _exportSrtNote = null;
             _exportShown = ExportState.Running;
             Message($"Exporting {name}{_export.Version.Note}" + (_encoderWarning is null ? "" : $" ({_encoderWarning})"));
             ShowExportState();
@@ -3056,11 +3245,41 @@ public partial class MainWindow : Window
         }
     }
 
-    private void OnShowExport(object sender, RoutedEventArgs e)
+    // Plays an exported file in the default video player.
+    private void OnPlayExportFile(object sender, RoutedEventArgs e)
     {
-        if (_export?.Job is { } job)
+        var path = (string)((FrameworkElement)sender).Tag;
+        try
         {
-            ShowInFolder(job.OutputPath);
+            using var _ = Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
+        }
+        catch (System.ComponentModel.Win32Exception ex)
+        {
+            Message($"Couldn't play {Path.GetFileName(path)}: {ex.Message}");
+        }
+    }
+
+    private void OnShowExportsFolder(object sender, RoutedEventArgs e)
+    {
+        if (_document is null)
+        {
+            return;
+        }
+
+        var folder = Path.Combine(_document.Session.Directory, ProjectStore.ExportsFolder);
+        if (!Directory.Exists(folder))
+        {
+            Message("The exports folder isn't there yet; the first export makes it.");
+            return;
+        }
+
+        try
+        {
+            using var _ = Process.Start(new ProcessStartInfo("explorer.exe", $"\"{folder}\"") { UseShellExecute = false });
+        }
+        catch (System.ComponentModel.Win32Exception ex)
+        {
+            Message($"Couldn't open File Explorer: {ex.Message}");
         }
     }
 

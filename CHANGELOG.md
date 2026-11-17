@@ -42,8 +42,10 @@ when they open.
   a child layer too, and dragging moves it, redrawn as it goes and saved on release; Shift keeps it
   on one axis and Escape puts it back. A paused frame is drawn again when a file it shows changes
   without a save, such as a matte the server finishes. The Export view renders the project as
-  `start_export` does, with presets, language versions, progress, stop and show in folder, and
-  lists the exports folder. The project's Duration is set in the inspector, and the lanes are
+  `start_export` does, with preset cards, language versions, a quality (crf 18, 23 or 28), .srt
+  files of the caption tracks as `export_srt` writes them, a summary card with a picture of the
+  project, progress and stop, Claude's running exports of the project read from the jobs folder,
+  and the exports folder's files with Play and Show in folder. The project's Duration is set in the inspector, and the lanes are
   shaded past the end, as the ruler is. Its header names the project, whether it's saved and when
   Claude last saved, with undo, redo and the way to Export; the Activity view shows the revision
   and the 20 most recent saves, yours and Claude's. The preview names the canvas, can draw the
