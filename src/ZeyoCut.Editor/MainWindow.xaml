@@ -515,14 +515,26 @@
       </Grid.ColumnDefinitions>
 
       <DockPanel Background="{StaticResource PanelBrush}">
-        <Grid DockPanel.Dock="Top" Background="{StaticResource HeaderBrush}" Height="34">
-          <TextBlock Text="MEDIA" Style="{StaticResource PanelTitle}" Margin="12,0" />
-          <Button HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,6,0" Padding="10,3" Click="OnImport" ToolTip="Import images, audio, fonts or video (Ctrl+I)">
+        <Grid DockPanel.Dock="Top" Margin="12,12,12,0">
+          <TextBlock Text="Media" FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center" />
+          <Button HorizontalAlignment="Right" VerticalAlignment="Center" Padding="10,5" Click="OnImport" ToolTip="Import images, audio, fonts or video (Ctrl+I)">
             <StackPanel Orientation="Horizontal">
-              <TextBlock FontFamily="{StaticResource IconFont}" Text="&#xE710;" FontSize="10" VerticalAlignment="Center" Margin="0,0,6,0" />
+              <local:Icon Data="{StaticResource PlusShape}" Width="12" Height="12" Thickness="2.4" VerticalAlignment="Center" Margin="0,0,6,0" />
               <TextBlock Text="Import" />
             </StackPanel>
           </Button>
+        </Grid>
+        <WrapPanel x:Name="MediaFilters" DockPanel.Dock="Top" Margin="12,12,6,6">
+          <RadioButton x:Name="AllFilter" GroupName="MediaFilter" Style="{StaticResource FilterChip}" Content="All" IsChecked="True" Checked="OnMediaFilter" />
+          <RadioButton GroupName="MediaFilter" Style="{StaticResource FilterChip}" Content="Video" Tag="video" Checked="OnMediaFilter" />
+          <RadioButton GroupName="MediaFilter" Style="{StaticResource FilterChip}" Content="Images" Tag="image" Checked="OnMediaFilter" />
+          <RadioButton GroupName="MediaFilter" Style="{StaticResource FilterChip}" Content="Audio" Tag="audio" Checked="OnMediaFilter" />
+          <RadioButton x:Name="FontsFilter" GroupName="MediaFilter" Style="{StaticResource FilterChip}" Content="Fonts" Tag="font" Checked="OnMediaFilter" Visibility="Collapsed" />
+        </WrapPanel>
+        <Grid DockPanel.Dock="Bottom" Margin="12,8,12,12">
+          <Rectangle RadiusX="10" RadiusY="10" Stroke="{StaticResource ScrollThumbHoverBrush}" StrokeThickness="1" StrokeDashArray="4 3" />
+          <TextBlock Text="Drop files here, or drag media onto the timeline" Style="{StaticResource Secondary}" FontSize="12" TextWrapping="Wrap" TextTrimming="None"
+                     TextAlignment="Center" Margin="12" />
         </Grid>
         <ItemsControl x:Name="PendingList" DockPanel.Dock="Bottom" Focusable="False">
           <ItemsControl.ItemTemplate>
@@ -553,26 +565,47 @@
           </ItemsControl.ItemTemplate>
         </ItemsControl>
         <Grid>
-          <ListBox x:Name="MediaList" SelectionChanged="OnMediaSelected" Padding="0,4" PreviewMouseLeftButtonDown="OnMediaPressed" PreviewMouseMove="OnMediaDragged"
-                   MouseRightButtonUp="OnMediaMenu" ToolTip="Drag onto the timeline to add it there; right-click to add it at the playhead">
+          <ListBox x:Name="MediaList" SelectionChanged="OnMediaSelected" Padding="8,0" PreviewMouseLeftButtonDown="OnMediaPressed" PreviewMouseMove="OnMediaDragged"
+                   MouseRightButtonUp="OnMediaMenu" ItemContainerStyle="{StaticResource MediaTile}">
+            <ListBox.ItemsPanel>
+              <ItemsPanelTemplate>
+                <UniformGrid Columns="2" VerticalAlignment="Top" />
+              </ItemsPanelTemplate>
+            </ListBox.ItemsPanel>
             <ListBox.ItemTemplate>
               <DataTemplate>
-                <Grid>
-                  <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="*" />
-                  </Grid.ColumnDefinitions>
-                  <Border Width="40" Height="22" CornerRadius="3" Background="{Binding Badge}" VerticalAlignment="Center">
-                    <TextBlock Text="{Binding Kind}" FontSize="9" FontWeight="SemiBold" Foreground="#FFFFFF" HorizontalAlignment="Center" VerticalAlignment="Center" />
-                  </Border>
-                  <StackPanel Grid.Column="1" Margin="10,0,0,0">
-                    <TextBlock Text="{Binding Id}" TextTrimming="CharacterEllipsis" />
-                    <TextBlock x:Name="DetailsText" Text="{Binding Details}" Style="{StaticResource Secondary}" />
-                  </StackPanel>
-                </Grid>
+                <StackPanel ToolTip="{Binding Tip}">
+                  <Grid Height="72">
+                    <Border x:Name="Frame" CornerRadius="8" Background="{StaticResource ControlBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" />
+                    <local:Icon x:Name="SoundIcon" Data="{StaticResource MusicShape}" Width="22" Height="22" Foreground="#A98BFF" Visibility="Collapsed" />
+                    <TextBlock x:Name="FontText" Text="Aa" FontSize="20" Foreground="{StaticResource IconTextBrush}" HorizontalAlignment="Center" VerticalAlignment="Center"
+                               Visibility="Collapsed" />
+                    <Border CornerRadius="7" Margin="1" Background="{Binding Picture}" />
+                    <Border Width="8" Height="8" CornerRadius="2" Background="{Binding Badge}" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="6" />
+                    <Border x:Name="LengthBadge" CornerRadius="4" Background="#CC0A0C10" Padding="5,1" HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="5">
+                      <TextBlock Text="{Binding Length}" FontFamily="Consolas" FontSize="10" Foreground="{StaticResource TextBrush}" />
+                    </Border>
+                    <TextBlock x:Name="MissingText" Text="Missing" FontWeight="SemiBold" Foreground="{StaticResource ErrorBrush}" HorizontalAlignment="Center" VerticalAlignment="Center"
+                               Visibility="Collapsed" />
+                  </Grid>
+                  <TextBlock x:Name="NameText" Text="{Binding Id}" Margin="2,6,2,2" TextTrimming="CharacterEllipsis" />
+                </StackPanel>
                 <DataTemplate.Triggers>
+                  <DataTrigger Binding="{Binding Kind}" Value="AUDIO">
+                    <Setter TargetName="SoundIcon" Property="Visibility" Value="Visible" />
+                  </DataTrigger>
+                  <DataTrigger Binding="{Binding Kind}" Value="FONT">
+                    <Setter TargetName="FontText" Property="Visibility" Value="Visible" />
+                  </DataTrigger>
+                  <DataTrigger Binding="{Binding Length}" Value="{x:Null}">
+                    <Setter TargetName="LengthBadge" Property="Visibility" Value="Collapsed" />
+                  </DataTrigger>
                   <DataTrigger Binding="{Binding Missing}" Value="True">
-                    <Setter TargetName="DetailsText" Property="Foreground" Value="{StaticResource ErrorBrush}" />
+                    <Setter TargetName="Frame" Property="BorderBrush" Value="{StaticResource ErrorBrush}" />
+                    <Setter TargetName="NameText" Property="Foreground" Value="{StaticResource ErrorBrush}" />
+                    <Setter TargetName="MissingText" Property="Visibility" Value="Visible" />
+                    <Setter TargetName="SoundIcon" Property="Visibility" Value="Collapsed" />
+                    <Setter TargetName="FontText" Property="Visibility" Value="Collapsed" />
                   </DataTrigger>
                 </DataTemplate.Triggers>
               </DataTemplate>
@@ -724,26 +757,61 @@
       <GridSplitter Grid.Row="1" Grid.ColumnSpan="5" Height="4" HorizontalAlignment="Stretch" ResizeDirection="Rows" ResizeBehavior="PreviousAndNext" />
 
       <DockPanel Grid.Row="2" Grid.ColumnSpan="5" Background="{StaticResource PanelBrush}">
-        <Grid DockPanel.Dock="Top" Background="{StaticResource HeaderBrush}" Height="34">
-          <StackPanel Orientation="Horizontal" Margin="6,0">
-            <TextBlock Text="TIMELINE" Style="{StaticResource PanelTitle}" Margin="6,0,12,0" />
-            <Button x:Name="SplitButton" Style="{StaticResource IconButton}" Content="&#xE8C6;" ToolTip="Split the selected clip at the playhead (S)" Click="OnSplit" />
-            <Button x:Name="DeleteButton" Style="{StaticResource IconButton}" Content="&#xE74D;" ToolTip="Delete the selected clip and its child layers (Delete)" Click="OnDelete" />
-            <ToggleButton x:Name="SnapToggle" Style="{StaticResource ToggleSegment}" Content="Snap" Margin="8,0,0,0" VerticalAlignment="Center"
-                          ToolTip="Snap to clip edges, the playhead and markers" Click="OnSnap" />
-            <Button x:Name="PackButton" Content="Pack lanes" Padding="10,2" Margin="8,0,0,0" VerticalAlignment="Center" Click="OnPackLanes"
-                    ToolTipService.ShowOnDisabled="True" />
-          </StackPanel>
-          <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,0,6,0">
-            <TextBlock Text="Speed" Style="{StaticResource Secondary}" VerticalAlignment="Center" Margin="0,0,4,0" />
-            <RadioButton GroupName="Speed" Style="{StaticResource SegmentButton}" Content="0.5×" Tag="0.5" Checked="OnSpeed" VerticalAlignment="Center" />
-            <RadioButton GroupName="Speed" Style="{StaticResource SegmentButton}" Content="1×" Tag="1" IsChecked="True" Checked="OnSpeed" VerticalAlignment="Center" />
-            <RadioButton GroupName="Speed" Style="{StaticResource SegmentButton}" Content="2×" Tag="2" Checked="OnSpeed" VerticalAlignment="Center" />
-            <Button Style="{StaticResource IconButton}" Content="&#xE71F;" Margin="16,0,0,0" ToolTip="Zoom out (-)" Click="OnTimelineZoomOut" />
-            <Button Style="{StaticResource IconButton}" Content="&#xE8A3;" ToolTip="Zoom in (=)" Click="OnTimelineZoomIn" />
-            <Button Content="Fit" Padding="10,2" VerticalAlignment="Center" ToolTip="The whole project in view (Shift+Z)" Click="OnTimelineFit" />
-          </StackPanel>
-        </Grid>
+        <Border DockPanel.Dock="Top" BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,0,0,1" Height="40">
+          <Grid>
+            <StackPanel Orientation="Horizontal" Margin="10,0" VerticalAlignment="Center">
+              <Border Background="{StaticResource InputBrush}" CornerRadius="7" Padding="2">
+                <StackPanel Orientation="Horizontal">
+                  <RadioButton x:Name="SelectTool" GroupName="Tool" Style="{StaticResource SegmentButton}" Width="30" Height="28" IsChecked="True" Checked="OnTool"
+                               ToolTip="Select: click a clip to select it, drag it to move or trim it (V)" AutomationProperties.Name="Select tool">
+                    <local:Icon Data="{StaticResource SelectShape}" Width="14" Height="14" />
+                  </RadioButton>
+                  <RadioButton x:Name="BladeTool" GroupName="Tool" Style="{StaticResource SegmentButton}" Width="30" Height="28" Checked="OnTool"
+                               ToolTip="Blade: click a clip to split it there (B)" AutomationProperties.Name="Blade tool">
+                    <local:Icon Data="{StaticResource BladeShape}" Width="14" Height="14" />
+                  </RadioButton>
+                </StackPanel>
+              </Border>
+              <Border Width="1" Height="20" Background="{StaticResource BorderBrush}" Margin="8,0" />
+              <Button x:Name="SplitButton" Style="{StaticResource HeaderIcon}" Width="30" Height="28" ToolTip="Split the selected clip at the playhead (S)" Click="OnSplit"
+                      AutomationProperties.Name="Split">
+                <local:Icon Data="{StaticResource SplitShape}" Width="14" Height="14" />
+              </Button>
+              <Button x:Name="DeleteButton" Style="{StaticResource HeaderIcon}" Width="30" Height="28" ToolTip="Delete the selected clip and its child layers (Delete)" Click="OnDelete"
+                      AutomationProperties.Name="Delete">
+                <local:Icon Data="{StaticResource DeleteShape}" Width="14" Height="14" />
+              </Button>
+              <Button x:Name="MarkerButton" Style="{StaticResource HeaderIcon}" Width="30" Height="28" ToolTip="Add a chapter marker at the playhead (M)" Click="OnAddMarker"
+                      AutomationProperties.Name="Add marker">
+                <local:Icon Data="{StaticResource MarkerShape}" Width="14" Height="14" />
+              </Button>
+              <Border Width="1" Height="20" Background="{StaticResource BorderBrush}" Margin="8,0" />
+              <ToggleButton x:Name="SnapToggle" Style="{StaticResource ToggleSegment}" Content="Snap" VerticalAlignment="Center"
+                            ToolTip="Snap to clip edges, the playhead and markers" Click="OnSnap" />
+              <Button x:Name="PackButton" Content="Pack lanes" Padding="10,3" Margin="8,0,0,0" VerticalAlignment="Center" Click="OnPackLanes"
+                      ToolTipService.ShowOnDisabled="True" />
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,0,10,0" VerticalAlignment="Center">
+              <TextBlock Text="Speed" Style="{StaticResource Secondary}" VerticalAlignment="Center" Margin="0,0,6,0" />
+              <Border Background="{StaticResource InputBrush}" CornerRadius="7" Padding="2" Margin="0,0,12,0">
+                <StackPanel Orientation="Horizontal">
+                  <RadioButton GroupName="Speed" Style="{StaticResource SegmentButton}" Content="0.5×" Tag="0.5" Checked="OnSpeed" VerticalAlignment="Center" />
+                  <RadioButton GroupName="Speed" Style="{StaticResource SegmentButton}" Content="1×" Tag="1" IsChecked="True" Checked="OnSpeed" VerticalAlignment="Center" />
+                  <RadioButton GroupName="Speed" Style="{StaticResource SegmentButton}" Content="2×" Tag="2" Checked="OnSpeed" VerticalAlignment="Center" />
+                </StackPanel>
+              </Border>
+              <Button Style="{StaticResource HeaderIcon}" Width="28" Height="28" ToolTip="Zoom out (-)" Click="OnTimelineZoomOut" AutomationProperties.Name="Zoom out">
+                <local:Icon Data="{StaticResource MinusShape}" Width="14" Height="14" />
+              </Button>
+              <Slider x:Name="ZoomSlider" Width="110" Minimum="0" Maximum="1" VerticalAlignment="Center" ValueChanged="OnZoomSlider" ToolTip="Zoom (Ctrl+wheel)"
+                      AutomationProperties.Name="Zoom" />
+              <Button Style="{StaticResource HeaderIcon}" Width="28" Height="28" ToolTip="Zoom in (=)" Click="OnTimelineZoomIn" AutomationProperties.Name="Zoom in">
+                <local:Icon Data="{StaticResource PlusShape}" Width="14" Height="14" />
+              </Button>
+              <Button Content="Fit" Padding="10,3" Margin="4,0,0,0" VerticalAlignment="Center" ToolTip="The whole project in view (Shift+Z)" Click="OnTimelineFit" />
+            </StackPanel>
+          </Grid>
+        </Border>
         <Grid>
           <Grid.ColumnDefinitions>
             <ColumnDefinition Width="*" />
@@ -754,6 +822,7 @@
             <RowDefinition Height="Auto" />
           </Grid.RowDefinitions>
           <local:TimelineView x:Name="Timeline" Seek="OnSeek" Selected="OnClipSelected" Edit="OnTimelineEdit" ClipMenu="OnClipMenu" ViewChanged="OnTimelineViewChanged"
+                              LaneToggled="OnLaneToggled"
                               AllowDrop="True" DragOver="OnTimelineDragOver" DragLeave="OnTimelineDragLeave" Drop="OnTimelineDrop" />
           <ScrollBar x:Name="TimelineVertical" Grid.Column="1" Orientation="Vertical" Scroll="OnTimelineScroll" />
           <ScrollBar x:Name="TimelineHorizontal" Grid.Row="1" Orientation="Horizontal" Scroll="OnTimelineScroll" />

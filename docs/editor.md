@@ -23,6 +23,8 @@ The header across the top names the project and whether it's saved ("Saved · re
 
 ## Media
 
+The media panel shows a tile for each asset: a picture made small, a video's first frame, a note for sound and "Aa" for a font, with the length of footage and sound, and a dot in the kind's color. The name under a tile is the asset's id, which is what Claude calls it; the file name is in its tooltip, and a file that's gone is marked Missing in red. The chips All, Video, Images, Audio (and Fonts, when the project has one) show one kind. Thumbnails are made in the background and kept in the project's `cache\thumbnails` folder.
+
 - Import, above the media list (Ctrl+I), imports images, audio, fonts and video. Video that needs normalizing (variable frame rate, rotation, HDR) is converted first, as `import_video` does, with its progress in the media list. Files you pick yourself can come from any folder; the import folders limit only what the model can read.
 - Drag files from File Explorer onto the window to import them.
 - Drag media from the list onto a lane of the timeline, or right-click it → Add at the playhead. A video or picture dropped on a picture lane is drawn at that lane's level, and anywhere else on a level of its own on top. Sound takes the role of the sound lane it's dropped on, else music.
@@ -49,9 +51,14 @@ Under the frame are the playhead's timecode and the last frame's. ← and → st
 
 ![The comic-panels example's timeline: caption tracks in Burmese, Japanese and English, the three panels overlapping where they cross-fade, and two sound effects in the Effects lane](editor-timeline.png)
 
-There's a lane for each draw level (`zIndex`) of video, images and text, the highest on top; a lane for each caption track; and Voice, Music and Effects lanes for sound. A layer with child layers (a logo attached to a clip, a rig) is one clip with a "+N" badge, and its children move, trim, split and delete with it.
+There's a lane for each draw level (`zIndex`) of video, images and text, the highest on top; a lane for each caption track ("Captions · EN"); and Voice, Music and Sound effects lanes for sound. A draw level is named for what it holds (Video, Images, Text, or Mixed), and levels of the same name are numbered from the bottom: Video 2 draws over Video 1. The lane's tooltip gives its draw level. A layer with child layers (a logo attached to a clip, a rig) is one clip with a "+N" badge, and its children move, trim, split and delete with it.
+
+Clips are drawn in their kind's color, a video's or picture's with its thumbnail at the start. A hidden clip, or muted sound, is faded with a dashed edge and a crossed-out eye or speaker.
 
 - Click a clip to select it and see it in the inspector.
+- The eye beside a lane's name hides every clip in it, as one step to undo, and shows them all again once all are hidden. On a sound lane it's a speaker that mutes them.
+- The Blade tool (B) splits a clip where you click it: a line shows where. Select (V, or Escape) goes back to moving and trimming.
+- Add marker (M) puts a chapter marker at the playhead, as `add_markers` does, named Marker 1, Marker 2 and so on. Ask Claude to rename or remove markers.
 - Drag a clip sideways to move it, or drag its edges to trim it; a video can show more as far as its source goes. Drag a video, picture or text clip up or down onto another lane to change what it's drawn over, or between two lanes to give it a level of its own. Escape cancels the drag.
 - Held at the left or right edge of the lanes, a drag scrolls them, faster the further in, so a clip can go anywhere in a long video. Scrubbing in the ruler does the same.
 - Clips snap to clip edges, the playhead and markers. The Snap button turns it off.
@@ -59,7 +66,7 @@ There's a lane for each draw level (`zIndex`) of video, images and text, the hig
 - Click or drag in the ruler to move the playhead. ↑ and ↓ jump to the previous and next clip edge.
 - The ruler and the lanes are shaded past the project's end: the export stops there, so what runs past it is cut. The project's Duration in the inspector moves the end.
 - The selected clip shows its layer's keyframes as white diamonds along its bottom edge. Click one to move the playhead there; Alt+← and Alt+→ jump to the previous and next.
-- Ctrl+wheel or −/+ zooms, and Shift+Z fits the whole video. The wheel scrolls the lanes, and Shift+wheel scrolls in time.
+- Ctrl+wheel, −/+ or the zoom slider zooms, and Fit (Shift+Z) fits the whole video. The wheel scrolls the lanes, and Shift+wheel scrolls in time.
 - **Pack lanes** puts layers that never show at the same time on shared levels, so clips the model added one at a time stop taking a lane each. Every frame looks as before. When it can't save a lane, the button is off.
 
 ## The inspector
@@ -141,8 +148,10 @@ It shows the progress, Stop ends it, and Show in folder opens File Explorer on t
 | ↑ / ↓ | The previous and next clip edge |
 | Alt+← / Alt+→ | The selected clip's previous and next keyframe |
 | S or Ctrl+B | Split the selected clip at the playhead |
+| B / V | The Blade tool, which splits a clip where it's clicked, and the Select tool |
+| M | Add a chapter marker at the playhead |
 | Delete | Delete the selected clip with its child layers |
-| Escape | Cancel a drag, else clear the selection; in a field, put it back |
+| Escape | Cancel a drag, else go back to the Select tool, else clear the selection; in a field, put it back |
 | − / + | Zoom the timeline out and in (also Ctrl+wheel) |
 | Shift+Z | Fit the whole video in the timeline |
 | Ctrl+Z / Ctrl+Y | Undo and redo; in a field, the typing there |

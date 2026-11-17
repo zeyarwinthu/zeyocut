@@ -1,7 +1,7 @@
 # Editor redesign: plan for the existing screens
 
 - Written 2026-11-17 on `feature/manual-editor` at `2c5a72d`.
-- Status: R1–R8 decided as recommended (2026-11-17). Phases A and B done; C–H wait for a go.
+- Status: R1–R8 decided as recommended (2026-11-17). Phases A, B and C done; D–H wait for a go.
 - Compares the design canvas "ZeyoCut Editor — modern redesign" (19 artboards) with screenshots of the editor as it is now (`screenshots/01`–`09`, taken 2026-11-17 from the installed Release editor).
 - Covers the four screens the editor already has. The 15 new screens are left for later (see Scope).
 - The rules in PLAN.md still hold: no control without real project data and real render output behind it; the UI has no editing logic of its own; a new project property is saved, rendered on export and reachable over MCP; tests pass at every commit; stop and report after each phase.
@@ -184,7 +184,7 @@ Each phase: tests first where behavior changes, full suite green before each com
 |---|---|---|
 | A · Theme and shell (done) | New tokens and control styles in Theme.xaml; app header (back, breadcrumb, saved pill, Edit/Activity tabs, Undo/Redo, Claude pill, Export button); menu bar removed (R1); status bar layout; Assistant renamed Activity | Window tests updated for the new names; header buttons do what the old menu items did; undo/redo enabled states |
 | B · Viewer and inspector (done) | Viewer header, safe-area and grid overlays, zoom dropdown, transport, Loop, full screen; inspector header, tabs, one-row timing and transform, opacity slider, Attached chips, ⋯ menu; Core: `SetSpeedOperation`, `ProjectChecker` safe zones public | `SetSpeedOperation` gives the same project as `set_speed`; a row diamond keys both axes; slider saves once on release; overlays don't change exported frames |
-| C · Media panel and timeline | Thumbnail cache; media tiles and filters; timeline toolbar (Blade, Add marker, zoom slider), lane names and eye buttons, new clip drawing, playhead head; Core: `AddMarkersOperation` | `AddMarkersOperation` matches `add_markers`; Blade splits where clicked; eye hides a whole lane and undoes as one step; pixel checks on clip drawing |
+| C · Media panel and timeline (done) | Thumbnail cache; media tiles and filters; timeline toolbar (Blade, Add marker, zoom slider), lane names and eye buttons, new clip drawing, playhead head; Core: `AddMarkersOperation` | `AddMarkersOperation` matches `add_markers`; Blade splits where clicked; eye hides a whole lane and undoes as one step; pixel checks on clip drawing |
 | D · Home | App bar, search, Open folder card, project cards with thumbnails and badges, grid/list toggle, shortened paths | Search filter; Recent and the rest never repeat a project; thumbnail cache refreshes when the revision changes |
 | E · Export | Two-column layout, preset cards, Quality, summary card, Play and Show in folder, Claude's running exports; Core: SRT writer moved out of `export_srt`, then the .srt option | `export_srt` output unchanged after the move; the .srt option writes the same file; Quality reaches the encoder as `crf` |
 | F · Activity | Filter, date headings, grouping, Restore, side card | Grouping rule; Restore saves a new revision, and Claude's next tool call sees it in its reply note |

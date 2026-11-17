@@ -26,6 +26,7 @@
   <SolidColorBrush x:Key="ErrorBrush" Color="#FF7A7A" />
   <SolidColorBrush x:Key="WarningBrush" Color="#F0A94B" />
   <SolidColorBrush x:Key="SuccessBrush" Color="#3DD68C" />
+  <SolidColorBrush x:Key="PlayheadBrush" Color="#FF5D5D" />
   <SolidColorBrush x:Key="PreviewBrush" Color="#0B0C0F" />
   <SolidColorBrush x:Key="ScrollThumbBrush" Color="#2E323C" />
   <SolidColorBrush x:Key="ScrollThumbHoverBrush" Color="#3A3F4B" />
@@ -43,6 +44,18 @@
   <StreamGeometry x:Key="FullScreenShape">M4,9 V4 H9 M20,9 V4 H15 M4,15 V20 H9 M20,15 V20 H15</StreamGeometry>
   <StreamGeometry x:Key="MoreShape">M3.2,12 A1.8,1.8 0 1 0 6.8,12 A1.8,1.8 0 1 0 3.2,12 Z M10.2,12 A1.8,1.8 0 1 0 13.8,12 A1.8,1.8 0 1 0 10.2,12 Z M17.2,12 A1.8,1.8 0 1 0 20.8,12 A1.8,1.8 0 1 0 17.2,12 Z</StreamGeometry>
   <StreamGeometry x:Key="DiamondShape">M12,3 L21,12 L12,21 L3,12 Z</StreamGeometry>
+  <StreamGeometry x:Key="SelectShape">M5,3 L19,11 L13,13 L11,19 Z</StreamGeometry>
+  <StreamGeometry x:Key="BladeShape">M3,6 A3,3 0 1 0 9,6 A3,3 0 1 0 3,6 Z M3,18 A3,3 0 1 0 9,18 A3,3 0 1 0 3,18 Z M8.5,8.5 L20,20 M8.5,15.5 L20,4</StreamGeometry>
+  <StreamGeometry x:Key="SplitShape">M12,3 V21 M4,7 H9 V17 H4 M20,7 H15 V17 H20</StreamGeometry>
+  <StreamGeometry x:Key="DeleteShape">M4,7 H20 M10,11 V17 M14,11 V17 M6,7 L7,20 H17 L18,7 M9,7 V4 H15 V7</StreamGeometry>
+  <StreamGeometry x:Key="MarkerShape">M6,3 H18 V16 L12,21 L6,16 Z</StreamGeometry>
+  <StreamGeometry x:Key="MinusShape">M5,12 H19</StreamGeometry>
+  <StreamGeometry x:Key="PlusShape">M5,12 H19 M12,5 V19</StreamGeometry>
+  <StreamGeometry x:Key="EyeShape">M2,12 S6,5 12,5 S22,12 22,12 S18,19 12,19 S2,12 2,12 Z M9,12 A3,3 0 1 0 15,12 A3,3 0 1 0 9,12 Z</StreamGeometry>
+  <StreamGeometry x:Key="EyeOffShape">M2,12 S6,5 12,5 S22,12 22,12 S18,19 12,19 S2,12 2,12 Z M4,4 L20,20</StreamGeometry>
+  <StreamGeometry x:Key="SpeakerShape">M11,5 L6,9 H2 V15 H6 L11,19 Z M15.5,8.5 A5,5 0 0 1 15.5,15.5 M19,5 A10,10 0 0 1 19,19</StreamGeometry>
+  <StreamGeometry x:Key="SpeakerOffShape">M11,5 L6,9 H2 V15 H6 L11,19 Z M22,9 L16,15 M16,9 L22,15</StreamGeometry>
+  <StreamGeometry x:Key="MusicShape">M9,18 V5 L20,3 V16 M3,18 A3,3 0 1 0 9,18 A3,3 0 1 0 3,18 Z M14,16 A3,3 0 1 0 20,16 A3,3 0 1 0 14,16 Z</StreamGeometry>
 
   <Style TargetType="Button">
     <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
@@ -216,6 +229,63 @@
               <Setter TargetName="Bd" Property="Background" Value="{StaticResource HoverBrush}" />
             </Trigger>
             <Trigger Property="IsKeyboardFocused" Value="True">
+              <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource AccentBrush}" />
+            </Trigger>
+          </ControlTemplate.Triggers>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+  </Style>
+
+  <Style x:Key="FilterChip" TargetType="RadioButton">
+    <Setter Property="Foreground" Value="{StaticResource IconTextBrush}" />
+    <Setter Property="FontSize" Value="11" />
+    <Setter Property="FontWeight" Value="Medium" />
+    <Setter Property="Margin" Value="0,0,6,6" />
+    <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+    <Setter Property="Template">
+      <Setter.Value>
+        <ControlTemplate TargetType="RadioButton">
+          <Border x:Name="Bd" Height="26" Background="Transparent" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="13" Padding="10,0">
+            <ContentPresenter VerticalAlignment="Center" />
+          </Border>
+          <ControlTemplate.Triggers>
+            <Trigger Property="IsMouseOver" Value="True">
+              <Setter TargetName="Bd" Property="Background" Value="{StaticResource HoverBrush}" />
+            </Trigger>
+            <Trigger Property="IsKeyboardFocused" Value="True">
+              <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource AccentBrush}" />
+            </Trigger>
+            <Trigger Property="IsChecked" Value="True">
+              <Setter TargetName="Bd" Property="Background" Value="{StaticResource TextBrush}" />
+              <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource TextBrush}" />
+              <Setter Property="Foreground" Value="{StaticResource WindowBrush}" />
+            </Trigger>
+          </ControlTemplate.Triggers>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+  </Style>
+
+  <Style x:Key="MediaTile" TargetType="ListBoxItem">
+    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+    <Setter Property="VerticalContentAlignment" Value="Top" />
+    <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+    <Setter Property="Template">
+      <Setter.Value>
+        <ControlTemplate TargetType="ListBoxItem">
+          <Border x:Name="Bd" Background="Transparent" BorderBrush="Transparent" BorderThickness="1" CornerRadius="10" Padding="4">
+            <ContentPresenter HorizontalAlignment="Stretch" />
+          </Border>
+          <ControlTemplate.Triggers>
+            <Trigger Property="IsMouseOver" Value="True">
+              <Setter TargetName="Bd" Property="Background" Value="{StaticResource HoverBrush}" />
+            </Trigger>
+            <Trigger Property="IsKeyboardFocused" Value="True">
+              <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource BorderBrush}" />
+            </Trigger>
+            <Trigger Property="IsSelected" Value="True">
+              <Setter TargetName="Bd" Property="Background" Value="{StaticResource SelectionBrush}" />
               <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource AccentBrush}" />
             </Trigger>
           </ControlTemplate.Triggers>

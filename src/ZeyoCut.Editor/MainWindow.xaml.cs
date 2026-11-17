@@ -24,8 +24,16 @@ using ZeyoCut.Render.Video;
 
 namespace ZeyoCut.Editor;
 
-// One asset as the media library lists it.
-public sealed record MediaItem(string Id, string Kind, Brush Badge, string Details, bool Missing);
+// One asset as the media library lists it: a tile with its thumbnail (Picture, once it's made), a
+// dot in its kind's color (Badge), and a video's or sound's length.
+public sealed record MediaItem(string Id, string Kind, Brush Badge, string Details, bool Missing)
+{
+    public Brush? Picture { get; init; }
+
+    public string? Length { get; init; }
+
+    public string Tip { get; init; } = "";
+}
 
 // An option of the Export view's preset and language choices.
 public sealed record PageChoice(string Group, string Name, bool Selected, bool Usable, string? Tip);
@@ -42,10 +50,10 @@ public partial class MainWindow : Window
     // What the media library hands the timeline when an asset is dragged onto it.
     private const string AssetFormat = "ZeyoCut.Asset";
 
-    private static readonly Brush VideoBadge = Frozen(0x3E, 0x6F, 0xB0);
-    private static readonly Brush ImageBadge = Frozen(0x3E, 0x8F, 0x5A);
-    private static readonly Brush AudioBadge = Frozen(0x8A, 0x5B, 0xB5);
-    private static readonly Brush FontBadge = Frozen(0xA0, 0x70, 0x30);
+    private static readonly Brush VideoBadge = Frozen(0x5B, 0x8C, 0xFF);
+    private static readonly Brush ImageBadge = Frozen(0x3D, 0xD6, 0x8C);
+    private static readonly Brush AudioBadge = Frozen(0xA9, 0x8B, 0xFF);
+    private static readonly Brush FontBadge = Frozen(0xF0, 0xA9, 0x4B);
 
     // The inspector header's badge, by kind: its background and its text.
     private static readonly Dictionary<string, (Brush Back, Brush Text)> KindBadges = new()
@@ -75,6 +83,7 @@ public partial class MainWindow : Window
     private ProxyJobs? _proxies;
     private MediaImporter? _importer;
     private FramePreview? _preview;
+    private MediaThumbnails? _thumbnails;
     private PreviewSound? _sound;
     private FileSystemWatcher? _watcher;
     private WriteableBitmap? _bitmap;
@@ -88,6 +97,15 @@ public partial class MainWindow : Window
     private string? _selectedLayer;
     private bool _rebuilding;
     private bool _inspectorStale;
+
+    // The media panel's filter chip: the kind of asset shown, or null for all of them.
+    private AssetType? _mediaFilter;
+
+    // Thumbnails made since the media panel and the timeline were last drawn, waiting to be shown.
+    private bool _thumbnailsDue;
+
+    // The zoom slider being set to the timeline's zoom, which isn't a change of the user's.
+    private bool _zoomShowing;
 
     // Whether the shown project's lanes can be packed, worked out once each Rebuild.
     private bool _packable;
@@ -169,6 +187,7 @@ public partial class MainWindow : Window
         InitializeComponent();
         RestorePlacement();
         SnapToggle.IsChecked = Timeline.Snapping = _prefs.Snapping;
+        Timeline.Thumbnail = id => _document?.View.FindAsset(id) is { } asset ? _thumbnails?.Get(asset) : null;
         _prefs.PlaybackScale = _prefs.PlaybackScale switch
         {
             1 => 1,
@@ -383,6 +402,14 @@ public partial class MainWindow : Window
         {
             DeleteSelected();
         }
+        else if (open && plain && key is Key.B or Key.V)
+        {
+            (key == Key.B && BladeTool.IsChecked != true ? BladeTool : SelectTool).IsChecked = true;
+        }
+        else if (open && plain && key == Key.M)
+        {
+            AddMarker();
+        }
         else if (open && plain && key is Key.OemMinus or Key.Subtract)
         {
             Timeline.ZoomBy(1 / 1.5);
@@ -402,6 +429,10 @@ public partial class MainWindow : Window
         else if (open && plain && key == Key.Escape && _drag is not null)
         {
             CancelPreviewDrag();
+        }
+        else if (open && plain && key == Key.Escape && BladeTool.IsChecked == true)
+        {
+            SelectTool.IsChecked = true;
         }
         else if (open && plain && key == Key.Escape && (_selectedLayer is not null || MediaList.SelectedItem is not null))
         {
@@ -531,6 +562,15 @@ public partial class MainWindow : Window
             }
         }));
         _preview = preview;
+        MediaThumbnails? thumbnails = null;
+        thumbnails = new MediaThumbnails(directory, () => Ffmpeg().Ffmpeg, _ => Dispatcher.InvokeAsync(() =>
+        {
+            if (ReferenceEquals(thumbnails, _thumbnails))
+            {
+                ShowThumbnails();
+            }
+        }));
+        _thumbnails = thumbnails;
         _sound = new PreviewSound(Ffmpeg, Dispatcher);
         _sound.Changed += OnSoundChanged;
         _watcher = Watch(directory);
@@ -577,6 +617,8 @@ public partial class MainWindow : Window
 
         _sound!.Changed -= OnSoundChanged;
         _sound.Dispose();
+        _thumbnails?.Dispose();
+        _thumbnails = null;
         _claim?.Dispose();
         _claim = null;
         _waiting.Clear();
@@ -675,22 +717,7 @@ public partial class MainWindow : Window
         Timeline.Selection = ClipOf(_selectedLayer);
         ShowKeyTimes();
 
-        _rebuilding = true;
-        List<MediaItem> items;
-        try
-        {
-            items = project.Assets.Select(a => Item(document.Session.Directory, a)).ToList();
-            MediaList.ItemsSource = items;
-            MediaList.SelectedItem = items.FirstOrDefault(i => i.Id == _selectedAsset);
-            _selectedAsset = (MediaList.SelectedItem as MediaItem)?.Id;
-        }
-        finally
-        {
-            _rebuilding = false;
-        }
-
-        MediaEmpty.Visibility = items.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
-
+        ShowMedia();
         ShowInspector();
         UpdateStatus();
         ApplyZoom();
@@ -708,18 +735,89 @@ public partial class MainWindow : Window
         }
     }
 
+    // The media panel: a tile for each asset the filter chips let through, each with its thumbnail
+    // once MediaThumbnails has made it. The Fonts chip is there while the project has a font.
+    private void ShowMedia()
+    {
+        if (_document is not { } document)
+        {
+            return;
+        }
+
+        var project = document.View;
+        var fonts = project.Assets.Any(a => a.Type == AssetType.Font);
+        FontsFilter.Visibility = fonts ? Visibility.Visible : Visibility.Collapsed;
+        if (_mediaFilter == AssetType.Font && !fonts)
+        {
+            _mediaFilter = null;
+            AllFilter.IsChecked = true;
+        }
+
+        _rebuilding = true;
+        List<MediaItem> items;
+        try
+        {
+            items = project.Assets.Where(a => _mediaFilter is null || a.Type == _mediaFilter)
+                .Select(a => Item(document.Session.Directory, a) with { Picture = Picture(a) })
+                .ToList();
+            MediaList.ItemsSource = items;
+            MediaList.SelectedItem = items.FirstOrDefault(i => i.Id == _selectedAsset);
+            _selectedAsset = (MediaList.SelectedItem as MediaItem)?.Id;
+        }
+        finally
+        {
+            _rebuilding = false;
+        }
+
+        MediaEmpty.Text = project.Assets.Count == 0
+            ? "No media yet. Import images, audio, fonts or video, or ask Claude to."
+            : $"No {_mediaFilter switch { AssetType.Video => "video", AssetType.Image => "images", AssetType.Audio => "audio", _ => "fonts" }} in this project.";
+        MediaEmpty.Visibility = items.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    // A thumbnail fills a video's tile, and a picture fits in its tile whole.
+    private Brush? Picture(Asset asset)
+    {
+        if (_thumbnails?.Get(asset) is not { } thumbnail)
+        {
+            return null;
+        }
+
+        var brush = new ImageBrush(thumbnail) { Stretch = asset.Type == AssetType.Image ? Stretch.Uniform : Stretch.UniformToFill };
+        brush.Freeze();
+        return brush;
+    }
+
+    // Thumbnails made in a row are shown together.
+    private void ShowThumbnails()
+    {
+        if (_thumbnailsDue)
+        {
+            return;
+        }
+
+        _thumbnailsDue = true;
+        Dispatcher.BeginInvoke(DispatcherPriority.Background, () =>
+        {
+            _thumbnailsDue = false;
+            ShowMedia();
+            Timeline.Redraw();
+        });
+    }
+
     public static MediaItem Item(string directory, Asset asset)
     {
         // A project.json from elsewhere can name a file outside assets\: it's listed, and never read.
         if (!ProjectStore.IsAssetFile(asset.File))
         {
-            return new MediaItem(asset.Id, Kind(asset), Badge(asset), $"not a file in the project's {ProjectStore.AssetsFolder} folder: {asset.File}", true);
+            var outside = $"not a file in the project's {ProjectStore.AssetsFolder} folder: {asset.File}";
+            return new MediaItem(asset.Id, Kind(asset), Badge(asset), outside, true) { Tip = outside };
         }
 
         var path = ProjectStore.AssetPath(directory, asset);
         if (!File.Exists(path))
         {
-            return new MediaItem(asset.Id, Kind(asset), Badge(asset), $"file missing: {asset.File}", true);
+            return new MediaItem(asset.Id, Kind(asset), Badge(asset), $"file missing: {asset.File}", true) { Tip = $"file missing: {asset.File}" };
         }
 
         var size = asset.Width is { } w && asset.Height is { } h ? $"{w}×{h}" : null;
@@ -731,7 +829,13 @@ public partial class MainWindow : Window
             AssetType.Audio => [length],
             _ => [asset.FontFamily],
         };
-        return new MediaItem(asset.Id, Kind(asset), Badge(asset), string.Join(" · ", details.Where(t => t is not null)), false);
+        var text = string.Join(" · ", details.Where(t => t is not null));
+        var use = asset.Type == AssetType.Font ? "A text's Font file field uses it" : "Drag it onto the timeline, or right-click to add it at the playhead";
+        return new MediaItem(asset.Id, Kind(asset), Badge(asset), text, false)
+        {
+            Length = asset.Type is AssetType.Video or AssetType.Audio && asset.Duration is { } seconds ? Timecode.Length(seconds) : null,
+            Tip = $"{Path.GetFileName(asset.File)}{(text.Length > 0 ? " · " + text : "")}\n{use}",
+        };
     }
 
     private static string Kind(Asset asset) => EnumNames.ToName(asset.Type).ToUpperInvariant();
@@ -1130,6 +1234,7 @@ public partial class MainWindow : Window
         var open = Editing;
         SplitButton.IsEnabled = open && CanSplit(out _);
         DeleteButton.IsEnabled = open && _selectedLayer is not null;
+        MarkerButton.IsEnabled = open;
         ShowText(SelectionText, open && _selectedLayer is { } selected ? $"{selected} selected" : "");
         ShowText(LayersText, open ? _counts : "");
         FrameText.Visibility = open ? Visibility.Visible : Visibility.Collapsed;
@@ -2904,6 +3009,66 @@ public partial class MainWindow : Window
         TimelineVertical.SmallChange = 24;
         TimelineVertical.Value = Timeline.VerticalOffset;
         TimelineVertical.IsEnabled = Timeline.MaxVerticalOffset > 0;
+        _zoomShowing = true;
+        ZoomSlider.Value = Timeline.ZoomLevel;
+        ZoomSlider.IsEnabled = Timeline.CanZoom;
+        _zoomShowing = false;
+    }
+
+    private void OnZoomSlider(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (!_zoomShowing && Timeline is not null)
+        {
+            Timeline.ZoomLevel = e.NewValue;
+        }
+    }
+
+    private void OnTool(object sender, RoutedEventArgs e)
+    {
+        if (Timeline is not null)
+        {
+            Timeline.Tool = BladeTool.IsChecked == true ? TimelineTool.Blade : TimelineTool.Select;
+        }
+    }
+
+    private void OnMediaFilter(object sender, RoutedEventArgs e)
+    {
+        AssetType? filter = ((FrameworkElement)sender).Tag is string kind ? EnumNames.Parse<AssetType>(kind, "asset type") : null;
+        if (filter == _mediaFilter)
+        {
+            return;
+        }
+
+        _mediaFilter = filter;
+        ShowMedia();
+    }
+
+    private void OnAddMarker(object sender, RoutedEventArgs e) => AddMarker();
+
+    // A chapter marker at the playhead, as add_markers adds one, named for how many there are then.
+    private void AddMarker()
+    {
+        var frame = _frame;
+        WhenSaved(() =>
+        {
+            var project = _document!.View;
+            Apply(new AddMarkersOperation([new MarkerEntry(null, FrameMath.TimeOf(project, frame), $"Marker {project.Markers.Count + 1}", null)]));
+        });
+    }
+
+    // A lane's eye hides every clip in it, or shows them all when they're all hidden; on a sound lane
+    // it mutes them, as Shown does there. One step to undo.
+    private void OnLaneToggled(object? sender, TimelineLane lane)
+    {
+        var show = lane.Clips.All(c => c.Hidden);
+        var ids = lane.Clips.Where(c => c.Hidden == show).Select(c => c.LayerId).Distinct().ToList();
+        if (ids.Count == 0)
+        {
+            return;
+        }
+
+        var label = ids.Count == 1 ? $"update_layer {ids[0]}" : $"update_layer {ids[0]} and {ids.Count - 1} more";
+        Apply(new UpdateLayersOperation(label, ids, new JsonObject { ["visible"] = show }));
     }
 
     private void OnTimelineScroll(object sender, ScrollEventArgs e)

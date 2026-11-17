@@ -24,7 +24,8 @@ public enum ClipKind
 
 // A clip as the timeline shows it: a layer from Start to End, in a row of its lane. Children are
 // the layers that move, trim and split with it; Marks name the cutouts and redactions that follow it.
-// Hidden is visible: false, an audio layer's mute; SoundOff is a video's own sound muted.
+// Hidden is visible: false, an audio layer's mute; SoundOff is a video's own sound muted. Asset is
+// the footage or picture whose thumbnail starts the clip.
 public sealed record TimelineClip(
     string LayerId,
     ClipKind Kind,
@@ -36,7 +37,8 @@ public sealed record TimelineClip(
     bool Hidden,
     bool SoundOff,
     int Children,
-    IReadOnlyList<string> Marks);
+    IReadOnlyList<string> Marks,
+    string? Asset = null);
 
 // A lane: one draw level (the zIndex of the top-level video, image and text layers in it), one
 // caption group, or the sound of one role. Clips that overlap stack in rows.
@@ -44,7 +46,8 @@ public sealed record TimelineLane(string Key, LaneKind Kind, string Title, int Z
 
 // The timeline's lanes, worked out from the layers every time the project changes; nothing about
 // them is saved. Draw levels and caption groups from the highest zIndex down, then Voice, Music and
-// Effects. A video's own sound is part of its clip.
+// Sound effects. A video's own sound is part of its clip. A draw level is named for what it holds,
+// and levels of the same name are numbered from the bottom up: Video 2 draws over Video 1.
 public static class TimelineLayout
 {
     public static IReadOnlyList<TimelineLane> Lanes(Project project)
@@ -57,7 +60,7 @@ public static class TimelineLayout
         {
             var cues = project.Layers.Where(l => l.ParentId == group.Id && l is VisualLayer).ToList();
             var language = group.Language ?? (group.Id.StartsWith(CaptionBuilder.DefaultGroup + "_", StringComparison.Ordinal) ? group.Id[(CaptionBuilder.DefaultGroup.Length + 1)..] : null);
-            var title = language is null ? "Captions" : $"Captions · {language}";
+            var title = language is null ? "Captions" : $"Captions · {language.ToUpperInvariant()}";
             visual.Add(Lane($"captions:{group.Id}", LaneKind.Captions, title, group.ZIndex, null, cues.Select(c => Clip(project, c, ClipKind.Caption, 0, marks)).ToList()));
         }
 
@@ -70,17 +73,26 @@ public static class TimelineLayout
             var clips = level.Select(l => Clip(project, l, KindOf(l, children), children.GetValueOrDefault(l.Id), marks)).ToList();
             var kinds = clips.Select(c => c.Kind).Distinct().ToList();
             var holds = kinds.Count == 1 ? Plural(kinds[0]) : "Mixed";
-            visual.Add(Lane($"z:{level.Key}", LaneKind.Visual, $"{holds} · z {level.Key}", level.Key, null, clips));
+            visual.Add(Lane($"z:{level.Key}", LaneKind.Visual, holds, level.Key, null, clips));
         }
 
         var lanes = visual.OrderByDescending(l => l.ZIndex).ThenBy(l => l.Kind == LaneKind.Captions ? 0 : 1).ToList();
+        foreach (var same in lanes.Where(l => l.Kind == LaneKind.Visual).GroupBy(l => l.Title).Where(g => g.Count() > 1).ToList())
+        {
+            var number = same.Count();
+            foreach (var lane in same)
+            {
+                lanes[lanes.IndexOf(lane)] = lane with { Title = $"{lane.Title} {number--}" };
+            }
+        }
+
         foreach (var role in new[] { AudioRole.Voice, AudioRole.Music, AudioRole.Effects })
         {
             var clips = project.Layers.OfType<AudioLayer>().Where(a => a.Role == role)
                 .Select(a => Clip(project, a, ClipKind.Audio, children.GetValueOrDefault(a.Id), marks)).ToList();
             if (clips.Count > 0)
             {
-                lanes.Add(Lane($"audio:{EnumNames.ToName(role)}", LaneKind.Audio, role.ToString(), 0, role, clips));
+                lanes.Add(Lane($"audio:{EnumNames.ToName(role)}", LaneKind.Audio, role == AudioRole.Effects ? "Sound effects" : role.ToString(), 0, role, clips));
             }
         }
 
@@ -138,7 +150,13 @@ public static class TimelineLayout
             !layer.Visible,
             layer is VideoLayer { Muted: true },
             children,
-            marks.TryGetValue(layer.Id, out var list) ? list : []);
+            marks.TryGetValue(layer.Id, out var list) ? list : [],
+            layer switch
+            {
+                VideoLayer video => video.Asset,
+                ImageLayer image when kind == ClipKind.Image => image.Drawings.GetValueOrDefault("normal") ?? image.Drawings.Values.FirstOrDefault(),
+                _ => null,
+            });
     }
 
     private static ClipKind KindOf(Layer layer, Dictionary<string, int> children) => layer switch

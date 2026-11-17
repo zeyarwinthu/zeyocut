@@ -41,8 +41,9 @@ public class TimelineTests
     {
         var project = Footage();
         var lanes = TimelineLayout.Lanes(project);
-        Assert.Equal(["Captions · en", "Text · z 10", "Video · z 1", "Video · z 0", "Music"], lanes.Select(l => l.Title));
+        Assert.Equal(["Captions · EN", "Text", "Video 2", "Video 1", "Music"], lanes.Select(l => l.Title));
         Assert.Equal([LaneKind.Captions, LaneKind.Visual, LaneKind.Visual, LaneKind.Visual, LaneKind.Audio], lanes.Select(l => l.Kind));
+        Assert.Equal([20, 10, 1, 0, 0], lanes.Select(l => l.ZIndex));
 
         // The captions are the cues; a layer with children is one clip.
         Assert.Equal(["Hello", "World"], lanes[0].Clips.Select(c => c.Label));
@@ -56,6 +57,23 @@ public class TimelineTests
         Assert.Equal([0.0, 2, 3, 4, 8], TimelineLayout.EditPoints(lanes));
     }
 
+    // A level is named for what it holds; levels of one name are numbered from the bottom, as they draw.
+    [Fact]
+    public void LanesAreNamedByWhatTheyHoldAndNumberedFromTheBottom()
+    {
+        var project = Footage();
+        project.Assets.Add(new Asset { Id = "logo", Type = AssetType.Image, File = "assets/logo.png", Width = 8, Height = 8 });
+        ProjectEditor.AddImageLayer(project, new ImageLayerOptions { Id = "logo", Drawings = new Dictionary<string, string> { ["normal"] = "logo" }, Start = 0, End = 2, ZIndex = 4 });
+        ProjectEditor.AddImageLayer(project, new ImageLayerOptions { Id = "logo_2", Drawings = new Dictionary<string, string> { ["normal"] = "logo" }, Start = 3, End = 4, ZIndex = 1 });
+        ProjectEditor.AddTextLayer(project, new TextLayerOptions { Id = "credits", Text = "Bye", Start = 6, End = 8, ZIndex = 7 });
+        ProjectEditor.AddAudioLayer(project, new AudioLayerOptions { Asset = "music", Id = "beep", Role = "effects", Start = 1, End = 2 });
+        ProjectEditor.AddAudioLayer(project, new AudioLayerOptions { Asset = "music", Id = "narration", Role = "voice", Start = 0, End = 2 });
+
+        var lanes = TimelineLayout.Lanes(project);
+        Assert.Equal(["Captions · EN", "Text 2", "Text 1", "Images", "Mixed", "Video", "Voice", "Music", "Sound effects"], lanes.Select(l => l.Title));
+        Assert.Equal([20, 10, 7, 4, 1, 0, 0, 0, 0], lanes.Select(l => l.ZIndex));
+    }
+
     [Fact]
     public void ClipsThatOverlapInALaneStackInRows()
     {
@@ -66,7 +84,7 @@ public class TimelineTests
         ProjectEditor.AddAudioLayer(project, new AudioLayerOptions { Asset = "music", Id = "voice_2", Role = "voice", Start = 2, End = 4 });
         var lanes = TimelineLayout.Lanes(project);
 
-        var text = lanes.Single(l => l.Title == "Text · z 10");
+        var text = lanes.Single(l => l.Title == "Text");
         Assert.Equal(2, text.Rows);
         Assert.Equal([("title", 0), ("late", 1), ("after", 0)], text.Clips.Select(c => (c.LayerId, c.Row)));
 
@@ -219,7 +237,7 @@ public class TimelineTests
 
         Assert.True(document.Apply(TimelineEdits.Operation(clip, DragPart.Body, new DragPlace(1, 5, null), new LaneDrop(2, true))!));
         var lanes = TimelineLayout.Lanes(document.View);
-        Assert.Equal(["Captions · en", "Text · z 10", "Video · z 2", "Video · z 1", "Music"], lanes.Select(l => l.Title));
+        Assert.Equal(["Captions · EN", "Text", "Video 2", "Video 1", "Music"], lanes.Select(l => l.Title));
         Assert.Equal((1.0, 5.0), (Clip(lanes, "clip_1").Start, Clip(lanes, "clip_1").End));
         Assert.Equal(1, document.Session.UndoCount);
 

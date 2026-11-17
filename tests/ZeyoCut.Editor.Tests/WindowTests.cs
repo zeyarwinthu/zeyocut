@@ -519,6 +519,277 @@ public class WindowTests
         public int GetHashCode((double, double, double) value) => 0;
     }
 
+    // With the Blade (B), a click on a clip splits it at the frame clicked, as split_layer does;
+    // Escape goes back to selecting.
+    [Fact]
+    public void TheBladeSplitsAClipWhereItsClicked() => TestWindow.Run("window-blade", (window, folder) =>
+    {
+        var (directory, timeline, at) = ShortTitle(window, folder);
+        TestWindow.Press(window, Key.B);
+        Assert.Equal(TimelineTool.Blade, timeline.Tool);
+        Assert.True(((RadioButton)window.FindName("BladeTool")).IsChecked);
+
+        // Over a clip, a line shows where it would be cut.
+        timeline.MoveTo(at(0.4), pressed: false);
+        var bitmap = new RenderTargetBitmap((int)timeline.ActualWidth, (int)timeline.ActualHeight, 96, 96, PixelFormats.Pbgra32);
+        bitmap.Render(timeline);
+        var pixel = new byte[4];
+        bitmap.CopyPixels(new Int32Rect((int)Math.Round(at(0.4).X), (int)at(0.4).Y, 1, 1), pixel, 4, 0);
+        Assert.Equal(new byte[] { 0xFF, 0xFF, 0xFF, 0xFF }, pixel);
+
+        var revision = ProjectStore.Load(directory).Revision;
+        timeline.Press(at(0.4));
+        timeline.Release();
+        WaitForSaves(window);
+        var project = ProjectStore.Load(directory);
+        var right = project.Layers.OfType<TextLayer>().Single(l => l.Id != "title");
+        Assert.Equal(0.4, Title(directory).End!.Value, 6);
+        Assert.Equal((0.4, 1.0), (Math.Round(right.Start, 6), right.End));
+        Assert.Equal(revision + 1, project.Revision);
+
+        TestWindow.Press(window, Key.Escape);
+        Assert.Equal(TimelineTool.Select, timeline.Tool);
+        Assert.True(((RadioButton)window.FindName("SelectTool")).IsChecked);
+    });
+
+    // A lane's eye hides every clip in it in one step, and shows them all once all are hidden; a
+    // sound lane's mutes its clips.
+    [Fact]
+    public void ALanesEyeHidesEveryClipInItAsOneStep() => TestWindow.Run("window-eye", (window, folder) =>
+    {
+        var project = TestFiles.Project();
+        project.Assets.Add(new Asset { Id = "music", Type = AssetType.Audio, File = "assets/music.wav", Duration = 0.5 });
+        ProjectEditor.AddTextLayer(project, new TextLayerOptions { Id = "title", Text = "Hi", Start = 0, End = 1, ZIndex = 0 });
+        ProjectEditor.AddTextLayer(project, new TextLayerOptions { Id = "credits", Text = "Bye", Start = 1.5, End = 2, ZIndex = 0 });
+        ProjectEditor.AddAudioLayer(project, new AudioLayerOptions { Asset = "music", Id = "music", End = 0.5 });
+        var directory = Path.Combine(folder, "eye");
+        ProjectSession.Create(directory, project);
+        Silence(Path.Combine(directory, ProjectStore.AssetsFolder, "music.wav"));
+        window.OpenProject(directory);
+        TestWindow.Pump();
+        var timeline = (TimelineView)window.FindName("Timeline");
+        Assert.Equal(["Text", "Music"], timeline.Lanes.Select(l => l.Title));
+        void Eye(string lane)
+        {
+            var bounds = timeline.EyeBounds(timeline.Lanes.ToList().FindIndex(l => l.Title == lane));
+            timeline.Press(new Point(bounds.X + bounds.Width / 2, bounds.Y + bounds.Height / 2));
+            timeline.Release();
+            WaitForSaves(window);
+        }
+
+        bool Shown(string id) => ProjectStore.Load(directory).FindLayer(id)!.Visible;
+
+        var revision = ProjectStore.Load(directory).Revision;
+        Eye("Text");
+        Assert.Equal((false, false, true), (Shown("title"), Shown("credits"), Shown("music")));
+        Assert.Equal(revision + 1, ProjectStore.Load(directory).Revision);
+
+        // One undo shows both again.
+        Click(window, "UndoButton");
+        WaitForSaves(window);
+        Assert.Equal((true, true), (Shown("title"), Shown("credits")));
+
+        // With one hidden, the eye hides the other; with all hidden, it shows them all.
+        window.SelectLayer("title");
+        TestWindow.Pump();
+        ProjectSession.Open(directory).Mutate("update_layer credits", p => ProjectEditor.UpdateLayer(p, "credits", new JsonObject { ["visible"] = false }));
+        for (var i = 0; i < 200 && timeline.FindClip("credits") is not { Hidden: true }; i++)
+        {
+            TestWindow.Pump(20);
+        }
+
+        Eye("Text");
+        Assert.Equal((false, false), (Shown("title"), Shown("credits")));
+        Eye("Text");
+        Assert.Equal((true, true), (Shown("title"), Shown("credits")));
+
+        // The sound lane's mutes its clips, and unmutes them.
+        Eye("Music");
+        Assert.False(Shown("music"));
+        Eye("Music");
+        Assert.True(Shown("music"));
+    });
+
+    // M, or the Add marker button, puts a chapter marker at the playhead, as add_markers does.
+    [Fact]
+    public void AddMarkerPutsAChapterMarkerAtThePlayhead() => TestWindow.Run("window-marker", (window, folder) =>
+    {
+        var (directory, timeline, at) = ShortTitle(window, folder);
+        timeline.Press(new Point(at(0.5).X, TimelineView.RulerHeight / 2));
+        timeline.Release();
+        TestWindow.Pump();
+        TestWindow.Press(window, Key.M);
+        WaitForSaves(window);
+        Assert.Equal([("marker_1", 0.5, "Marker 1", MarkerKind.Chapter)], ProjectStore.Load(directory).Markers.Select(m => (m.Id, m.Time, m.Name, m.Kind)));
+
+        Click(window, "MarkerButton");
+        WaitForSaves(window);
+        Assert.Equal(["marker_1", "marker_2"], ProjectStore.Load(directory).Markers.Select(m => m.Id));
+
+        Click(window, "UndoButton");
+        WaitForSaves(window);
+        Assert.Equal(["marker_1"], ProjectStore.Load(directory).Markers.Select(m => m.Id));
+    });
+
+    // The media panel's tiles: a thumbnail, a length on footage and sound, a missing file marked;
+    // the chips show one kind, and Fonts is there while the project has a font.
+    [Fact]
+    public void TheMediaPanelShowsTilesThatTheChipsFilter() => TestWindow.Run("window-media", (window, folder) =>
+    {
+        var directory = Path.Combine(folder, "media");
+        var project = TestFiles.Project();
+        project.Assets.Add(new Asset { Id = "logo", Type = AssetType.Image, File = "assets/logo.png", Width = 64, Height = 64 });
+        project.Assets.Add(new Asset { Id = "music", Type = AssetType.Audio, File = "assets/music.wav", Duration = 0.5 });
+        project.Assets.Add(new Asset { Id = "font", Type = AssetType.Font, File = "assets/font.ttf", FontFamily = "Gone" });
+        ProjectSession.Create(directory, project);
+        TestFiles.Png(Path.Combine(directory, ProjectStore.AssetsFolder, "logo.png"), 64, 64);
+        Silence(Path.Combine(directory, ProjectStore.AssetsFolder, "music.wav"));
+        window.OpenProject(directory);
+        TestWindow.Pump();
+
+        var list = (ListBox)window.FindName("MediaList");
+        MediaItem Tile(string id) => list.Items.Cast<MediaItem>().Single(i => i.Id == id);
+        string[] Tiles() => list.Items.Cast<MediaItem>().Select(i => i.Id).ToArray();
+        Assert.Equal(["logo", "music", "font"], Tiles());
+        Assert.Equal((null, "0:00.5", null), (Tile("logo").Length, Tile("music").Length, Tile("font").Length));
+        Assert.True(Tile("font").Missing);
+        Assert.StartsWith("logo.png · 64×64\n", Tile("logo").Tip);
+        for (var i = 0; i < 500 && Tile("logo").Picture is null; i++)
+        {
+            TestWindow.Pump(20);
+        }
+
+        Assert.NotNull(Tile("logo").Picture);
+        Assert.Null(Tile("music").Picture);
+
+        void Chip(string name)
+        {
+            ((Panel)window.FindName("MediaFilters")).Children.OfType<RadioButton>().Single(c => (string)c.Content == name).IsChecked = true;
+            TestWindow.Pump();
+        }
+
+        Assert.Equal(Visibility.Visible, Shown(window, "FontsFilter"));
+        Chip("Images");
+        Assert.Equal(["logo"], Tiles());
+        Chip("Audio");
+        Assert.Equal(["music"], Tiles());
+        Chip("Fonts");
+        Assert.Equal(["font"], Tiles());
+        Chip("Video");
+        Assert.Empty(Tiles());
+        Assert.Equal(("No video in this project.", Visibility.Visible), (Text(window, "MediaEmpty"), Shown(window, "MediaEmpty")));
+        Chip("All");
+        Assert.Equal(3, Tiles().Length);
+        Assert.Equal(Visibility.Collapsed, Shown(window, "MediaEmpty"));
+    });
+
+    // The zoom slider follows the zoom, and zooms the timeline when moved.
+    [Fact]
+    public void TheZoomSliderFollowsAndSetsTheZoom() => TestWindow.Run("window-zoom", (window, folder) =>
+    {
+        var (_, timeline, _) = ShortTitle(window, folder);
+        var slider = (Slider)window.FindName("ZoomSlider");
+        var fit = timeline.PixelsPerSecond;
+        Assert.Equal(0, slider.Value);
+        TestWindow.Press(window, Key.Add);
+        Assert.InRange(slider.Value, 0.01, 0.99);
+
+        slider.Value = 1;
+        TestWindow.Pump();
+        Assert.Equal(30 * 48, timeline.PixelsPerSecond, 6);
+        slider.Value = 0;
+        TestWindow.Pump();
+        Assert.Equal((fit, 0.0), (timeline.PixelsPerSecond, timeline.HorizontalOffset));
+    });
+
+    // Clips are drawn rounded in their kind's color, a picture's starting with its thumbnail; the
+    // selected one has an accent ring, a hidden one is faded, and the playhead is red with a head.
+    [Fact]
+    public void ClipsAreDrawnRoundedInTheirColorsWithThumbnails() => TestWindow.Run("window-clips", (window, folder) =>
+    {
+        var project = TestFiles.Project();
+        project.Assets.Add(new Asset { Id = "logo", Type = AssetType.Image, File = "assets/logo.png", Width = 64, Height = 64 });
+        ProjectEditor.AddImageLayer(project, new ImageLayerOptions { Id = "logo", Drawings = new Dictionary<string, string> { ["normal"] = "logo" }, Start = 0, End = 2 });
+        ProjectEditor.AddTextLayer(project, new TextLayerOptions { Id = "title", Text = "Hi", Start = 0, End = 2, ZIndex = 1 });
+        var directory = Path.Combine(folder, "clips");
+        ProjectSession.Create(directory, project);
+        TestFiles.Png(Path.Combine(directory, ProjectStore.AssetsFolder, "logo.png"), 64, 64);
+        window.OpenProject(directory);
+        TestWindow.Pump();
+        var list = (ListBox)window.FindName("MediaList");
+        for (var i = 0; i < 500 && list.Items.Cast<MediaItem>().Single().Picture is null; i++)
+        {
+            TestWindow.Pump(20);
+        }
+
+        TestWindow.Pump();
+        var timeline = (TimelineView)window.FindName("Timeline");
+        Assert.Equal(["Text", "Images"], timeline.Lanes.Select(l => l.Title));
+        double X(double time) => TimelineView.HeaderWidth + time * timeline.PixelsPerSecond - timeline.HorizontalOffset;
+        double Top(int lane) => TimelineView.RulerHeight + timeline.Lanes.Take(lane).Sum(TimelineView.LaneHeight);
+        double Middle(int lane) => Top(lane) + 3 + TimelineView.RowHeight(LaneKind.Visual) / 2;
+        Color Pixel(double x, double y)
+        {
+            var bitmap = new RenderTargetBitmap((int)timeline.ActualWidth, (int)timeline.ActualHeight, 96, 96, PixelFormats.Pbgra32);
+            bitmap.Render(timeline);
+            var pixel = new byte[4];
+            bitmap.CopyPixels(new Int32Rect((int)x, (int)y, 1, 1), pixel, 4, 0);
+            return Color.FromRgb(pixel[2], pixel[1], pixel[0]);
+        }
+
+        // The text clip's color, away from its name; its rounded corner shows the lane behind it.
+        Assert.Equal(Color.FromRgb(0x7A, 0x53, 0x20), Pixel(X(1.9), Middle(0)));
+        Assert.NotEqual(Color.FromRgb(0x7A, 0x53, 0x20), Pixel(X(0), Math.Round(Top(0) + 3) + 1));
+
+        // The picture's thumbnail starts its clip: the orange picture, in the middle of its box.
+        var orange = Pixel(X(0) + 20, Middle(1));
+        Assert.True(orange is { R: > 200, B: < 80 }, $"thumbnail pixel {orange}");
+        Assert.Equal(Color.FromRgb(0x1F, 0x6B, 0x52), Pixel(X(1.9), Middle(1)));
+
+        // Selected, the picture's clip has an accent ring along its edge.
+        window.SelectLayer("logo");
+        TestWindow.Pump();
+        Assert.Equal(Color.FromRgb(0x7B, 0x93, 0xFF), Pixel(X(1.5), Math.Round(Top(1) + 3) + 1));
+
+        // The playhead, moved to 1 s: a red line two pixels wide, and its head on the ruler.
+        timeline.Press(new Point(X(1), TimelineView.RulerHeight / 2));
+        timeline.Release();
+        TestWindow.Pump();
+        var playhead = Math.Round(X(1));
+        Assert.Equal(Color.FromRgb(0xFF, 0x5D, 0x5D), Pixel(playhead - 1, Middle(0)));
+        Assert.Equal(Color.FromRgb(0xFF, 0x5D, 0x5D), Pixel(playhead, Middle(1)));
+        Assert.Equal(Color.FromRgb(0xFF, 0x5D, 0x5D), Pixel(playhead + 5, 6));
+
+        // Hidden, the text clip is faded into the panel.
+        var eye = timeline.EyeBounds(0);
+        timeline.Press(new Point(eye.X + eye.Width / 2, eye.Y + eye.Height / 2));
+        WaitForSaves(window);
+        TestWindow.Pump();
+        Assert.True(timeline.FindClip("title")!.Hidden);
+        Assert.Equal(Color.FromRgb(0x41, 0x30, 0x1C), Pixel(X(1.9), Middle(0)));
+    });
+
+    // Half a second of silence, as a WAV file.
+    private static void Silence(string path)
+    {
+        const int Rate = 8000;
+        const int Samples = 4000;
+        using var writer = new BinaryWriter(File.Create(path));
+        writer.Write("RIFF"u8);
+        writer.Write(36 + Samples * 2);
+        writer.Write("WAVEfmt "u8);
+        writer.Write(16);
+        writer.Write((short)1);
+        writer.Write((short)1);
+        writer.Write(Rate);
+        writer.Write(Rate * 2);
+        writer.Write((short)2);
+        writer.Write((short)16);
+        writer.Write("data"u8);
+        writer.Write(Samples * 2);
+        writer.Write(new byte[Samples * 2]);
+    }
+
     // A project with a title from 0 to 2 s, open with the title selected.
     private static string WithTitle(MainWindow window, string folder)
     {

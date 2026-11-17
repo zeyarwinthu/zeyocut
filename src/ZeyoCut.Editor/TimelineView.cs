@@ -12,10 +12,18 @@ using ZeyoCut.Core.Model;
 
 namespace ZeyoCut.Editor;
 
+// What a click on a clip does: select it (and drag it), or split it where it's clicked.
+public enum TimelineTool
+{
+    Select,
+    Blade,
+}
+
 // The timeline: a ruler (click or drag it to move the playhead; the markers on it), the lanes
 // TimelineLayout works out, and the playhead. Drag a clip to move it, up or down onto another draw
 // level or between two for a level of its own; drag an edge to trim. The edit goes out through Edit
-// when the mouse is released, and Escape drops it. Ctrl+wheel zooms, the wheel scrolls.
+// when the mouse is released, and Escape drops it. With the Blade tool, a click on a clip splits it
+// there. Each lane's eye hides every clip in it (LaneToggled). Ctrl+wheel zooms, the wheel scrolls.
 public sealed class TimelineView : FrameworkElement
 {
     public const double HeaderWidth = 150;
@@ -28,21 +36,52 @@ public sealed class TimelineView : FrameworkElement
     private const double DragThreshold = 3;
     private const double KeyMark = 3.5;
     private const double KeyReach = 5;
+    private const double Corner = 6;
+    private const double EyeSize = 22;
 
     private static readonly Typeface Face = new("Segoe UI");
+    private static readonly Typeface Medium = new(new FontFamily("Segoe UI"), FontStyles.Normal, FontWeights.Medium, FontStretches.Normal);
     private static readonly Typeface Bold = new(new FontFamily("Segoe UI"), FontStyles.Normal, FontWeights.SemiBold, FontStretches.Normal);
     private static readonly Brush MarkBrush = Frozen(0xC0, 0x40, 0x90);
     private static readonly Brush BadgeBrush = Frozen(0x60, 0, 0, 0);
     private static readonly Pen KeyEdge = Frozen(new Pen(Frozen(0xA0, 0, 0, 0), 1));
     private static readonly Brush PastEndBrush = Frozen(0x30, 0, 0, 0);
+    private static readonly Brush ThumbnailBack = Frozen(0x1A, 0x1D, 0x24);
+    private static readonly Brush EyeBrush = Frozen(0x7C, 0x83, 0x92);
+    private static readonly Brush MixedBar = Frozen(0x9A, 0xA1, 0xAE);
+    private static readonly Brush GlowBrush = Frozen(0x40, 0x7B, 0x93, 0xFF);
     private static readonly Dictionary<ClipKind, Brush> Fills = new()
     {
-        [ClipKind.Video] = Frozen(0x2F, 0x5C, 0x96),
-        [ClipKind.Image] = Frozen(0x2F, 0x77, 0x4A),
-        [ClipKind.Text] = Frozen(0x8F, 0x62, 0x24),
-        [ClipKind.Group] = Frozen(0x2A, 0x76, 0x76),
-        [ClipKind.Caption] = Frozen(0x4A, 0x58, 0x78),
-        [ClipKind.Audio] = Frozen(0x6E, 0x48, 0x96),
+        [ClipKind.Video] = Frozen(0x2B, 0x4A, 0x8A),
+        [ClipKind.Image] = Frozen(0x1F, 0x6B, 0x52),
+        [ClipKind.Text] = Frozen(0x7A, 0x53, 0x20),
+        [ClipKind.Group] = Frozen(0x1F, 0x5E, 0x5E),
+        [ClipKind.Caption] = Frozen(0x34, 0x3B, 0x4A),
+        [ClipKind.Audio] = Frozen(0x4A, 0x35, 0x85),
+    };
+
+    // A hidden or muted clip: its color faded into the panel's, edged with a dashed line.
+    private static readonly Dictionary<ClipKind, Brush> OffFills = Fills.ToDictionary(f => f.Key, f => Faded(((SolidColorBrush)f.Value).Color));
+
+    // The lanes' color bars, and the clips' second line.
+    private static readonly Dictionary<ClipKind, Brush> Bars = new()
+    {
+        [ClipKind.Video] = Frozen(0x5B, 0x8C, 0xFF),
+        [ClipKind.Image] = Frozen(0x3D, 0xD6, 0x8C),
+        [ClipKind.Text] = Frozen(0xF0, 0xA9, 0x4B),
+        [ClipKind.Group] = Frozen(0x4F, 0xC1, 0xC1),
+        [ClipKind.Caption] = Frozen(0x7C, 0x83, 0x92),
+        [ClipKind.Audio] = Frozen(0xA9, 0x8B, 0xFF),
+    };
+
+    private static readonly Dictionary<ClipKind, Brush> Tints = new()
+    {
+        [ClipKind.Video] = Frozen(0xBF, 0xD0, 0xFF),
+        [ClipKind.Image] = Frozen(0xBD, 0xEB, 0xD6),
+        [ClipKind.Text] = Frozen(0xF2, 0xD6, 0xAE),
+        [ClipKind.Group] = Frozen(0xBF, 0xEB, 0xEB),
+        [ClipKind.Caption] = Frozen(0xC4, 0xCA, 0xD6),
+        [ClipKind.Audio] = Frozen(0xD6, 0xCC, 0xFF),
     };
 
     private readonly DrawingVisual _content = new();
@@ -72,6 +111,11 @@ public sealed class TimelineView : FrameworkElement
     private string? _hovered;
     private IReadOnlyList<double> _keyTimes = [];
     private (double Time, int? Lane)? _mediaDrop;
+    private TimelineTool _tool;
+    private int? _hoveredEye;
+
+    // Where the Blade would cut the clip under the mouse: its x, and the clip's top and bottom.
+    private (double X, double Top, double Bottom)? _blade;
 
     // Scrolls the lanes while a drag or a scrub is held at their left or right edge.
     private readonly DispatcherTimer _edgeScroll = new(DispatcherPriority.Input) { Interval = TimeSpan.FromMilliseconds(30) };
@@ -99,6 +143,25 @@ public sealed class TimelineView : FrameworkElement
 
     // The zoom or the scroll position changed.
     public event EventHandler? ViewChanged;
+
+    // A lane's eye clicked: hide (or mute) every clip in it, or show them all when all are hidden.
+    public event EventHandler<TimelineLane>? LaneToggled;
+
+    // The thumbnail of an asset, by its id, drawn at the start of the clips that show it; null while
+    // there is none.
+    public Func<string, ImageSource?>? Thumbnail { get; set; }
+
+    public TimelineTool Tool
+    {
+        get => _tool;
+        set
+        {
+            _tool = value;
+            _blade = null;
+            Cursor = null;
+            DrawOverlay();
+        }
+    }
 
     public IReadOnlyList<TimelineLane> Lanes => _lanes;
 
@@ -144,6 +207,25 @@ public sealed class TimelineView : FrameworkElement
     }
 
     public double PixelsPerSecond => _fit ? FitPixelsPerSecond : _pixelsPerSecond;
+
+    // The zoom, for a slider: 0 is the whole project in view, 1 the closest, a frame 48 px wide;
+    // each step between them zooms by as much. Set, it zooms around the playhead when it's in view.
+    public double ZoomLevel
+    {
+        get
+        {
+            var (fit, closest) = (FitPixelsPerSecond, MaxPixelsPerSecond);
+            return closest <= fit * 1.0001 ? 0 : Math.Clamp(Math.Log(PixelsPerSecond / fit) / Math.Log(closest / fit), 0, 1);
+        }
+        set
+        {
+            var (fit, closest) = (FitPixelsPerSecond, Math.Max(FitPixelsPerSecond, MaxPixelsPerSecond));
+            var playhead = Scale.XOf(_playhead / (double)_fps);
+            ZoomTo(fit * Math.Pow(closest / fit, Math.Clamp(value, 0, 1)), playhead >= 0 && playhead <= ViewportWidth ? playhead : ViewportWidth / 2);
+        }
+    }
+
+    public bool CanZoom => MaxPixelsPerSecond > FitPixelsPerSecond * 1.0001;
 
     public double ViewportWidth => Math.Max(1, ActualWidth - HeaderWidth);
 
@@ -219,6 +301,16 @@ public sealed class TimelineView : FrameworkElement
     }
 
     public TimelineClip? FindClip(string? id) => id is null ? null : _lanes.SelectMany(l => l.Clips).FirstOrDefault(c => c.LayerId == id);
+
+    // Draws the lanes again, as when a thumbnail has been made.
+    public void Redraw() => DrawContent();
+
+    // Where a lane's eye is, in the timeline's pixels.
+    public Rect EyeBounds(int lane)
+    {
+        var top = RulerHeight + _laneTops[lane] - _scrollY + LanePad + (Math.Min(RowHeight(_lanes[lane].Kind), LaneHeight(_lanes[lane]) - 2 * LanePad) - EyeSize) / 2;
+        return new Rect(HeaderWidth - EyeSize - 8, Math.Round(top), EyeSize, EyeSize);
+    }
 
     // Where media dropped at a point goes: the frame under it, and the lane under it if there is one.
     // The place is marked until ClearMediaDrop.
@@ -306,6 +398,11 @@ public sealed class TimelineView : FrameworkElement
         Focus();
         if (point.X < HeaderWidth)
         {
+            if (point.Y >= RulerHeight && EyeAt(point) is { } eye)
+            {
+                LaneToggled?.Invoke(this, _lanes[eye]);
+            }
+
             return;
         }
 
@@ -321,6 +418,13 @@ public sealed class TimelineView : FrameworkElement
         {
             ChangeSelection(null);
             SeekTo(point.X);
+            return;
+        }
+
+        if (_tool == TimelineTool.Blade)
+        {
+            ChangeSelection(hit.Clip.LayerId);
+            Edit?.Invoke(this, new TimelineEdit(new SplitLayerOperation(hit.Clip.LayerId, BladeTime(point)), _project!));
             return;
         }
 
@@ -382,7 +486,43 @@ public sealed class TimelineView : FrameworkElement
             return;
         }
 
-        var hit = point.X >= HeaderWidth && point.Y >= RulerHeight ? HitClip(point) : null;
+        if (point.X < HeaderWidth)
+        {
+            HoverHeader(point);
+            return;
+        }
+
+        ShowEyeHovered(null);
+        var hit = point.Y >= RulerHeight ? HitClip(point) : null;
+        if (_tool == TimelineTool.Blade)
+        {
+            Cursor = hit is null ? null : Cursors.Cross;
+            var blade = _blade;
+            if (hit is null)
+            {
+                _blade = null;
+            }
+            else
+            {
+                var rect = ClipRect(hit.Lane, hit.Clip, RulerHeight + _laneTops[IndexOf(hit.Lane)] - _scrollY, Scale);
+                _blade = (Math.Round(HeaderWidth + Scale.XOf(BladeTime(point))), rect.Top, rect.Bottom);
+            }
+
+            if (_blade != blade)
+            {
+                DrawOverlay();
+            }
+
+            var cut = hit is null ? null : $"{hit.Clip.LayerId}@{BladeTime(point)}";
+            if (cut != _hovered)
+            {
+                _hovered = cut;
+                ToolTip = hit is null ? null : $"Split '{hit.Clip.LayerId}' at {Seconds(BladeTime(point))}";
+            }
+
+            return;
+        }
+
         var key = hit is null ? null : KeyAt(point, hit);
         Cursor = key is not null ? Cursors.Hand : hit?.Part is DragPart.Start or DragPart.End ? Cursors.SizeWE : null;
         var hovered = key is { } at ? $"{hit!.Clip.LayerId}@{at}" : hit?.Clip.LayerId;
@@ -390,6 +530,60 @@ public sealed class TimelineView : FrameworkElement
         {
             _hovered = hovered;
             ToolTip = hit is null ? null : key is { } time ? $"Keyframe at {Seconds(time)}: click to go there (Alt+Left, Alt+Right)" : Describe(hit.Clip);
+        }
+    }
+
+    protected override void OnMouseLeave(MouseEventArgs e)
+    {
+        base.OnMouseLeave(e);
+        ShowEyeHovered(null);
+        if (_blade is not null)
+        {
+            _blade = null;
+            DrawOverlay();
+        }
+    }
+
+    // A lane's name says what it is; its eye, what clicking it does.
+    private void HoverHeader(Point point)
+    {
+        Cursor = null;
+        var eye = point.Y >= RulerHeight ? EyeAt(point) : null;
+        ShowEyeHovered(eye);
+        var lane = point.Y >= RulerHeight ? LaneAt(point.Y) : null;
+        var hovered = lane is { } index ? $"lane:{index}:{eye is not null}" : null;
+        if (hovered == _hovered)
+        {
+            return;
+        }
+
+        _hovered = hovered;
+        if (lane is not { } i)
+        {
+            ToolTip = null;
+            return;
+        }
+
+        var shown = _lanes[i];
+        var off = shown.Clips.Count > 0 && shown.Clips.All(c => c.Hidden);
+        ToolTip = eye is not null
+            ? shown.Kind == LaneKind.Audio
+                ? off ? $"Unmute every clip in {shown.Title}" : $"Mute every clip in {shown.Title}"
+                : off ? $"Show every clip in {shown.Title}" : $"Hide every clip in {shown.Title}"
+            : shown.Kind switch
+            {
+                LaneKind.Audio => $"{shown.Title}: the sound layers with role {EnumNames.ToName(shown.Role!.Value)}",
+                LaneKind.Captions => $"{shown.Title}: captions on draw level {shown.ZIndex}",
+                _ => $"{shown.Title}: draw level {shown.ZIndex} (zIndex); higher levels draw on top",
+            };
+    }
+
+    private void ShowEyeHovered(int? eye)
+    {
+        if (eye != _hoveredEye)
+        {
+            _hoveredEye = eye;
+            DrawContent();
         }
     }
 
@@ -484,7 +678,52 @@ public sealed class TimelineView : FrameworkElement
         return brush;
     }
 
+    private static Brush Faded(Color color)
+    {
+        static byte Mix(byte value, byte panel) => (byte)Math.Round(value * 0.45 + panel * 0.55);
+        return Frozen(Mix(color.R, 0x12), Mix(color.G, 0x14), Mix(color.B, 0x18));
+    }
+
     private static string Seconds(double time) => time.ToString("0.00", CultureInfo.InvariantCulture) + " s";
+
+    // Where the Blade cuts at a point: the frame under it, or the playhead's when snapping and near it.
+    private double BladeTime(Point point)
+    {
+        var playhead = HeaderWidth + Scale.XOf(_playhead / (double)_fps);
+        var frame = Snapping && Math.Abs(point.X - playhead) <= SnapPixels
+            ? _playhead
+            : (int)Math.Round(Math.Max(0, Scale.TimeAt(point.X - HeaderWidth)) * _fps, MidpointRounding.AwayFromZero);
+        return FrameMath.TimeOf(frame, _fps);
+    }
+
+    // The lane whose eye is at a point, if one is.
+    private int? EyeAt(Point point)
+    {
+        for (var i = 0; i < _lanes.Count; i++)
+        {
+            var eye = EyeBounds(i);
+            if (point.Y >= RulerHeight && eye.Contains(point))
+            {
+                return i;
+            }
+        }
+
+        return null;
+    }
+
+    private int? LaneAt(double y)
+    {
+        var at = y - RulerHeight + _scrollY;
+        for (var i = 0; i < _lanes.Count; i++)
+        {
+            if (at >= _laneTops[i] && at < _laneTops[i + 1])
+            {
+                return i;
+            }
+        }
+
+        return null;
+    }
 
     private static string Describe(TimelineClip clip)
     {
@@ -795,7 +1034,8 @@ public sealed class TimelineView : FrameworkElement
 
         dc.Pop();
 
-        // The lane titles.
+        // The lane headers: a bar in the color of what the lane holds, its name, and its eye (a
+        // speaker on a sound lane), crossed out when every clip in it is hidden or muted.
         dc.DrawRectangle(header, null, new Rect(0, RulerHeight, HeaderWidth, height - RulerHeight));
         dc.DrawLine(border, new Point(HeaderWidth - 0.5, 0), new Point(HeaderWidth - 0.5, height));
         dc.PushClip(new RectangleGeometry(new Rect(0, RulerHeight, HeaderWidth, height - RulerHeight)));
@@ -803,21 +1043,31 @@ public sealed class TimelineView : FrameworkElement
         {
             var lane = _lanes[i];
             var top = RulerHeight + _laneTops[i] - _scrollY;
-            var swatch = lane.Kind switch
+            var bottom = Math.Round(RulerHeight + _laneTops[i + 1] - _scrollY);
+            var bar = lane.Kind switch
             {
-                LaneKind.Captions => Fills[ClipKind.Caption],
-                LaneKind.Audio => Fills[ClipKind.Audio],
-                _ => Fills[lane.Clips.Select(c => c.Kind).Distinct().Count() == 1 ? lane.Clips[0].Kind : ClipKind.Group],
+                LaneKind.Captions => Bars[ClipKind.Caption],
+                LaneKind.Audio => Bars[ClipKind.Audio],
+                _ => lane.Clips.Select(c => c.Kind).Distinct().Count() == 1 ? Bars[lane.Clips[0].Kind] : MixedBar,
             };
-            dc.DrawRectangle(swatch, null, new Rect(8, top + LanePad + 4, 3, Math.Min(RowHeight(lane.Kind), LaneHeight(lane) - 2 * LanePad) - 8));
-            var title = new FormattedText(lane.Title, CultureInfo.CurrentCulture, FlowDirection.LeftToRight, Face, 11, secondary, dpi)
+            dc.DrawRectangle(bar, null, new Rect(0, Math.Round(top), 3, Math.Max(0, bottom - Math.Round(top) - 1)));
+            var title = new FormattedText(lane.Title, CultureInfo.CurrentCulture, FlowDirection.LeftToRight, Medium, 12, text, dpi)
             {
-                MaxTextWidth = HeaderWidth - 26,
+                MaxTextWidth = HeaderWidth - 12 - EyeSize - 14,
                 MaxLineCount = 1,
                 Trimming = TextTrimming.CharacterEllipsis,
             };
-            dc.DrawText(title, new Point(18, top + LanePad + (RowHeight(lane.Kind) - title.Height) / 2));
-            dc.DrawLine(border, new Point(0, Math.Round(RulerHeight + _laneTops[i + 1] - _scrollY) - 0.5), new Point(HeaderWidth, Math.Round(RulerHeight + _laneTops[i + 1] - _scrollY) - 0.5));
+            dc.DrawText(title, new Point(12, top + LanePad + (Math.Min(RowHeight(lane.Kind), LaneHeight(lane) - 2 * LanePad) - title.Height) / 2));
+            var off = lane.Clips.Count > 0 && lane.Clips.All(c => c.Hidden);
+            var shape = lane.Kind == LaneKind.Audio ? off ? "SpeakerOffShape" : "SpeakerShape" : off ? "EyeOffShape" : "EyeShape";
+            var eye = EyeBounds(i);
+            if (_hoveredEye == i)
+            {
+                dc.DrawRoundedRectangle(Resource("HoverBrush", Brushes.DimGray), null, eye, 5, 5);
+            }
+
+            DrawIcon(dc, shape, new Rect(eye.X + 4.5, eye.Y + 4.5, 13, 13), _hoveredEye == i ? text : off ? secondary : EyeBrush);
+            dc.DrawLine(border, new Point(0, bottom - 0.5), new Point(HeaderWidth, bottom - 0.5));
         }
 
         dc.Pop();
@@ -842,8 +1092,48 @@ public sealed class TimelineView : FrameworkElement
         var rowHeight = RowHeight(lane.Kind);
         var rect = ClipRect(lane, clip, laneTop, scale);
         var selected = clip.LayerId == _selected;
-        dc.PushOpacity(clip.Hidden ? opacity * 0.45 : opacity);
-        dc.DrawRoundedRectangle(Fills[clip.Kind], selected || outline ? new Pen(selected ? Brushes.White : accent, selected ? 2 : 1.5) : null, rect, 3, 3);
+        var corner = Math.Min(Corner, Math.Min(rect.Width, rect.Height) / 2);
+        dc.PushOpacity(opacity);
+        if (selected && !outline)
+        {
+            var glow = rect;
+            glow.Inflate(2.5, 2.5);
+            dc.DrawRoundedRectangle(null, new Pen(GlowBrush, 3), glow, corner + 2.5, corner + 2.5);
+        }
+
+        if (clip.Hidden)
+        {
+            var edge = ((SolidColorBrush)Bars[clip.Kind]).Color;
+            dc.DrawRoundedRectangle(OffFills[clip.Kind], new Pen(new SolidColorBrush(Color.FromArgb(0x80, edge.R, edge.G, edge.B)), 1) { DashStyle = new DashStyle([3, 2], 0) }, rect, corner, corner);
+        }
+        else
+        {
+            dc.DrawRoundedRectangle(Fills[clip.Kind], null, rect, corner, corner);
+        }
+
+        dc.PushClip(new RectangleGeometry(rect, corner, corner));
+        var start = rect.X + 8;
+
+        // The footage's first frame, or the picture, at the start of the clip.
+        if (!clip.Hidden && clip.Kind is ClipKind.Video or ClipKind.Image && clip.Asset is { } asset && Thumbnail?.Invoke(asset) is { Width: > 0, Height: > 0 } picture)
+        {
+            var box = clip.Kind == ClipKind.Video ? 54 : 40;
+            if (rect.Width >= box + 24)
+            {
+                var area = new Rect(rect.X, rect.Y, box, rect.Height);
+                dc.DrawRectangle(ThumbnailBack, null, area);
+                var room = clip.Kind == ClipKind.Video ? area : new Rect(area.X + 5, area.Y + 4, area.Width - 10, area.Height - 8);
+                var fit = clip.Kind == ClipKind.Video
+                    ? Math.Max(room.Width / picture.Width, room.Height / picture.Height)
+                    : Math.Min(room.Width / picture.Width, room.Height / picture.Height);
+                var (w, h) = (picture.Width * fit, picture.Height * fit);
+                dc.PushClip(new RectangleGeometry(area));
+                dc.DrawImage(picture, new Rect(room.X + (room.Width - w) / 2, room.Y + (room.Height - h) / 2, w, h));
+                dc.Pop();
+                start = area.Right + 8;
+            }
+        }
+
         if (clip.Marks.Count > 0)
         {
             dc.DrawRectangle(MarkBrush, null, new Rect(rect.X + 2, rect.Bottom - 4, Math.Max(0, rect.Width - 4), 2.5));
@@ -862,11 +1152,18 @@ public sealed class TimelineView : FrameworkElement
         // The name is laid out no wider than the part of the clip on screen: a long clip zoomed in is
         // wider than WPF lays text out in.
         right = Math.Min(right, width - 4);
-        var left = Math.Max(rect.X + 5, HeaderWidth + 4);
+        var left = Math.Max(start, HeaderWidth + 4);
+        if (clip.Hidden && right - left > 30)
+        {
+            // A speaker or an eye, crossed out, before the name.
+            DrawIcon(dc, clip.Kind == ClipKind.Audio ? "SpeakerOffShape" : "EyeOffShape", new Rect(left, rect.Y + (rect.Height - 12) / 2, 12, 12), secondary);
+            left += 17;
+        }
+
         if (right - left > 14)
         {
-            var name = clip.Label + (clip.Hidden ? clip.Kind == ClipKind.Audio ? " (muted)" : " (hidden)" : "") + (clip.SoundOff ? " · sound off" : "");
-            var label = new FormattedText(name, CultureInfo.CurrentCulture, FlowDirection.LeftToRight, clip.Kind == ClipKind.Caption ? Face : Bold, 11, text, dpi)
+            var name = clip.Label + (clip.Hidden ? clip.Kind == ClipKind.Audio ? " · muted" : " · hidden" : "") + (clip.SoundOff ? " · sound off" : "");
+            var label = new FormattedText(name, CultureInfo.CurrentCulture, FlowDirection.LeftToRight, clip.Kind == ClipKind.Caption ? Face : Bold, 11, clip.Hidden ? secondary : text, dpi)
             {
                 MaxTextWidth = right - left,
                 MaxLineCount = 1,
@@ -876,7 +1173,7 @@ public sealed class TimelineView : FrameworkElement
             dc.DrawText(label, new Point(left, rect.Y + (detailed ? 2 : (rect.Height - label.Height) / 2)));
             if (detailed)
             {
-                var detail = new FormattedText(clip.Detail, CultureInfo.CurrentCulture, FlowDirection.LeftToRight, Face, 10, secondary, dpi)
+                var detail = new FormattedText(clip.Detail, CultureInfo.CurrentCulture, FlowDirection.LeftToRight, Face, 10, clip.Hidden ? secondary : Tints[clip.Kind], dpi)
                 {
                     MaxTextWidth = right - left,
                     MaxLineCount = 1,
@@ -905,6 +1202,30 @@ public sealed class TimelineView : FrameworkElement
             }
         }
 
+        dc.Pop();
+        if (selected || outline)
+        {
+            var ring = rect;
+            ring.Inflate(selected ? 0.5 : 0, selected ? 0.5 : 0);
+            dc.DrawRoundedRectangle(null, new Pen(accent, selected ? 2 : 1.5), ring, corner, corner);
+        }
+
+        dc.Pop();
+    }
+
+    // One of the theme's 24 px outlines (Icon draws them in the window), in a box.
+    private void DrawIcon(DrawingContext dc, string shape, Rect box, Brush brush)
+    {
+        if (TryFindResource(shape) is not Geometry geometry)
+        {
+            return;
+        }
+
+        var scale = Math.Min(box.Width, box.Height) / 24;
+        dc.PushTransform(new TranslateTransform(box.X, box.Y));
+        dc.PushTransform(new ScaleTransform(scale, scale));
+        dc.DrawGeometry(null, new Pen(brush, 2) { StartLineCap = PenLineCap.Round, EndLineCap = PenLineCap.Round, LineJoin = PenLineJoin.Round }, geometry);
+        dc.Pop();
         dc.Pop();
     }
 
@@ -983,20 +1304,32 @@ public sealed class TimelineView : FrameworkElement
             dc.DrawLine(new Pen(accent, 2), new Point(at, top), new Point(at, bottom));
         }
 
-        var x = Math.Round(HeaderWidth + Scale.XOf(_playhead / (double)_fps)) + 0.5;
+        // Where the Blade would cut.
+        if (_blade is { } blade && _tool == TimelineTool.Blade)
+        {
+            dc.DrawRectangle(Brushes.White, null, new Rect(blade.X, Math.Round(blade.Top) - 2, 1, Math.Round(blade.Bottom - blade.Top) + 4));
+        }
+
+        // The playhead: a line two pixels wide, with a head at the top of the ruler.
+        var x = Math.Round(HeaderWidth + Scale.XOf(_playhead / (double)_fps));
         if (x < HeaderWidth || x > ActualWidth)
         {
             return;
         }
 
-        var brush = Resource("ErrorBrush", Brushes.Red);
-        dc.DrawLine(new Pen(brush, 1), new Point(x, RulerHeight - 10), new Point(x, ActualHeight));
+        var brush = Resource("PlayheadBrush", Brushes.Red);
+        dc.DrawRectangle(brush, null, new Rect(x - 1, 0, 2, ActualHeight));
         var head = new StreamGeometry();
         using (var g = head.Open())
         {
-            g.BeginFigure(new Point(x - 5, RulerHeight - 10), true, true);
-            g.LineTo(new Point(x + 5, RulerHeight - 10), true, false);
-            g.LineTo(new Point(x, RulerHeight - 4), true, false);
+            g.BeginFigure(new Point(x - 4, 0), true, true);
+            g.LineTo(new Point(x + 4, 0), true, false);
+            g.ArcTo(new Point(x + 7, 3), new Size(3, 3), 0, false, SweepDirection.Clockwise, true, false);
+            g.LineTo(new Point(x + 7, 7), true, false);
+            g.ArcTo(new Point(x, 14), new Size(7, 7), 0, false, SweepDirection.Clockwise, true, false);
+            g.ArcTo(new Point(x - 7, 7), new Size(7, 7), 0, false, SweepDirection.Clockwise, true, false);
+            g.LineTo(new Point(x - 7, 3), true, false);
+            g.ArcTo(new Point(x - 4, 0), new Size(3, 3), 0, false, SweepDirection.Clockwise, true, false);
         }
 
         head.Freeze();
