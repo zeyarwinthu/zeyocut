@@ -25,9 +25,27 @@ public class InspectorTests
         return project;
     }
 
-    // The fields with the playhead at time.
+    private static TimelineClip? Clip(Project project, string id) => TimelineLayout.Lanes(project).SelectMany(l => l.Clips).FirstOrDefault(c => c.LayerId == id);
+
+    // The fields with the playhead at time, on every tab, each row followed by its parts.
     private static List<InspectorField> Fields(Project project, string id, double time = 0) =>
-        InspectorFields.Layer(project, project.FindLayer(id)!, TimelineLayout.Lanes(project).SelectMany(l => l.Clips).FirstOrDefault(c => c.LayerId == id), time);
+        InspectorFields.Layer(project, project.FindLayer(id)!, Clip(project, id), time).SelectMany(Flat).ToList();
+
+    private static IEnumerable<InspectorField> Flat(InspectorField field) => field.Parts.Count > 0 ? [field, .. field.Parts] : [field];
+
+    // Each tab's labels, in order.
+    private static List<(string Tab, List<string> Labels)> Tabs(Project project, string id) =>
+        InspectorFields.Layer(project, project.FindLayer(id)!, Clip(project, id), 0).GroupBy(f => f.Tab).Select(g => (g.Key, g.SelectMany(Flat).Select(f => f.Label).ToList())).ToList();
+
+    private static void AssertTabs(Project project, string id, params (string Tab, string[] Labels)[] expected)
+    {
+        var tabs = Tabs(project, id);
+        Assert.Equal(expected.Select(t => t.Tab), tabs.Select(t => t.Tab));
+        foreach (var (tab, labels) in expected)
+        {
+            Assert.Equal(labels, tabs.Single(t => t.Tab == tab).Labels);
+        }
+    }
 
     private static InspectorField Field(Project project, string id, string label, double time = 0) =>
         Fields(project, id, time).Single(f => f.Label == label && f.Kind != FieldKind.Section);
@@ -49,14 +67,17 @@ public class InspectorTests
     {
         var project = Footage();
         var fields = Fields(project, "clip");
-        Assert.Equal(
-            ["Clip", "Id", "Start", "End", "Length", "Draw level", "Shown", "Child layers", "Transform", "X", "Y", "Scale X", "Scale Y", "Rotation", "Opacity",
-                "Video", "Asset", "Plays", "Speed", "Crop", "Left", "Top", "Right", "Bottom", "Sound", "Sound on", "Role", "Volume", "Fade in", "Fade out",
-                "Effects", "Blur", "Shadow", "Border", "Tint", "Adjustments", "Brightness", "Contrast", "Saturation"],
-            fields.Select(f => f.Label));
-        Assert.Equal(["0", "4", "4", "0", "true", "label", "4 – 8 s of the file", "1×", "true", "voice", "1"],
-            new[] { "Start", "End", "Length", "Draw level", "Shown", "Child layers", "Plays", "Speed", "Sound on", "Role", "Volume" }.Select(l => fields.Single(f => f.Label == l).Value));
-        Assert.All(fields.Where(f => f.Kind is FieldKind.Section or FieldKind.Info), f => Assert.False(f.Editable));
+        AssertTabs(project, "clip",
+            ("Video", ["Timing", "Timing", "Start", "End", "Length", "Transform", "Position", "X", "Y", "Scale", "Scale X", "Scale Y", "Rotation", "Opacity",
+                "Crop", "Left", "Top", "Right", "Bottom", "Attached", "Attached", "Clip", "Id", "Draw level", "Shown"]),
+            ("Audio", ["Sound", "Sound on", "Role", "Volume", "Fade in", "Fade out"]),
+            ("Speed", ["Speed", "Speed", "Asset", "Plays"]),
+            ("Effects", ["Effects", "Blur", "Shadow", "Border", "Tint"]),
+            ("Color", ["Adjustments", "Brightness", "Contrast", "Saturation"]));
+        Assert.Equal(["0", "4", "4", "0", "true", "4 – 8 s of the file", "1", "true", "voice", "1"],
+            new[] { "Start", "End", "Length", "Draw level", "Shown", "Plays", "Speed", "Sound on", "Role", "Volume" }.Select(l => Field(project, "clip", l).Value));
+        Assert.Equal([new Attachment("label · child", "label", "#E0A040", "Select label")], Field(project, "clip", "Attached").Attached);
+        Assert.All(fields.Where(f => f.Kind is FieldKind.Section or FieldKind.Info or FieldKind.Row or FieldKind.Columns or FieldKind.Chips), f => Assert.False(f.Editable));
         Assert.Equal(["voice", "music", "effects"], Field(project, "clip", "Role").Options.Select(o => o.Name));
 
         // Start moves the clip with the label; End and Length trim it, as dragging on the timeline does.
@@ -137,8 +158,8 @@ public class InspectorTests
     public void SoundClipsAreMutedAndText()
     {
         var project = Footage();
-        Assert.Equal(["Clip", "Id", "Start", "End", "Length", "Muted", "Sound", "Asset", "Plays", "Role", "Volume", "Fade in", "Fade out"],
-            Fields(project, "music").Select(f => f.Label));
+        AssertTabs(project, "music",
+            ("Audio", ["Timing", "Timing", "Start", "End", "Length", "Sound", "Asset", "Plays", "Role", "Volume", "Fade in", "Fade out", "Clip", "Id", "Muted"]));
         Assert.Equal("0 – the end of the file", Field(project, "music", "Plays").Value);
 
         // Muting sound hides its layer, as audio layers have no other switch.
@@ -155,9 +176,11 @@ public class InspectorTests
     public void StyleFieldsSetAndClearTheTextsLook()
     {
         var project = Footage();
-        var labels = Fields(project, "title").Select(f => f.Label).ToList();
-        Assert.Equal(["Text", "Text", "Style", "Font", "Size", "Bold", "Color", "Outline", "Outline width", "Align", "Max width", "Line height", "Box",
-            "Effects", "Blur", "Shadow", "Border", "Tint"], labels[labels.IndexOf("Text")..]);
+        AssertTabs(project, "title",
+            ("Text", ["Text", "Text", "Timing", "Timing", "Start", "End", "Length", "Transform", "Position", "X", "Y", "Scale", "Scale X", "Scale Y", "Rotation", "Opacity",
+                "Clip", "Id", "Draw level", "Shown"]),
+            ("Style", ["Style", "Font", "Size", "Bold", "Color", "Outline", "Outline width", "Align", "Max width", "Line height", "Box"]),
+            ("Effects", ["Effects", "Blur", "Shadow", "Border", "Tint"]));
 
         Commit(project, "title", "Size", "48");
         Commit(project, "title", "Bold", "true");
@@ -201,8 +224,9 @@ public class InspectorTests
         var cues = project.Layers.Where(l => l.ParentId == "captions_en").Select(l => l.Id).ToList();
         Assert.Equal(2, cues.Count);
         var fields = Fields(project, cues[0]);
-        Assert.Equal(("Caption", "captions_en, 2 caption(s)"), (fields[0].Label, fields.Single(f => f.Label == "Track").Value));
-        Assert.Contains(fields, f => f.Label == "Style of all 2 caption(s) in the track");
+        Assert.Equal(["Caption", "Style"], Tabs(project, cues[0]).Select(t => t.Tab));
+        Assert.Equal("captions_en, 2 caption(s)", fields.Single(f => f.Label == "Track").Value);
+        Assert.Equal(["Style of all 2 caption(s) in the track", "Font"], Tabs(project, cues[0])[1].Labels[..2]);
         Assert.DoesNotContain(fields, f => f.Label is "Draw level" or "Parent" or "Effects");
 
         Commit(project, cues[0], "Text", "Hi");
@@ -220,7 +244,9 @@ public class InspectorTests
     public void TransformFieldsSetAValueOrAKeyframeAtThePlayhead()
     {
         var project = Footage();
-        Assert.Equal(["X", "Y", "Scale X", "Scale Y", "Rotation", "Opacity"], Section(project, "title", "Transform"));
+        Assert.Equal(["Position", "X", "Y", "Scale", "Scale X", "Scale Y", "Rotation", "Opacity"], Section(project, "title", "Transform"));
+        Assert.Equal((FieldKind.Row, "X", FieldKind.Row, "W"), (Field(project, "title", "Position").Kind, Field(project, "title", "X").Prefix, Field(project, "title", "Scale").Kind, Field(project, "title", "Scale X").Prefix));
+        Assert.Equal((FieldKind.Slider, 100.0), (Field(project, "title", "Opacity").Kind, Field(project, "title", "Opacity").Amount));
         Assert.Equal(["320", "180", "100", "100", "0", "100"], new[] { "X", "Y", "Scale X", "Scale Y", "Rotation", "Opacity" }.Select(l => Field(project, "title", l).Value));
         Assert.Equal(["px", "px", "%", "%", "°", "%"], new[] { "X", "Y", "Scale X", "Scale Y", "Rotation", "Opacity" }.Select(l => Field(project, "title", l).Unit));
         Assert.Equal("Where the layer's anchor is on the canvas, in pixels from its top-left corner", Field(project, "title", "X").Tip);
@@ -250,7 +276,7 @@ public class InspectorTests
 
         // On a motion path, the path places it.
         Layer<TextLayer>(project, "title").MotionPath = new MotionPath { Points = [new PathPoint { X = 0, Y = 0 }, new PathPoint { X = 10, Y = 10 }] };
-        Assert.Equal(["Position", "Scale X", "Scale Y", "Rotation", "Opacity"], Section(project, "title", "Transform"));
+        Assert.Equal(["Position", "Scale", "Scale X", "Scale Y", "Rotation", "Opacity"], Section(project, "title", "Transform"));
         Assert.Equal(FieldKind.Info, Field(project, "title", "Position").Kind);
     }
 
@@ -280,7 +306,8 @@ public class InspectorTests
         var project = Footage();
         var cues = project.Layers.Where(l => l.ParentId == "captions_en").Select(l => l.Id).ToList();
         var title = "Position of all 2 caption(s) in the track";
-        Assert.Equal(["X", "Y"], Section(project, cues[0], title));
+        Assert.Equal(["Position", "X", "Y"], Section(project, cues[0], title));
+        Assert.False(Field(project, cues[0], "Position").HasToggle);
         Assert.DoesNotContain(Fields(project, cues[0]), f => f.Label == "Transform");
         var before = cues.Select(id => Layer<TextLayer>(project, id).Y.Value).ToList();
         var y = InspectorFields.Parse(Field(project, cues[0], "Y").Value, "Y");
@@ -378,6 +405,77 @@ public class InspectorTests
         Assert.Single(Layer<TextLayer>(project, "title").Shadow!.Blur.Keyframes);
         Assert.Equal("A keyframe goes at the playhead, and 'title' isn't there; move the playhead into 0–3s, where the layer is",
             Assert.Throws<ZeyoCutException>(() => Field(project, "title", "Opacity", time: 5).ToggleKey!(5)).Message);
+    }
+
+    // One diamond on the Position row keys X and Y at the playhead; again, it takes both away.
+    [Fact]
+    public void ARowsDiamondKeysBothOfItsValues()
+    {
+        var project = Footage();
+        var position = Field(project, "title", "Position", time: 1);
+        Assert.Equal((true, false, false), (position.HasToggle, position.Keyed, position.KeyHere));
+        Assert.Equal("Add keyframes of both at the playhead with these values", position.KeyTip);
+        position.ToggleKey!(1).Apply(project);
+        var title = Layer<TextLayer>(project, "title");
+        Assert.Equal([(1.0, 320.0)], title.X.Keyframes.Select(k => (k.Time, k.Value)));
+        Assert.Equal([(1.0, 180.0)], title.Y.Keyframes.Select(k => (k.Time, k.Value)));
+        position = Field(project, "title", "Position", time: 1);
+        Assert.Equal((true, true, "Take away the keyframes of both at the playhead"), (position.Keyed, position.KeyHere, position.KeyTip));
+
+        // With only one of them keyed there, the diamond keys the other.
+        KeyframeEditor.SetKeyframes(project, [new KeyframeEntry("title", "x", 2, Json(50))]);
+        Assert.False(Field(project, "title", "Position", time: 2).KeyHere);
+        Field(project, "title", "Position", time: 2).ToggleKey!(2).Apply(project);
+        title = Layer<TextLayer>(project, "title");
+        Assert.Equal((2, 2), (title.X.Keyframes.Count, title.Y.Keyframes.Count));
+
+        Field(project, "title", "Position", time: 1).ToggleKey!(1).Apply(project);
+        title = Layer<TextLayer>(project, "title");
+        Assert.Equal((1, 1), (title.X.Keyframes.Count, title.Y.Keyframes.Count));
+        Assert.Equal((2.0, 2.0), (title.X.Keyframes[0].Time, title.Y.Keyframes[0].Time));
+    }
+
+    // The Speed tab sets the clip's speed as set_speed does, without moving the clips after it.
+    [Fact]
+    public void TheSpeedFieldPlaysTheClipFasterOrSlower()
+    {
+        var project = Footage();
+        var speed = Field(project, "clip", "Speed");
+        Assert.Equal(("1", "×", "Speed"), (speed.Value, speed.Unit, speed.Tab));
+        Assert.Equal("set_speed clip", speed.Commit!("2").Label);
+        Commit(project, "clip", "Speed", "2×");
+        var clip = Layer<VideoLayer>(project, "clip");
+        Assert.Equal((2.0, 2.0), (clip.Speed, TimelineEditor.ContentEnd(project, clip)));
+        Assert.Equal("Speed can't be less than 0.1 (got 0)", Error(project, "clip", "Speed", "0"));
+        Assert.Equal("Speed can't be more than 10 (got 20)", Error(project, "clip", "Speed", "20"));
+        Assert.DoesNotContain(Fields(project, "music"), f => f.Label == "Speed");
+    }
+
+    // The header names the clip, where it comes from and what goes with it.
+    [Fact]
+    public void TheHeaderSaysWhereAClipComesFromAndWhatGoesWithIt()
+    {
+        var project = Footage();
+        project.Assets.Add(new Asset { Id = "logo", Type = AssetType.Image, File = "assets/logo.png", Width = 64, Height = 64 });
+        ProjectEditor.AddImageLayer(project, new ImageLayerOptions { Id = "logo", Drawings = new Dictionary<string, string> { ["normal"] = "logo" }, Start = 0, End = 2 });
+        InspectorHeader Header(string id) => InspectorFields.Header(project, project.FindLayer(id)!, Clip(project, id));
+
+        Assert.Equal(new InspectorHeader("VIDEO", "clip", "from clip.mp4 · 1 child"), Header("clip"));
+        Assert.Equal(new InspectorHeader("TEXT", "title", "“Hello”"), Header("title"));
+        Assert.Equal(new InspectorHeader("IMAGE", "logo", "from logo.png"), Header("logo"));
+        Assert.Equal(["Image", "Effects", "Color"], Tabs(project, "logo").Select(t => t.Tab));
+        var cue = project.Layers.First(l => l.ParentId == "captions_en").Id;
+        Assert.Equal(new InspectorHeader("CAPTION", project.FindLayer(cue)!.Name, "in captions_en"), Header(cue));
+        Assert.Equal("Hello", Header(cue).Title);
+        Commit(project, "music", "Muted", "true");
+        Assert.Equal(new InspectorHeader("AUDIO", "music", "from music.wav · muted"), Header("music"));
+
+        // A redaction of the footage follows the clip: the header counts it and it has a chip.
+        project.Tracks.Add(new Track { Id = "track_1", Asset = "clip", Layer = "clip", FirstFrame = 0, LastFrame = 59, File = "tracks/track_1-00000000.json", Anchors = [new TrackBox { Frame = 0, Width = 40, Height = 40 }] });
+        var redaction = RedactionEditor.Apply(project, ["track_1"], new RedactionSettings(RedactionStyle.Blur, 50, 15, 4, 15, "#000000")).Layer.Id;
+        Assert.Equal("from clip.mp4 · 1 child · 1 redaction", Header("clip").Subtitle);
+        var chip = Field(project, "clip", "Attached").Attached[1];
+        Assert.Equal(($"{redaction} · blur", false), (chip.Text, chip.Selectable));
     }
 
     [Fact]

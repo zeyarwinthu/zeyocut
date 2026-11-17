@@ -75,13 +75,37 @@ public class WindowTests
         }
     }
 
-    // The inspector's text box for a field.
+    // The inspector's text box for a field, also one of a row's parts.
     private static TextBox Field(MainWindow window, string label)
     {
         TestWindow.Pump();
-        var list = (ItemsControl)window.FindName("InspectorList");
-        var field = list.Items.OfType<InspectorField>().Single(f => f.Label == label);
-        return Descendant<TextBox>((DependencyObject)list.ItemContainerGenerator.ContainerFromItem(field))!;
+        return Descendants<TextBox>((ItemsControl)window.FindName("InspectorList")).Single(b => b.DataContext is InspectorField field && field.Label == label);
+    }
+
+    private static IEnumerable<T> Descendants<T>(DependencyObject parent) where T : DependencyObject
+    {
+        for (var i = 0; i < VisualTreeHelper.GetChildrenCount(parent); i++)
+        {
+            var child = VisualTreeHelper.GetChild(parent, i);
+            if (child is T found)
+            {
+                yield return found;
+            }
+
+            foreach (var below in Descendants<T>(child))
+            {
+                yield return below;
+            }
+        }
+    }
+
+    // Clicks one of the inspector's tabs.
+    private static void Tab(MainWindow window, string name)
+    {
+        var tab = ((Panel)window.FindName("InspectorTabs")).Children.OfType<RadioButton>().Single(t => (string)t.Content == name);
+        tab.IsChecked = true;
+        tab.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+        TestWindow.Pump();
     }
 
     private static T? Descendant<T>(DependencyObject parent) where T : DependencyObject
@@ -115,7 +139,7 @@ public class WindowTests
         // The media list takes a click: the picture is shown in the inspector.
         ((ListBox)window.FindName("MediaList")).SelectedIndex = 0;
         TestWindow.Pump();
-        Assert.Equal("IMAGE ASSET", Text(window, "InspectorTitle"));
+        Assert.Equal(("IMAGE", "logo"), (Text(window, "InspectorKind"), Text(window, "InspectorName")));
     });
 
     [Fact]
@@ -430,6 +454,63 @@ public class WindowTests
         Assert.Equal("Play (Space)", play.ToolTip);
     });
 
+    // The tab chosen stays chosen for the next clip that has it; a child's chip selects it; the
+    // opacity slider saves once, when it's let go.
+    [Fact]
+    public void TheInspectorsTabsChipsAndSliderWork() => TestWindow.Run("window-inspector", (window, folder) =>
+    {
+        var project = TestFiles.Project();
+        ProjectEditor.AddTextLayer(project, new TextLayerOptions { Id = "title", Text = "Hello", Start = 0, End = 2 });
+        ProjectEditor.AddTextLayer(project, new TextLayerOptions { Id = "sub", Text = "Hi", ParentId = "title", Start = 0, End = 2, FontSize = 20 });
+        var directory = Path.Combine(folder, "titled");
+        ProjectSession.Create(directory, project);
+        window.OpenProject(directory);
+        window.SelectLayer("title");
+        TestWindow.Pump();
+
+        var tabs = (Panel)window.FindName("InspectorTabs");
+        Assert.Equal(["Text", "Style", "Effects"], tabs.Children.OfType<RadioButton>().Select(t => (string)t.Content));
+        Tab(window, "Style");
+        var size = Field(window, "Size").Text;
+        Assert.Throws<InvalidOperationException>(() => Field(window, "Start"));
+        window.SelectLayer(null);
+        TestWindow.Pump();
+        Assert.Equal(("PROJECT", Visibility.Collapsed), (Text(window, "InspectorKind"), Shown(window, "InspectorTabs")));
+        window.SelectLayer("title");
+        TestWindow.Pump();
+        Assert.Equal(size, Field(window, "Size").Text);
+
+        // The chip of the title's child selects it, on the tab chosen.
+        Tab(window, "Text");
+        var chip = Descendants<Button>((ItemsControl)window.FindName("InspectorList")).Single(b => b.Tag is Attachment { LayerId: "sub" });
+        chip.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+        TestWindow.Pump();
+        Assert.Equal(("sub", "“Hi”"), (Text(window, "InspectorName"), Text(window, "InspectorDetails")));
+        window.SelectLayer("title");
+        TestWindow.Pump();
+
+        var slider = Descendants<Slider>((ItemsControl)window.FindName("InspectorList")).Single();
+        var box = Field(window, "Opacity");
+        foreach (var value in new[] { 80.0, 60, 40.4 })
+        {
+            slider.Value = value;
+            TestWindow.Pump();
+        }
+
+        Assert.Equal("40", box.Text);
+        Assert.Equal("Saved · revision 1", Text(window, "SaveStatus"));
+        slider.RaiseEvent(new MouseButtonEventArgs(Mouse.PrimaryDevice, 0, MouseButton.Left) { RoutedEvent = UIElement.PreviewMouseLeftButtonUpEvent });
+        WaitForSaves(window);
+        Assert.Equal("Saved · revision 2", Text(window, "SaveStatus"));
+        Assert.Equal(0.4, Title(directory).Opacity.Value);
+
+        // Let go again without a move, the slider saves nothing.
+        slider = Descendants<Slider>((ItemsControl)window.FindName("InspectorList")).Single();
+        slider.RaiseEvent(new MouseButtonEventArgs(Mouse.PrimaryDevice, 0, MouseButton.Left) { RoutedEvent = UIElement.PreviewMouseLeftButtonUpEvent });
+        WaitForSaves(window);
+        Assert.Equal("Saved · revision 2", Text(window, "SaveStatus"));
+    });
+
     private sealed class ToleranceComparer : IEqualityComparer<(double, double, double)>
     {
         public bool Equals((double, double, double) a, (double, double, double) b) =>
@@ -543,7 +624,7 @@ public class WindowTests
     public void AFieldIsSavedOnEnterAndWhenTheKeyboardLeavesIt() => TestWindow.Run("window-fields", (window, folder) =>
     {
         var directory = WithTitle(window, folder);
-        Assert.Equal("TEXT LAYER", Text(window, "InspectorTitle"));
+        Assert.Equal(("TEXT", "title", "“Hello”"), (Text(window, "InspectorKind"), Text(window, "InspectorName"), Text(window, "InspectorDetails")));
 
         var start = Field(window, "Start");
         start.Text = "0.5";
@@ -704,19 +785,19 @@ public class WindowTests
         Button Diamond()
         {
             TestWindow.Pump();
-            var row = list.ItemContainerGenerator.ContainerFromItem(list.Items.OfType<InspectorField>().Single(f => f.Label == "X"));
+            var row = list.ItemContainerGenerator.ContainerFromItem(list.Items.OfType<InspectorField>().Single(f => f.Label == "Position"));
             return Descendant<Button>((DependencyObject)row)!;
         }
 
-        // The X diamond clicked twice while its keyframe is being saved: the second click takes it
-        // away again.
+        // The Position diamond clicked twice while its keyframes are being saved: the second click
+        // takes them away again.
         var held = ProjectLock.Acquire(directory, TimeSpan.FromSeconds(1));
         Diamond().RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
         Diamond().RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
         Assert.Equal("Saving…", Text(window, "SaveStatus"));
         held.Dispose();
         WaitForSaves(window);
-        Assert.Empty(Title(directory).X.Keyframes);
+        Assert.Equal((0, 0), (Title(directory).X.Keyframes.Count, Title(directory).Y.Keyframes.Count));
         Assert.Equal("Saved · revision 3", Text(window, "SaveStatus"));
 
         // Delete pressed twice: the title is deleted once.

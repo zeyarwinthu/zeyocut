@@ -47,6 +47,18 @@ public partial class MainWindow : Window
     private static readonly Brush AudioBadge = Frozen(0x8A, 0x5B, 0xB5);
     private static readonly Brush FontBadge = Frozen(0xA0, 0x70, 0x30);
 
+    // The inspector header's badge, by kind: its background and its text.
+    private static readonly Dictionary<string, (Brush Back, Brush Text)> KindBadges = new()
+    {
+        ["VIDEO"] = (Frozen(0x24, 0x36, 0x5F), Frozen(0xAF, 0xC4, 0xFF)),
+        ["IMAGE"] = (Frozen(0x1F, 0x3D, 0x2C), Frozen(0xA8, 0xE6, 0xC1)),
+        ["GROUP"] = (Frozen(0x1C, 0x3A, 0x3A), Frozen(0xA5, 0xE0, 0xE0)),
+        ["TEXT"] = (Frozen(0x43, 0x32, 0x1A), Frozen(0xF4, 0xCF, 0x94)),
+        ["FONT"] = (Frozen(0x43, 0x32, 0x1A), Frozen(0xF4, 0xCF, 0x94)),
+        ["AUDIO"] = (Frozen(0x36, 0x28, 0x4F), Frozen(0xD5, 0xBF, 0xFF)),
+        ["CAPTION"] = (Frozen(0x2A, 0x32, 0x42), Frozen(0xC6, 0xD0, 0xE0)),
+    };
+
     private readonly Settings _settings;
     private readonly string _settingsPath;
     private readonly EditorSettings _prefs;
@@ -101,6 +113,11 @@ public partial class MainWindow : Window
     // the layer they are of.
     private Project? _inspectorProject;
     private string? _inspectorLayer;
+
+    // The inspector tab chosen last, by name, and the tabs shown: a clip without that tab shows its
+    // first, and the next clip that has it shows it again.
+    private string _inspectorTab = "";
+    private string _inspectorTabs = "";
 
     // The inspector shows animated values and keyframes at the playhead, so it's built again when the
     // playhead stops moving; queued when that's on its way.
@@ -745,7 +762,10 @@ public partial class MainWindow : Window
         _inspectorLayer = _selectedLayer;
         var rows = InspectorRows();
         _inspectorTimed = rows.Any(f => f.Keyed || f.HasToggle);
-        InspectorList.ItemsSource = rows;
+        var tabs = rows.Select(f => f.Tab).Where(t => t.Length > 0).Distinct().ToList();
+        var tab = tabs.Contains(_inspectorTab) ? _inspectorTab : tabs.FirstOrDefault() ?? "";
+        ShowTabs(tabs, tab);
+        InspectorList.ItemsSource = tabs.Count == 0 ? rows : rows.Where(f => f.Tab == tab).ToList();
         if (focused is not null)
         {
             Dispatcher.InvokeAsync(() => FocusField(focused.Value.Label, focused.Value.Occurrence), DispatcherPriority.Loaded);
@@ -758,17 +778,17 @@ public partial class MainWindow : Window
         var project = document.View;
         if (_selectedLayer is { } layerId && project.FindLayer(layerId) is { } layer)
         {
-            InspectorTitle.Text = Timeline.FindClip(layerId)?.Kind == ClipKind.Caption ? "CAPTION" : $"{layer.TypeName.ToUpperInvariant()} LAYER";
+            ShowHeader(InspectorFields.Header(project, layer, Timeline.FindClip(layerId)), true);
             return InspectorFields.Layer(project, layer, Timeline.FindClip(layerId), FrameMath.TimeOf(project, _frame));
         }
 
         if (_selectedAsset is { } id && project.FindAsset(id) is { } asset)
         {
-            InspectorTitle.Text = $"{Kind(asset)} ASSET";
+            ShowHeader(new InspectorHeader(Kind(asset), asset.Id, $"asset · {Path.GetFileName(asset.File)}"), false);
             return Info(AssetRows(document.Session.Directory, project, asset));
         }
 
-        InspectorTitle.Text = "PROJECT";
+        ShowHeader(new InspectorHeader("PROJECT", project.Name, "Project settings"), false);
         var file = Path.Combine(document.Session.Directory, ProjectStore.ProjectFileName);
         List<KeyValuePair<string, string>> rows =
         [
@@ -793,6 +813,45 @@ public partial class MainWindow : Window
     private static List<InspectorField> Info(IEnumerable<KeyValuePair<string, string>> rows) =>
         rows.Select(r => new InspectorField(r.Key, FieldKind.Info, r.Value)).ToList();
 
+    private void ShowHeader(InspectorHeader header, bool clip)
+    {
+        var (back, text) = KindBadges.GetValueOrDefault(header.Kind, ((Brush)FindResource("ChosenBrush"), (Brush)FindResource("SecondaryTextBrush")));
+        InspectorBadge.Background = back;
+        InspectorKind.Foreground = text;
+        InspectorKind.Text = header.Kind;
+        InspectorName.Text = header.Title;
+        InspectorName.ToolTip = header.Title;
+        InspectorDetails.Text = header.Subtitle;
+        InspectorDetails.ToolTip = header.Subtitle.Length == 0 ? null : header.Subtitle;
+        InspectorDetails.Visibility = header.Subtitle.Length == 0 ? Visibility.Collapsed : Visibility.Visible;
+        InspectorMore.Visibility = clip ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    // The inspector's tabs, made again only when they change.
+    private void ShowTabs(List<string> tabs, string chosen)
+    {
+        var key = string.Join("|", tabs) + "#" + chosen;
+        InspectorTabs.Visibility = tabs.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        InspectorGap.Visibility = tabs.Count > 0 ? Visibility.Collapsed : Visibility.Visible;
+        if (key == _inspectorTabs)
+        {
+            return;
+        }
+
+        _inspectorTabs = key;
+        InspectorTabs.Children.Clear();
+        foreach (var tab in tabs)
+        {
+            var button = new RadioButton { Content = tab, GroupName = "InspectorTab", Style = (Style)FindResource("InspectorTab"), IsChecked = tab == chosen, Tag = tab };
+            button.Click += OnInspectorTab;
+            InspectorTabs.Children.Add(button);
+        }
+    }
+
+    // The inspector's rows as shown, each followed by its parts.
+    private IEnumerable<InspectorField> ShownFields() =>
+        InspectorList.Items.OfType<InspectorField>().SelectMany(f => f.Parts.Count > 0 ? [f, .. f.Parts] : new[] { f });
+
     // The inspector field the keyboard is in, and whether it holds text not saved yet.
     private (InspectorField Field, TextBox Box, bool Dirty)? TypingField() =>
         Keyboard.FocusedElement is TextBox { Tag: InspectorField field } box && InspectorList.IsAncestorOf(box)
@@ -802,18 +861,15 @@ public partial class MainWindow : Window
     // Rows can share a label, as two face blurs' settings do: occurrence is which of them.
     private TextBox? FocusField(string label, int occurrence)
     {
-        foreach (var item in InspectorList.Items)
+        if (ShownFields().Where(f => f.Label == label).ElementAtOrDefault(occurrence) is not { } field
+            || Descendants<TextBox>(InspectorList).FirstOrDefault(b => ReferenceEquals(b.DataContext, field)) is not { } box)
         {
-            if (item is InspectorField field && field.Label == label && occurrence-- == 0 && InspectorList.ItemContainerGenerator.ContainerFromItem(item) is DependencyObject container
-                && Descendant<TextBox>(container) is { } box)
-            {
-                box.Focus();
-                box.SelectAll();
-                return box;
-            }
+            return null;
         }
 
-        return null;
+        box.Focus();
+        box.SelectAll();
+        return box;
     }
 
     // After another program changed the layer first, the inspector shows its version: what was typed
@@ -828,18 +884,18 @@ public partial class MainWindow : Window
         }
     }
 
-    // Which of the rows with its label a field is, counted from the top; null when it isn't shown.
+    // Which of the fields with its label a field is, counted from the top; null when it isn't shown.
     private int? Occurrence(InspectorField field)
     {
         var occurrence = 0;
-        foreach (var item in InspectorList.Items)
+        foreach (var shown in ShownFields())
         {
-            if (ReferenceEquals(item, field))
+            if (ReferenceEquals(shown, field))
             {
                 return occurrence;
             }
 
-            if (item is InspectorField above && above.Label == field.Label)
+            if (shown.Label == field.Label)
             {
                 occurrence++;
             }
@@ -848,39 +904,25 @@ public partial class MainWindow : Window
         return null;
     }
 
-    // Which of the rows with its label holds the box, counted from the top.
-    private int Occurrence(TextBox box)
-    {
-        var row = ItemsControl.ContainerFromElement(InspectorList, box) is FrameworkElement { DataContext: InspectorField shown } ? shown : null;
-        var occurrence = 0;
-        foreach (var item in InspectorList.Items)
-        {
-            if (ReferenceEquals(item, row))
-            {
-                return occurrence;
-            }
+    // Which of the fields with its label holds the box (its Tag changes when Enter saves it; the
+    // field it shows doesn't), counted from the top.
+    private int Occurrence(TextBox box) => box.DataContext is InspectorField field ? Occurrence(field) ?? 0 : 0;
 
-            if (item is InspectorField field && field.Label == row?.Label)
-            {
-                occurrence++;
-            }
-        }
-
-        return 0;
-    }
-
-    private static T? Descendant<T>(DependencyObject parent) where T : DependencyObject
+    private static IEnumerable<T> Descendants<T>(DependencyObject parent) where T : DependencyObject
     {
         for (var i = 0; i < VisualTreeHelper.GetChildrenCount(parent); i++)
         {
             var child = VisualTreeHelper.GetChild(parent, i);
-            if ((child as T ?? Descendant<T>(child)) is { } found)
+            if (child is T found)
             {
-                return found;
+                yield return found;
+            }
+
+            foreach (var below in Descendants<T>(child))
+            {
+                yield return below;
             }
         }
-
-        return null;
     }
 
     // Saves a field's new value through its edit; false when the value can't be used, which the
@@ -2379,7 +2421,7 @@ public partial class MainWindow : Window
         var (layer, frame) = (_inspectorLayer, _frame);
         WhenSaved(() =>
         {
-            if (_inspectorLayer != layer || InspectorList.Items.OfType<InspectorField>().Where(f => f.Label == field.Label).ElementAtOrDefault(occurrence) is not { ToggleKey: { } toggle })
+            if (_inspectorLayer != layer || ShownFields().Where(f => f.Label == field.Label).ElementAtOrDefault(occurrence) is not { ToggleKey: { } toggle })
             {
                 return;
             }
@@ -2401,6 +2443,72 @@ public partial class MainWindow : Window
         {
             CommitField(choice.Field, choice.Name);
         }
+    }
+
+    private void OnInspectorTab(object sender, RoutedEventArgs e)
+    {
+        if (sender is RadioButton { Tag: string tab } && tab != _inspectorTab && _document is not null)
+        {
+            _inspectorTab = tab;
+            ShowInspector();
+        }
+    }
+
+    // A child's chip selects it; a cutout's or redaction's only says what it is.
+    private void OnChip(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button { Tag: Attachment { LayerId: { } id } })
+        {
+            SelectLayer(id);
+        }
+    }
+
+    // While the slider moves, its box shows the value; the value is saved once, when it's let go.
+    private void OnSliderMoved(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (sender is Slider { Tag: InspectorField, Parent: Grid row } slider && Descendants<TextBox>(row).FirstOrDefault() is { } box)
+        {
+            box.Text = InspectorFields.Num(Math.Round(slider.Value));
+        }
+    }
+
+    private void OnSliderPressed(object sender, MouseButtonEventArgs e)
+    {
+        if (_playing)
+        {
+            Pause();
+        }
+    }
+
+    private void OnSliderReleased(object sender, MouseButtonEventArgs e) => CommitSlider(sender);
+
+    private void OnSliderKey(object sender, KeyEventArgs e)
+    {
+        if (e.Key is Key.Left or Key.Right or Key.Up or Key.Down or Key.PageUp or Key.PageDown or Key.Home or Key.End)
+        {
+            CommitSlider(sender);
+        }
+    }
+
+    private void CommitSlider(object sender)
+    {
+        if (sender is Slider { Tag: InspectorField field } slider)
+        {
+            CommitField(field, InspectorFields.Num(Math.Round(slider.Value)));
+        }
+    }
+
+    // The ⋯ menu: what the timeline's menu does to the selected clip.
+    private void OnInspectorMenu(object sender, RoutedEventArgs e)
+    {
+        if (_document?.View is not { } project || _selectedLayer is not { } id || project.FindLayer(id) is not { } layer)
+        {
+            return;
+        }
+
+        var clip = Timeline.FindClip(id) ?? new TimelineClip(id, layer switch { AudioLayer => ClipKind.Audio, VideoLayer => ClipKind.Video, TextLayer => ClipKind.Text, _ => ClipKind.Image },
+            id, "", layer.Start, TimelineEditor.ContentEnd(project, layer), 0, !layer.Visible, layer is VideoLayer { Muted: true }, ProjectEditor.Subtree(project, id).Count() - 1, []);
+        ShowClipMenu(clip, InspectorMore, true);
     }
 
     private void OnMediaPressed(object sender, MouseButtonEventArgs e) =>
@@ -2750,9 +2858,16 @@ public partial class MainWindow : Window
         }
     }
 
-    private void OnClipMenu(object? sender, TimelineClip clip)
+    private void OnClipMenu(object? sender, TimelineClip clip) => ShowClipMenu(clip, Timeline, false);
+
+    private void ShowClipMenu(TimelineClip clip, UIElement target, bool below)
     {
-        var menu = new ContextMenu { PlacementTarget = Timeline };
+        var menu = new ContextMenu { PlacementTarget = target };
+        if (below)
+        {
+            menu.Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom;
+        }
+
         void Add(string header, string? gesture, bool enabled, Action action)
         {
             var item = new MenuItem { Header = header, InputGestureText = gesture ?? "", IsEnabled = enabled };

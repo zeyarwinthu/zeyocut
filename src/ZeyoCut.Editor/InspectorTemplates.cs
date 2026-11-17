@@ -27,6 +27,14 @@ public sealed class InspectorTemplates : DataTemplateSelector
 
     public DataTemplate? Color { get; set; }
 
+    public DataTemplate? Row { get; set; }
+
+    public DataTemplate? Columns { get; set; }
+
+    public DataTemplate? Slider { get; set; }
+
+    public DataTemplate? Chips { get; set; }
+
     public override DataTemplate? SelectTemplate(object item, DependencyObject container) => item is not InspectorField field
         ? base.SelectTemplate(item, container)
         : field.Kind switch
@@ -38,6 +46,10 @@ public sealed class InspectorTemplates : DataTemplateSelector
             FieldKind.Toggle => Toggle,
             FieldKind.Choice => Choice,
             FieldKind.Color => Color,
+            FieldKind.Row => Row,
+            FieldKind.Columns => Columns,
+            FieldKind.Slider => Slider,
+            FieldKind.Chips => Chips,
             _ => Info,
         };
 }

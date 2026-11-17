@@ -66,13 +66,26 @@ There's a lane for each draw level (`zIndex`) of video, images and text, the hig
 
 The inspector shows the selected clip and changes it. With nothing selected, it shows the project: its Duration is changed there, as `update_project` changes it, and the rest is shown.
 
-- **Clip:** Start, End and Length move and trim it; Draw level is its `zIndex`; Shown hides it (Muted for sound). A video's speed is shown; ask the model to change it.
+Its header names the clip with a badge for its kind, and says where it comes from and what goes with it ("from street.mp4 · 1 child · 2 redactions"). The ⋯ button has the timeline's right-click menu: split, delete, hide or mute, and a video's sound. The fields are on tabs by kind, and the tab you chose stays chosen for the next clip that has it:
+
+| Clip | Tabs |
+|---|---|
+| Video | Video, Audio, Speed, Effects, Color |
+| Picture | Image, Effects, Color |
+| Text | Text, Style, Effects |
+| Sound | Audio |
+| Caption | Caption, Style |
+
+- **Timing:** Start, End and Length, on one row, move and trim it.
+- **Clip:** Draw level is its `zIndex`; Shown hides it (Muted for sound).
+- **Attached:** a chip for each child layer (a logo on a video, the parts of a rig), which selects it, and for each cutout and redaction that follows the clip.
+- **Speed:** a video's speed, as `set_speed` sets it: 2 plays it twice as fast in half the time. The clips after it stay where they are.
 - **Sound:** a video has Sound on, and sound has its role, volume and fades.
 - **Text:** a text's words and its style: font (an installed family, or a font file imported into the project), size, bold, color, outline, alignment, maximum width, line height and a box behind it. A caption's text is its own, and its style is the whole track's: a change applies to every caption in the track, as one undo step.
-- **Transform:** X and Y place the layer's anchor on the canvas (a child layer's, in its parent's pixels), Scale X and Scale Y size it in percent (negative flips it), Rotation turns it in degrees around the anchor, and Opacity is in percent. A layer that follows a motion path shows Position: the path places it; ask the model to change the path. A caption's X and Y move every caption in its track by the same amount.
+- **Transform:** Position X and Y place the layer's anchor on the canvas (a child layer's, in its parent's pixels), Scale W and H size it in percent (negative flips it), Rotation turns it in degrees around the anchor, and Opacity is in percent, by its slider or typed. The slider saves when you let it go, as one undo step. A layer that follows a motion path shows Position: the path places it; ask the model to change the path. A caption's X and Y move every caption in its track by the same amount.
 - **Crop:** a video's Left, Top, Right and Bottom cut that many pixels of its file off each side. What's left of the picture stays where it was, and so do child layers on it. A crop the model animated is changed with keyframes; ask the model.
 - **Effects:** Blur, Shadow, Border (the outline effect) and Tint switch an effect on and off, as `set_effect` does. Switched on, each shows its settings: the blur's size each way; the shadow's color, offset, softness and opacity; the border's color and width; the tint's color and amount (a new tint is white). Captions don't have them.
-- **Adjustments:** a video's or picture's Brightness, Contrast and Saturation, in percent: 0, 100 and 100 leave it as it is.
+- **Color:** a video's or picture's Brightness, Contrast and Saturation, in percent: 0, 100 and 100 leave it as it is.
 - **Face blur:** a video whose footage a redaction hides (`apply_redaction`) shows its settings: Style, Strength (pixelate and blur) or Fill color (solid), Padding, Feather and Hold frames, a section for each redaction. They are the redaction's, so they change every clip of that footage.
 
 ![The title of Tora Jumps with a shadow switched on: the inspector shows the shadow's color, offset, blur and opacity, each number with a keyframe diamond](editor-effects.png)
@@ -87,7 +100,7 @@ Numbers take a point or a comma, with or without their unit: `2,5`, `2.5 s`, `40
 
 ### Keyframes
 
-The diamond beside a number animates it. ◇ adds a keyframe at the playhead with the value shown; ◆ means there's one at the playhead, and takes it away. Blue means the value is animated. Taking away the last keyframe leaves the value it had there.
+The diamond beside a number animates it. ◇ adds a keyframe at the playhead with the value shown; ◆ means there's one at the playhead, and takes it away. Blue means the value is animated. Taking away the last keyframe leaves the value it had there. Position and Scale have one diamond for both values: it keys both, or takes both keyframes away when both are there.
 
 A value animated with keyframes shows its value at the playhead. Changing it adds a keyframe there (or changes the one on that frame), with the easing of the keyframe before it, so the move keeps its feel. That needs the playhead where the layer is. Clicking into an animated value or pressing its diamond while playing stops the playback first, so the change goes on the frame you see.
 

@@ -45,7 +45,13 @@ when they open.
   lists the exports folder. The project's Duration is set in the inspector, and the lanes are
   shaded past the end, as the ruler is. Its header names the project, whether it's saved and when
   Claude last saved, with undo, redo and the way to Export; the Activity view shows the revision
-  and the 20 most recent saves, yours and Claude's. A project is open in one editor window at a time. Held at the
+  and the 20 most recent saves, yours and Claude's. The preview names the canvas, can draw the
+  safe area (as `check_project` checks it) and a thirds grid over the frame, loops, and shows the
+  frame full screen (F). The inspector's header says where the clip comes from and what goes with
+  it, with the timeline's menu under ⋯; its fields are on tabs by kind, with timing, position and
+  scale on one row each, one diamond keying both of a row's values, an opacity slider, chips for
+  the attached layers, and a video's speed (as `set_speed` sets it, without moving the clips after
+  it). A project is open in one editor window at a time. Held at the
   timeline's edge, a drag or a scrub scrolls it, and clicking into an animated value or its diamond
   while playing stops the playback first. A
   change that can't be saved (another program holds `project.json`, or its folder is read-only or

@@ -21,6 +21,10 @@ public enum FieldKind
     Toggle,
     Choice,
     Color,
+    Row,
+    Columns,
+    Slider,
+    Chips,
 }
 
 // One row of the inspector. A field with Commit can be changed there: Commit turns what was typed or
@@ -29,11 +33,24 @@ public enum FieldKind
 // false, a choice's one of Choices. Unit is shown after a number; Tip explains the field. A Keyed
 // field is animated: it shows the value at the playhead. ToggleKey is its diamond button's edit at
 // the playhead's time: it adds a keyframe there, or takes away the one there (KeyHere).
+//
+// Tab is the inspector tab the row is on. A Row shows its Parts side by side after its label, each
+// with its Prefix in the box (X, W), and one diamond for them all; Columns show their Parts side by
+// side with each label above. A Slider is a number from 0 to 100 that is saved when the slider is
+// let go. Chips are the layers that go with a clip.
 public sealed record InspectorField(string Label, FieldKind Kind, string Value, Func<string, EditOperation>? Commit = null,
     IReadOnlyList<string>? Choices = null, string Unit = "", string? Tip = null, bool Keyed = false, bool KeyHere = false,
     Func<double, EditOperation>? ToggleKey = null)
 {
     public const string KeyedTip = "Animated: this is its value at the playhead, and a change adds a keyframe there";
+
+    public string Tab { get; init; } = "";
+
+    public IReadOnlyList<InspectorField> Parts { get; init; } = [];
+
+    public string? Prefix { get; init; }
+
+    public IReadOnlyList<Attachment> Attached { get; init; } = [];
 
     public bool Editable => Commit is not null;
 
@@ -41,11 +58,17 @@ public sealed record InspectorField(string Label, FieldKind Kind, string Value, 
 
     public string KeyGlyph => KeyHere ? "◆" : "◇";
 
-    public string KeyTip => KeyHere ? "Take away the keyframe at the playhead"
+    public string KeyTip => Parts.Count > 0
+        ? KeyHere ? "Take away the keyframes of both at the playhead" : "Add keyframes of both at the playhead with these values"
+        : KeyHere ? "Take away the keyframe at the playhead"
         : Keyed ? "Add a keyframe at the playhead with this value"
         : "Animate: add a keyframe at the playhead with this value";
 
     public bool IsOn => Value == "true";
+
+    public string PartTip => Unit.Length == 0 ? Label : $"{Label}, {Unit}";
+
+    public double Amount => double.TryParse(Value, NumberStyles.Float, CultureInfo.InvariantCulture, out var amount) ? amount : 0;
 
     public IReadOnlyList<FieldChoice> Options => Choices?.Select(c => new FieldChoice(this, c, c == Value)).ToList() ?? [];
 }
@@ -57,22 +80,114 @@ public sealed record FieldChoice(InspectorField Field, string Name, bool Selecte
     public string Group => $"inspector:{Field.Label}:{RuntimeHelpers.GetHashCode(Field)}";
 }
 
+// A layer that goes with a clip, as a chip: a child, which the chip selects, or a cutout or
+// redaction that follows the clip. Color is the square's, #RRGGBB.
+public sealed record Attachment(string Text, string? LayerId, string Color, string? Tip = null)
+{
+    public bool Selectable => LayerId is not null;
+}
+
+// The inspector's header for a clip: its kind's badge, its name, and a line on where it comes from
+// and what goes with it.
+public sealed record InspectorHeader(string Kind, string Title, string Subtitle);
+
 // What the inspector shows for a clip at the playhead's time, and how each of its fields is changed.
 // Timing moves and trims the clip as the timeline does; the rest are the layer's fields, as
 // update_layer and set_effect set them, or a keyframe at the playhead for an animated one
 // (ValueEditor.Set). A caption's text and timing are its own, and its style and position the whole
 // track's: a change to them is made to every caption in the track at once, as one undo step.
+//
+// The fields are on tabs by kind: a video's Video, Audio, Speed, Effects and Color; a picture's
+// Image, Effects and Color; a text's Text, Style and Effects; a sound's Audio; a caption's Caption
+// and Style.
 public static partial class InspectorFields
 {
     public const string NoFontFile = "(none)";
+
+    private const int MostChips = 12;
 
     public static List<InspectorField> Layer(Project project, Layer layer, TimelineClip? clip, double time)
     {
         var id = layer.Id;
         var end = TimelineEditor.ContentEnd(project, layer);
-        var group = layer.ParentId is { } parentId && project.FindLayer(parentId) is { } parent && TimelineLayout.IsCaptionGroup(parent) ? parent : null;
+        var group = CaptionGroup(project, layer);
         var cues = group is null ? [] : project.Layers.Where(l => l.ParentId == group.Id && l is TextLayer).Select(l => l.Id).ToList();
-        var fields = new List<InspectorField> { Section(group is null ? "Clip" : "Caption"), Info("Id", id) };
+        var fields = new List<InspectorField>();
+        void Tab(string name)
+        {
+            for (var i = 0; i < fields.Count; i++)
+            {
+                if (fields[i].Tab.Length == 0)
+                {
+                    fields[i] = fields[i] with { Tab = name };
+                }
+            }
+        }
+
+        if (layer is TextLayer words)
+        {
+            fields.Add(Section("Text"));
+            fields.Add(new InspectorField("Text", FieldKind.LongText, words.Text, value => new UpdateLayerOperation(id, new JsonObject { ["text"] = value.ReplaceLineEndings("\n") }),
+                Tip: "Enter saves it; Shift+Enter starts a new line"));
+        }
+
+        var open = layer is ImageLayer or TextLayer && layer.End is null;
+        fields.Add(Section("Timing"));
+        fields.Add(new InspectorField("Timing", FieldKind.Columns, "")
+        {
+            Parts =
+            [
+                Number("Start", layer.Start, "s", text => new MoveLayerOperation(id, Parse(text, "Start", min: 0))),
+                Number("End", end, "s", text => new TrimLayerOperation(id, null, Parse(text, "End", min: 0)), open ? "Runs to the project's end until you change it" : null),
+                Number("Length", end - layer.Start, "s", text => new TrimLayerOperation(id, null, layer.Start + Parse(text, "Length", above: 0))),
+            ],
+        });
+
+        if (group is not null && layer is VisualLayer cue)
+        {
+            var (x, y) = (Interpolator.Evaluate(cue.X, time), Interpolator.Evaluate(cue.Y, time));
+            const string shifts = "Moves every caption in the track by the same amount";
+            fields.Add(Section($"Position of all {cues.Count} caption(s) in the track"));
+            fields.Add(new InspectorField("Position", FieldKind.Row, "", Tip: shifts)
+            {
+                Parts =
+                [
+                    Number("X", x, "px", text => new ShiftLayersOperation($"update_layer {group.Id}", cues, Parse(text, "X") - x, 0), shifts) with { Prefix = "X" },
+                    Number("Y", y, "px", text => new ShiftLayersOperation($"update_layer {group.Id}", cues, 0, Parse(text, "Y") - y), shifts) with { Prefix = "Y" },
+                ],
+            });
+        }
+        else if (layer is VisualLayer placed)
+        {
+            AddTransform(fields, project, placed, time);
+        }
+
+        switch (layer)
+        {
+            case VideoLayer video:
+                AddCrop(fields, project, video);
+                break;
+            case AudioLayer audio:
+                fields.Add(Section("Sound"));
+                fields.Add(Info("Asset", audio.Asset));
+                fields.Add(Info("Plays", $"{Num(audio.TrimIn)} – {(audio.TrimOut is { } trimOut ? Num(trimOut) + " s" : "the end")} of the file"));
+                AddSound(fields, id, audio.Role, audio.Volume, audio.FadeIn, audio.FadeOut);
+                break;
+            case ImageLayer image when image.Drawings.Count > 0:
+                fields.Add(Section("Image"));
+                fields.Add(Info("Drawings", string.Join(", ", image.Drawings.Select(d => $"{d.Key}: {d.Value}"))));
+                break;
+        }
+
+        var attached = Attachments(project, layer, clip);
+        if (attached.Count > 0)
+        {
+            fields.Add(Section("Attached"));
+            fields.Add(new InspectorField("Attached", FieldKind.Chips, "", Tip: "A child's chip selects it") { Attached = attached });
+        }
+
+        fields.Add(Section(group is null ? "Clip" : "Caption"));
+        fields.Add(Info("Id", id));
         if (!string.IsNullOrEmpty(layer.Name) && layer.Name != id)
         {
             fields.Add(Info("Name", layer.Name));
@@ -83,10 +198,6 @@ public static partial class InspectorFields
             fields.Add(Info("Track", $"{group.Id}, {cues.Count} caption(s)"));
         }
 
-        var open = layer is ImageLayer or TextLayer && layer.End is null;
-        fields.Add(Number("Start", layer.Start, "s", text => new MoveLayerOperation(id, Parse(text, "Start", min: 0))));
-        fields.Add(Number("End", end, "s", text => new TrimLayerOperation(id, null, Parse(text, "End", min: 0)), open ? "Runs to the project's end until you change it" : null));
-        fields.Add(Number("Length", end - layer.Start, "s", text => new TrimLayerOperation(id, null, layer.Start + Parse(text, "Length", above: 0))));
         if (layer is VisualLayer visual && layer.ParentId is null)
         {
             fields.Add(new InspectorField("Draw level", FieldKind.Number, visual.ZIndex.ToString(CultureInfo.InvariantCulture),
@@ -107,85 +218,121 @@ public static partial class InspectorFields
             fields.Add(Info("Parent", owner));
         }
 
-        if (clip?.Children > 0)
-        {
-            var children = ProjectEditor.Subtree(project, id).Skip(1).Select(l => l.Id).ToList();
-            fields.Add(Info("Child layers", children.Count > 6 ? string.Join(", ", children.Take(6)) + $" and {children.Count - 6} more" : string.Join(", ", children)));
-        }
-
         if (layer.Language is { } language)
         {
             fields.Add(Info("Language", language));
         }
 
-        foreach (var mark in clip?.Marks ?? [])
+        if (layer is VideoLayer footage)
         {
-            fields.Add(Info("Followed by", mark));
+            AddRedactions(fields, project, footage);
         }
 
-        if (group is not null && layer is VisualLayer cue)
-        {
-            var (x, y) = (Interpolator.Evaluate(cue.X, time), Interpolator.Evaluate(cue.Y, time));
-            const string shifts = "Moves every caption in the track by the same amount";
-            fields.Add(Section($"Position of all {cues.Count} caption(s) in the track"));
-            fields.Add(Number("X", x, "px", text => new ShiftLayersOperation($"update_layer {group.Id}", cues, Parse(text, "X") - x, 0), shifts));
-            fields.Add(Number("Y", y, "px", text => new ShiftLayersOperation($"update_layer {group.Id}", cues, 0, Parse(text, "Y") - y), shifts));
-        }
-        else if (layer is VisualLayer placed)
-        {
-            AddTransform(fields, project, placed, time);
-        }
-
+        Tab(group is not null ? "Caption" : Capitalized(layer.TypeName));
         switch (layer)
         {
             case VideoLayer video:
-                fields.Add(Section("Video"));
-                fields.Add(Info("Asset", video.Asset));
-                fields.Add(Info("Plays", $"{Num(video.TrimIn)} – {Num(video.TrimOut)} s of the file"));
-                fields.Add(Info("Speed", $"{Num(video.Speed)}×"));
-                AddCrop(fields, project, video);
-                AddRedactions(fields, project, video);
                 fields.Add(Section("Sound"));
                 if (project.FindAsset(video.Asset)?.HasAudio == false)
                 {
                     fields.Add(Info("Sound", "the file has none"));
-                    break;
+                }
+                else
+                {
+                    fields.Add(Toggle("Sound on", !video.Muted, on => new UpdateLayerOperation(id, new JsonObject { ["muted"] = !on })));
+                    AddSound(fields, id, video.Role, video.Volume, video.FadeIn, video.FadeOut);
                 }
 
-                fields.Add(Toggle("Sound on", !video.Muted, on => new UpdateLayerOperation(id, new JsonObject { ["muted"] = !on })));
-                AddSound(fields, id, video.Role, video.Volume, video.FadeIn, video.FadeOut);
-                break;
-            case AudioLayer audio:
-                fields.Add(Section("Sound"));
-                fields.Add(Info("Asset", audio.Asset));
-                fields.Add(Info("Plays", $"{Num(audio.TrimIn)} – {(audio.TrimOut is { } trimOut ? Num(trimOut) + " s" : "the end")} of the file"));
-                AddSound(fields, id, audio.Role, audio.Volume, audio.FadeIn, audio.FadeOut);
+                Tab("Audio");
+                fields.Add(Section("Speed"));
+                fields.Add(Number("Speed", video.Speed, "×", text => new SetSpeedOperation(id, Parse(text, "Speed", min: VideoLayer.MinSpeed, max: VideoLayer.MaxSpeed)),
+                    "2 plays it twice as fast, in half the time. The clips after it stay where they are"));
+                fields.Add(Info("Asset", video.Asset));
+                fields.Add(Info("Plays", $"{Num(video.TrimIn)} – {Num(video.TrimOut)} s of the file"));
+                Tab("Speed");
                 break;
             case TextLayer text:
-                fields.Add(Section("Text"));
-                fields.Add(new InspectorField("Text", FieldKind.LongText, text.Text, value => new UpdateLayerOperation(id, new JsonObject { ["text"] = value.ReplaceLineEndings("\n") }),
-                    Tip: "Enter saves it; Shift+Enter starts a new line"));
                 fields.Add(Section(group is null ? "Style" : $"Style of all {cues.Count} caption(s) in the track"));
                 AddStyle(fields, project, text, changes => group is null
                     ? new UpdateLayerOperation(id, changes)
                     : new UpdateLayersOperation($"update_layer {group.Id}", cues, changes));
-                break;
-            case ImageLayer image when image.Drawings.Count > 0:
-                fields.Add(Section("Image"));
-                fields.Add(Info("Drawings", string.Join(", ", image.Drawings.Select(d => $"{d.Key}: {d.Value}"))));
+                Tab("Style");
                 break;
         }
 
         if (group is null && layer is VisualLayer shown)
         {
             AddEffects(fields, project, shown, time);
+            Tab("Effects");
             if (shown is IColorAdjustable)
             {
                 AddAdjustments(fields, project, shown, time);
+                Tab("Color");
             }
         }
 
         return fields;
+    }
+
+    // The header's badge, name and line for a clip: "from street.mp4 · 1 child · 2 redactions".
+    public static InspectorHeader Header(Project project, Layer layer, TimelineClip? clip)
+    {
+        var group = CaptionGroup(project, layer);
+        var kind = group is not null ? "caption" : clip?.Kind == ClipKind.Group ? "group" : layer.TypeName;
+        var title = string.IsNullOrEmpty(layer.Name) ? layer.Id : layer.Name;
+        string? File(string asset) => project.FindAsset(asset) is { } found ? Path.GetFileName(found.File) : asset;
+        var drawn = layer is ImageLayer image ? image.Drawings.Values.Distinct().ToList() : [];
+        var source = layer switch
+        {
+            _ when group is not null => $"in {group.Id}",
+            VideoLayer video => $"from {File(video.Asset)}",
+            AudioLayer audio => $"from {File(audio.Asset)}",
+            ImageLayer when drawn.Count == 1 => $"from {File(drawn[0])}",
+            ImageLayer when drawn.Count > 1 => $"{drawn.Count} drawings",
+            TextLayer text => $"“{Shortened(text.Text.ReplaceLineEndings(" "), 28)}”",
+            _ => null,
+        };
+        var children = clip?.Children ?? 0;
+        var marks = Marks(clip).GroupBy(m => m.Kind).Select(g => $"{g.Count()} {g.Key}{(g.Count() == 1 ? "" : "s")}");
+        string?[] parts =
+        [
+            source,
+            children == 0 ? null : children == 1 ? "1 child" : $"{children} children",
+            .. marks,
+            layer.Visible ? null : layer is AudioLayer ? "muted" : "hidden",
+            layer is VideoLayer { Muted: true } ? "sound off" : null,
+        ];
+        return new InspectorHeader(kind.ToUpperInvariant(), title, string.Join(" · ", parts.Where(p => p is not null)));
+    }
+
+    // The layers that go with a clip: its children, which the chips select, and the cutouts and
+    // redactions that follow it.
+    public static List<Attachment> Attachments(Project project, Layer layer, TimelineClip? clip)
+    {
+        var chips = new List<Attachment>();
+        if (clip?.Children > 0)
+        {
+            var children = ProjectEditor.Subtree(project, layer.Id).Skip(1).ToList();
+            foreach (var child in children.Take(MostChips))
+            {
+                var how = child.ParentId == layer.Id ? "child" : $"in {child.ParentId}";
+                chips.Add(new Attachment($"{child.Id} · {how}", child.Id, KindColor(child), $"Select {child.Id}"));
+            }
+
+            if (children.Count > MostChips)
+            {
+                chips.Add(new Attachment($"+{children.Count - MostChips} more", null, "#6B7280", string.Join(", ", children.Skip(MostChips).Select(c => c.Id))));
+            }
+        }
+
+        foreach (var (kind, id) in Marks(clip))
+        {
+            var detail = project.FindLayer(id) is RedactionLayer redaction ? EnumNames.ToName(redaction.Style) : kind;
+            chips.Add(new Attachment($"{id} · {detail}", null, kind == "redaction" ? "#FF7A7A" : "#3DD68C",
+                kind == "redaction" ? "A redaction of this footage; its settings are on the Video tab" : "A cutout made from this clip"));
+        }
+
+        return chips;
     }
 
     // A number as typed: digits with a point or comma, and the unit after it or not.
@@ -222,6 +369,24 @@ public static partial class InspectorFields
 
     public static string Num(double value) => value.ToString("0.###", CultureInfo.InvariantCulture);
 
+    private static Layer? CaptionGroup(Project project, Layer layer) =>
+        layer.ParentId is { } parentId && project.FindLayer(parentId) is { } parent && TimelineLayout.IsCaptionGroup(parent) ? parent : null;
+
+    private static IEnumerable<(string Kind, string Id)> Marks(TimelineClip? clip) =>
+        (clip?.Marks ?? []).Select(m => MarkPattern().Match(m)).Where(m => m.Success).Select(m => (m.Groups[1].Value, m.Groups[2].Value));
+
+    private static string KindColor(Layer layer) => layer switch
+    {
+        VideoLayer => "#5B8DEF",
+        TextLayer => "#E0A040",
+        AudioLayer => "#A77BDB",
+        _ => "#4CB782",
+    };
+
+    private static string Capitalized(string name) => name.Length == 0 ? name : char.ToUpperInvariant(name[0]) + name[1..];
+
+    private static string Shortened(string text, int most) => text.Length <= most ? text : text[..(most - 1)].TrimEnd() + "…";
+
     // An animatable number (ValueEditor) at the playhead: a change sets it, or a keyframe there when
     // it's animated, and its diamond adds or takes away a keyframe there. factor turns the value kept
     // into the one shown, as 0.5 into 50 %.
@@ -236,12 +401,19 @@ public static partial class InspectorFields
             ToggleKey: at => ValueEditor.ToggleKeyframe(project, layer.Id, property, at));
     }
 
+    // Two animatable numbers on one row, X and Y or W and H, with one diamond that keys both.
+    private static InspectorField Pair(Project project, VisualLayer layer, double time, string label, double factor, string unit, string tip,
+        (string Property, string Label, string Prefix) first, (string Property, string Label, string Prefix) second)
+    {
+        var parts = new[] { first, second }.Select(p => Animated(project, layer, p.Property, time, p.Label, factor, unit, tip) with { Prefix = p.Prefix }).ToList();
+        var keyed = parts.Any(p => p.Keyed);
+        return new InspectorField(label, FieldKind.Row, "", Tip: keyed ? $"{InspectorField.KeyedTip}. {tip}" : tip, Keyed: keyed, KeyHere: parts.All(p => p.KeyHere),
+            ToggleKey: at => ValueEditor.ToggleKeyframes(project, layer.Id, [first.Property, second.Property], at)) { Parts = parts };
+    }
+
     // Where the layer is, its size, turn and opacity. A child's x and y are in its parent's pixels.
     private static void AddTransform(List<InspectorField> fields, Project project, VisualLayer layer, double time)
     {
-        InspectorField Field(string property, string label, double factor, string unit, string tip, double? min = null, double? max = null) =>
-            Animated(project, layer, property, time, label, factor, unit, tip, min, max);
-
         fields.Add(Section("Transform"));
         var where = layer.ParentId is { } parent ? $"in its parent '{parent}', in the parent's own pixels" : "on the canvas, in pixels from its top-left corner";
         if (PlacementEditor.PositionLocked(layer) is { } locked)
@@ -250,14 +422,12 @@ public static partial class InspectorFields
         }
         else
         {
-            fields.Add(Field("x", "X", 1, "px", $"Where the layer's anchor is {where}"));
-            fields.Add(Field("y", "Y", 1, "px", $"Where the layer's anchor is {where}"));
+            fields.Add(Pair(project, layer, time, "Position", 1, "px", $"Where the layer's anchor is {where}", ("x", "X", "X"), ("y", "Y", "Y")));
         }
 
-        fields.Add(Field("scaleX", "Scale X", 100, "%", "100 is its own size; a negative scale flips it"));
-        fields.Add(Field("scaleY", "Scale Y", 100, "%", "100 is its own size; a negative scale flips it"));
-        fields.Add(Field("rotation", "Rotation", 1, "°", "Degrees clockwise around the anchor"));
-        fields.Add(Field("opacity", "Opacity", 100, "%", "100 is solid, 0 is invisible", min: 0, max: 100));
+        fields.Add(Pair(project, layer, time, "Scale", 100, "%", "100 is its own size; a negative scale flips it", ("scaleX", "Scale X", "W"), ("scaleY", "Scale Y", "H")));
+        fields.Add(Animated(project, layer, "rotation", time, "Rotation", 1, "°", "Degrees clockwise around the anchor"));
+        fields.Add(Animated(project, layer, "opacity", time, "Opacity", 100, "%", "100 is solid, 0 is invisible", min: 0, max: 100) with { Kind = FieldKind.Slider });
     }
 
     // The layer's effects, each switched on and off as set_effect adds and takes it away, and their
@@ -430,4 +600,7 @@ public static partial class InspectorFields
 
     [GeneratedRegex(@"^\s*([-+]?(?:\d+(?:[.,]\d*)?|[.,]\d+)(?:[eE][-+]?\d+)?)\s*(?:s|px|×|x|%|°)?\s*$", RegexOptions.IgnoreCase)]
     private static partial Regex NumberPattern();
+
+    [GeneratedRegex(@"^(\w+) '(.+)'$")]
+    private static partial Regex MarkPattern();
 }
