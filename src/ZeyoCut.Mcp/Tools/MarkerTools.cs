@@ -55,7 +55,7 @@ public static class MarkerTools
     {
         var session = state.Session;
         var (project, list, scenes) = session.Read(p => (p.Name, YouTubeChapters.Make(p), p.Markers.Count(m => m.Kind == MarkerKind.Scene)));
-        var name = fileName is null ? $"{ProjectTools.SafeFolderName(project)}_chapters.txt" : TextName(fileName);
+        var name = fileName is null ? $"{ProjectStore.FolderName(project)}_chapters.txt" : TextName(fileName);
         var output = Path.Combine(session.Directory, ProjectStore.ExportsFolder, name);
         Directory.CreateDirectory(Path.GetDirectoryName(output)!);
         File.WriteAllText(output, list.Text, new UTF8Encoding(false));

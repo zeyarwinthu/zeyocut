@@ -342,7 +342,7 @@ public static class ExportTools
         var (first, last) = FrameExport.Frames(project, startTime, endTime);
         var directory = session.Directory;
         MatteFiles.ThrowIfPending(project, directory);
-        var folder = Path.Combine(directory, ProjectStore.ExportsFolder, $"{ProjectTools.SafeFolderName(project.Name)}_frames");
+        var folder = Path.Combine(directory, ProjectStore.ExportsFolder, $"{ProjectStore.FolderName(project.Name)}_frames");
         var job = state.Jobs.Start("frames", $"export_frames f{first}–f{last} as {chosen}", (job, ct) =>
         {
             using var renderer = new FrameRenderer(directory, () => state.RequireFfmpeg().Ffmpeg, streamVideo: true);
@@ -595,7 +595,7 @@ public static class ExportTools
     {
         if (fileName is null)
         {
-            return ProjectTools.SafeFolderName(projectName);
+            return ProjectStore.FolderName(projectName);
         }
 
         var name = fileName.Trim();

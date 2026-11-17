@@ -19,6 +19,19 @@ public sealed record ProjectOptions
     public bool? Ducking { get; init; }
 }
 
+// A new project, as create_project makes it: a preset sets the canvas, frame rate and loudness, and
+// a size or frame rate given as well wins over the preset's.
+public sealed record NewProjectOptions
+{
+    public required string Name { get; init; }
+    public int? Width { get; init; }
+    public int? Height { get; init; }
+    public int? Fps { get; init; }
+    public double Duration { get; init; } = 10;
+    public string BackgroundColor { get; init; } = "#FFFFFF";
+    public string? Preset { get; init; }
+}
+
 public record VisualLayerOptions
 {
     public string? Id { get; init; }

@@ -136,6 +136,15 @@ public static class ProjectStore
     public static bool IsPlainFileName(string? name) =>
         !string.IsNullOrWhiteSpace(name) && name is not "." and not ".." && name.IndexOfAny(Path.GetInvalidFileNameChars()) < 0 && name.IndexOfAny(['/', '\\', ':']) < 0;
 
+    // The folder a new project named 'name' gets in the projects folder, also the start of the names
+    // of files made from the project: the name with characters a file name can't have made '_'.
+    public static string FolderName(string name)
+    {
+        var invalid = Path.GetInvalidFileNameChars();
+        var cleaned = new string(name.Trim().Select(c => invalid.Contains(c) ? '_' : c).ToArray()).Trim('.', ' ');
+        return cleaned.Length == 0 ? "project" : cleaned;
+    }
+
     public static string AssetPath(string directory, Asset asset) =>
         IsAssetFile(asset.File)
             ? Path.GetFullPath(Path.Combine(directory, asset.File.Replace('/', Path.DirectorySeparatorChar)))

@@ -14,6 +14,25 @@ public class EditingTests
     private static KeyframeEntry Key(string layer, string property, double time, object value, string? easing = null) =>
         new(layer, property, time, JsonSerializer.SerializeToElement(value), easing);
 
+    // A new project, as create_project and the editor's New project make it.
+    [Fact]
+    public void ANewProjectTakesItsPresetAndWhatIsGivenOverIt()
+    {
+        var plain = ProjectEditor.NewProject(new NewProjectOptions { Name = "  Tora episode 4 " });
+        Assert.Equal(("Tora episode 4", 1920, 1080, 30, 10.0, "#FFFFFF"), (plain.Name, plain.Width, plain.Height, plain.Fps, plain.Duration, plain.BackgroundColor));
+        Assert.Equal(AudioSettings.DefaultLoudness, plain.Audio.LoudnessTarget);
+
+        var vertical = ProjectEditor.NewProject(new NewProjectOptions { Name = "short", Preset = "shorts_1080p", Fps = 60, Duration = 30, BackgroundColor = "#00000000" });
+        Assert.Equal((1080, 1920, 60, 30.0, "#00000000"), (vertical.Width, vertical.Height, vertical.Fps, vertical.Duration, vertical.BackgroundColor));
+        Assert.Equal(Presets.Shorts1080p.Loudness, vertical.Audio.LoudnessTarget);
+
+        Assert.Equal("name is required", Assert.Throws<ZeyoCutException>(() => ProjectEditor.NewProject(new NewProjectOptions { Name = " " })).Message);
+        Assert.StartsWith("unknown preset 'square'", Assert.Throws<ZeyoCutException>(() => ProjectEditor.NewProject(new NewProjectOptions { Name = "a", Preset = "square" })).Message);
+
+        Assert.Equal("Tora_ episode", ProjectStore.FolderName(" Tora: episode. "));
+        Assert.Equal("project", ProjectStore.FolderName(" .. "));
+    }
+
     [Fact]
     public void ImageLayerDefaults()
     {

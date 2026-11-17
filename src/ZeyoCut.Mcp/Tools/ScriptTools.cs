@@ -60,7 +60,7 @@ public static class ScriptTools
         }
 
         var folder = string.IsNullOrWhiteSpace(directory)
-            ? Path.Combine(state.Settings.ProjectsRoot, ProjectTools.SafeFolderName(projectName))
+            ? Path.Combine(state.Settings.ProjectsRoot, ProjectStore.FolderName(projectName))
             : AllowedFolders.Project(state.Settings, directory);
         if (ProjectStore.IsProjectDirectory(folder))
         {

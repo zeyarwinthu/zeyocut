@@ -156,7 +156,7 @@ public static class LibraryTools
         }
 
         var folder = string.IsNullOrWhiteSpace(directory)
-            ? Path.Combine(state.Settings.ProjectsRoot, ProjectTools.SafeFolderName(name))
+            ? Path.Combine(state.Settings.ProjectsRoot, ProjectStore.FolderName(name))
             : AllowedFolders.Project(state.Settings, directory);
         var warnings = new List<string>();
         var project = Templates.Create(state.Library, template, folder, name.Trim(), duration, warnings);

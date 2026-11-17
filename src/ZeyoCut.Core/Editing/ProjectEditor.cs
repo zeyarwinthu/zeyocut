@@ -14,6 +14,32 @@ public static class ProjectEditor
 {
     public static string LayerIds(Project project) => Ids.List(project.Layers.Select(l => l.Id));
 
+    // A new project's settings; ProjectSession.Create checks them when it saves the project.
+    public static Project NewProject(NewProjectOptions options)
+    {
+        if (string.IsNullOrWhiteSpace(options.Name))
+        {
+            throw new ZeyoCutException("name is required");
+        }
+
+        var preset = string.IsNullOrWhiteSpace(options.Preset) ? null : Presets.Get(options.Preset);
+        var project = new Project
+        {
+            Name = options.Name.Trim(),
+            Width = options.Width ?? preset?.Width ?? 1920,
+            Height = options.Height ?? preset?.Height ?? 1080,
+            Fps = options.Fps ?? preset?.Fps ?? 30,
+            Duration = options.Duration,
+            BackgroundColor = options.BackgroundColor,
+        };
+        if (preset is not null)
+        {
+            project.Audio.LoudnessTarget = preset.Loudness;
+        }
+
+        return project;
+    }
+
     public static ProjectUpdate UpdateProject(Project project, ProjectOptions options)
     {
         if (options.Name is null && options.Width is null && options.Height is null && options.Fps is null

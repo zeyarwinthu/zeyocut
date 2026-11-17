@@ -29,29 +29,20 @@ public static class ProjectTools
         [Description("Optional absolute folder for the project inside the projects root, instead of <projectsRoot>/<name>.")] string? directory = null,
         [Description("youtube_1080p or shorts_1080p.")] string? preset = null) => Guard(() =>
     {
-        if (string.IsNullOrWhiteSpace(name))
+        var project = ProjectEditor.NewProject(new NewProjectOptions
         {
-            throw new ZeyoCutException("name is required");
-        }
-
-        var chosen = string.IsNullOrWhiteSpace(preset) ? null : Presets.Get(preset);
-        var folder = string.IsNullOrWhiteSpace(directory)
-            ? Path.Combine(state.Settings.ProjectsRoot, SafeFolderName(name))
-            : AllowedFolders.Project(state.Settings, directory);
-        var project = new Project
-        {
-            Name = name.Trim(),
-            Width = width ?? chosen?.Width ?? 1920,
-            Height = height ?? chosen?.Height ?? 1080,
-            Fps = fps ?? chosen?.Fps ?? 30,
+            Name = name,
+            Width = width,
+            Height = height,
+            Fps = fps,
             Duration = duration,
             BackgroundColor = backgroundColor,
-        };
-        if (chosen is not null)
-        {
-            project.Audio.LoudnessTarget = chosen.Loudness;
-        }
-
+            Preset = preset,
+        });
+        var chosen = string.IsNullOrWhiteSpace(preset) ? null : Presets.Get(preset);
+        var folder = string.IsNullOrWhiteSpace(directory)
+            ? Path.Combine(state.Settings.ProjectsRoot, ProjectStore.FolderName(name))
+            : AllowedFolders.Project(state.Settings, directory);
         var session = ProjectSession.Create(folder, project);
         state.Open(session);
         return $"created and opened project '{project.Name}' at {session.Directory}{(chosen is null ? "" : $" (preset {chosen.Name}: {chosen.Description})")}\n"
@@ -282,11 +273,4 @@ public static class ProjectTools
 
     private static string Summary(Project project) =>
         $"{project.Width}x{project.Height} @ {project.Fps} fps, {Num(project.Duration)}s ({FrameMath.FrameCount(project)} frames), background {project.BackgroundColor}";
-
-    internal static string SafeFolderName(string name)
-    {
-        var invalid = Path.GetInvalidFileNameChars();
-        var cleaned = new string(name.Trim().Select(c => invalid.Contains(c) ? '_' : c).ToArray()).Trim('.', ' ');
-        return cleaned.Length == 0 ? "project" : cleaned;
-    }
 }
