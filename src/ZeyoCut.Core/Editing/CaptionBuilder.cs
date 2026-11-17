@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 using System.Globalization;
+using System.Text;
 using ZeyoCut.Core.Animation;
 using ZeyoCut.Core.Model;
 using ZeyoCut.Core.Serialization;
@@ -494,6 +495,37 @@ public static class CaptionBuilder
 
     public static string Srt(IReadOnlyList<(double Start, double End, string Text)> cues) =>
         string.Concat(cues.Select((c, i) => $"{i + 1}\r\n{AnalysisFiles.SrtTime(c.Start)} --> {AnalysisFiles.SrtTime(c.End)}\r\n{c.Text.Replace("\r\n", "\n").Replace("\n", "\r\n")}\r\n\r\n"));
+
+    // An .srt file's name as export_srt takes it: a plain name like "talk.srt" without folders, with
+    // .srt added when it has no extension.
+    public static string SrtFileName(string fileName)
+    {
+        if (string.IsNullOrWhiteSpace(fileName) || fileName.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0)
+        {
+            throw new ZeyoCutException($"fileName '{fileName}' must be a plain file name like \"talk.srt\" without folders");
+        }
+
+        var name = fileName.Trim();
+        var extension = Path.GetExtension(name);
+        if (extension.Length == 0)
+        {
+            return name + ".srt";
+        }
+
+        return extension.Equals(".srt", StringComparison.OrdinalIgnoreCase)
+            ? name
+            : throw new ZeyoCutException($"export_srt writes .srt files (got '{extension}')");
+    }
+
+    // Writes cues as an .srt file (UTF-8 without a byte order mark) to the project's exports folder,
+    // as export_srt does; returns its path.
+    public static string WriteSrt(string directory, string fileName, IReadOnlyList<(double Start, double End, string Text)> cues)
+    {
+        var output = Path.Combine(directory, ProjectStore.ExportsFolder, fileName);
+        Directory.CreateDirectory(Path.GetDirectoryName(output)!);
+        File.WriteAllText(output, Srt(cues), new UTF8Encoding(false));
+        return output;
+    }
 
     private sealed record StyleSpec(double Size, bool Bold, string? Stroke, double StrokeWidth, TextBackground? Box, double Y, bool Bottom, double LineHeight, double MaxWidth);
 

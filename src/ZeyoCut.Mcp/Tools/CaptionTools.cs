@@ -390,27 +390,10 @@ public static class CaptionTools
         [Description("Output file name, e.g. \"talk.srt\" (no folders).")] string fileName,
         [Description("Caption group id. Default captions.")] string groupId = CaptionBuilder.DefaultGroup) => Guard(() =>
     {
-        if (string.IsNullOrWhiteSpace(fileName) || fileName.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0)
-        {
-            throw new ZeyoCutException($"fileName '{fileName}' must be a plain file name like \"talk.srt\" without folders");
-        }
-
-        var name = fileName.Trim();
-        var extension = Path.GetExtension(name);
-        if (extension.Length == 0)
-        {
-            name += ".srt";
-        }
-        else if (!extension.Equals(".srt", StringComparison.OrdinalIgnoreCase))
-        {
-            throw new ZeyoCutException($"export_srt writes .srt files (got '{extension}')");
-        }
-
+        var name = CaptionBuilder.SrtFileName(fileName);
         var session = state.Session;
         var cues = session.Read(p => CaptionBuilder.GroupCues(p, groupId));
-        var output = Path.Combine(session.Directory, ProjectStore.ExportsFolder, name);
-        Directory.CreateDirectory(Path.GetDirectoryName(output)!);
-        File.WriteAllText(output, CaptionBuilder.Srt(cues), new UTF8Encoding(false));
+        var output = CaptionBuilder.WriteSrt(session.Directory, name, cues);
         return $"wrote {cues.Count} subtitle(s) to {output} ({Num(cues[0].Start)}–{Num(cues[^1].End)}s)";
     });
 }

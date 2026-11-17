@@ -203,6 +203,24 @@ public class CaptionTests
     }
 
     [Fact]
+    public void ExportSrtNamesAndWritesItsFileAsBefore()
+    {
+        Assert.Equal("talk.srt", CaptionBuilder.SrtFileName(" talk "));
+        Assert.Equal("talk.SRT", CaptionBuilder.SrtFileName("talk.SRT"));
+        Assert.Equal("export_srt writes .srt files (got '.txt')", Assert.Throws<ZeyoCutException>(() => CaptionBuilder.SrtFileName("talk.txt")).Message);
+        Assert.Equal("fileName 'a/b.srt' must be a plain file name like \"talk.srt\" without folders", Assert.Throws<ZeyoCutException>(() => CaptionBuilder.SrtFileName("a/b.srt")).Message);
+        Assert.Throws<ZeyoCutException>(() => CaptionBuilder.SrtFileName(" "));
+
+        // UTF-8 without a byte order mark, in the project's exports folder.
+        var directory = TestPaths.NewDirectory("srt-write");
+        List<(double Start, double End, string Text)> cues = [(0.5, 1.25, "Hello"), (2, 3, "two\nlines")];
+        var path = CaptionBuilder.WriteSrt(directory, "talk.srt", cues);
+        Assert.Equal(Path.Combine(directory, "exports", "talk.srt"), path);
+        Assert.Equal(new System.Text.UTF8Encoding(false).GetBytes(CaptionBuilder.Srt(cues)), File.ReadAllBytes(path));
+        Assert.Equal("1\r\n00:00:00,500 --> 00:00:01,250\r\nHello\r\n\r\n2\r\n00:00:02,000 --> 00:00:03,000\r\ntwo\r\nlines\r\n\r\n", File.ReadAllText(path));
+    }
+
+    [Fact]
     public void CaptionsGoBehindTheSubjectWithACutoutOfTheirOwn()
     {
         var project = WithTalk();
