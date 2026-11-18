@@ -122,6 +122,7 @@ Add an audio layer from an imported audio asset. Audio is only heard in the expo
 | `fadeOut` | number | Fade-out length, seconds. |
 | `role` | string | What the sound is in the mix: music (default; ducked under voice), voice (voiceover, dialogue) or effects. |
 | `language` | string | Language tag (en, ja, my, pt-BR): the sound is only in that language's version, e.g. a dubbed voice. Default: every version. |
+| `edit` | string | How the sound makes room: overlay (default) plays it with what's there; insert splits the sound of its role playing at start and moves every layer that starts there or later (with markers and camera keys) later by its length, making the project longer; overwrite cuts the sound of its role under it. |
 
 ### `add_caption_track`
 
@@ -167,6 +168,7 @@ Add an image layer (a cutout part or a still). Give one image with 'asset', or s
 | `flipX` | boolean | Mirror this layer's pixels around anchorX (children are not flipped). |
 | `visible` | boolean |  |
 | `language` | string | Language tag (en, ja, my, pt-BR): the layer and its children are only in that language's version. Default: every version. |
+| `edit` | string | How a picture with an end makes room: overlay (default) draws it over what's there; insert splits the clip its draw level has at start and moves every layer that starts there or later (with markers and camera keys) later by its length, making the project longer; overwrite cuts what its draw level has under it. |
 
 ### `add_markers`
 
@@ -282,6 +284,7 @@ Add a video clip from a video asset. The clip plays source seconds trimIn..trimO
 | `fadeOut` | number | Sound fade-out, seconds. |
 | `role` | string | What the clip's sound is in the mix: voice (default), music or effects. Music is ducked under voice. |
 | `language` | string | Language of the clip's sound (en, ja, my, pt-BR): other languages' versions mute it; its picture is in every version. Default: every version. |
+| `edit` | string | How the clip makes room: overlay (default) draws it over what's there; insert splits the clip its draw level has at timelineStart and moves every layer that starts there or later (with markers and camera keys) later by the clip's length, making the project longer; overwrite cuts what its draw level has under it, as remove_range does without ripple. |
 
 ### `analyze_video`
 

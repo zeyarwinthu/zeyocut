@@ -38,12 +38,15 @@ public static class LayerTools
         [Description("Seconds (exclusive). Default: project end.")] double? end = null,
         [Description("Mirror this layer's pixels around anchorX (children are not flipped).")] bool? flipX = null,
         bool? visible = null,
-        [Description("Language tag (en, ja, my, pt-BR): the layer and its children are only in that language's version. Default: every version.")] string? language = null) => Guard(() =>
+        [Description("Language tag (en, ja, my, pt-BR): the layer and its children are only in that language's version. Default: every version.")] string? language = null,
+        [Description("How a picture with an end makes room: overlay (default) draws it over what's there; insert splits the clip its draw level has at start and moves every layer that starts there or later (with markers and camera keys) later by its length, making the project longer; overwrite cuts what its draw level has under it.")] string? edit = null) => Guard(() =>
     {
         if (asset is not null && drawings is not null)
         {
             throw new ZeyoCutException("pass either asset or drawings, not both");
         }
+
+        var mode = edit is null ? ClipEdit.Overlay : EnumNames.Parse<ClipEdit>(edit, "edit");
 
         var options = new ImageLayerOptions
         {
@@ -67,9 +70,15 @@ public static class LayerTools
             Visible = visible,
             Language = language,
         };
-        var layer = state.Session.Mutate($"add_image_layer {id ?? name ?? asset}", p => ProjectEditor.AddImageLayer(p, options));
+        var (layer, placed) = state.Session.Mutate($"add_image_layer {id ?? name ?? asset}", p =>
+        {
+            var before = p.Duration;
+            var added = ProjectEditor.AddImageLayer(p, options);
+            return (added, TimelineEditor.Place(p, added, mode, before));
+        });
         var kind = layer.Drawings.Count == 0 ? "null layer (no drawings)" : "image layer";
-        return $"added {kind} '{layer.Id}'{(layer.ParentId is null ? "" : $" under '{layer.ParentId}'")}, anchor ({Num(layer.AnchorX)},{Num(layer.AnchorY)}), z={layer.ZIndex}\n{LayerJson(layer)}";
+        var made = mode == ClipEdit.Insert ? "inserted" : "added";
+        return $"{made} {kind} '{layer.Id}'{(layer.ParentId is null ? "" : $" under '{layer.ParentId}'")}, anchor ({Num(layer.AnchorX)},{Num(layer.AnchorY)}), z={layer.ZIndex}{(placed.Length > 0 ? $"\n{placed}" : "")}\n{LayerJson(layer)}";
     });
 
     [McpServerTool(Name = "add_text_layer")]
@@ -164,24 +173,32 @@ public static class LayerTools
         [Description("Fade-in length, seconds.")] double? fadeIn = null,
         [Description("Fade-out length, seconds.")] double? fadeOut = null,
         [Description("What the sound is in the mix: music (default; ducked under voice), voice (voiceover, dialogue) or effects.")] string? role = null,
-        [Description("Language tag (en, ja, my, pt-BR): the sound is only in that language's version, e.g. a dubbed voice. Default: every version.")] string? language = null) => Guard(() =>
+        [Description("Language tag (en, ja, my, pt-BR): the sound is only in that language's version, e.g. a dubbed voice. Default: every version.")] string? language = null,
+        [Description("How the sound makes room: overlay (default) plays it with what's there; insert splits the sound of its role playing at start and moves every layer that starts there or later (with markers and camera keys) later by its length, making the project longer; overwrite cuts the sound of its role under it.")] string? edit = null) => Guard(() =>
     {
-        var layer = state.Session.Mutate($"add_audio_layer {id ?? asset}", p => ProjectEditor.AddAudioLayer(p, new AudioLayerOptions
+        var mode = edit is null ? ClipEdit.Overlay : EnumNames.Parse<ClipEdit>(edit, "edit");
+        var (layer, placed) = state.Session.Mutate($"add_audio_layer {id ?? asset}", p =>
         {
-            Asset = asset,
-            Id = id,
-            Name = name,
-            Start = start,
-            End = end,
-            TrimIn = trimIn,
-            TrimOut = trimOut,
-            Volume = volume,
-            Role = role,
-            FadeIn = fadeIn,
-            FadeOut = fadeOut,
-            Language = language,
-        }));
-        return $"added audio layer '{layer.Id}' at {Num(layer.Start)}s\n{LayerJson(layer)}";
+            var before = p.Duration;
+            var added = ProjectEditor.AddAudioLayer(p, new AudioLayerOptions
+            {
+                Asset = asset,
+                Id = id,
+                Name = name,
+                Start = start,
+                End = end,
+                TrimIn = trimIn,
+                TrimOut = trimOut,
+                Volume = volume,
+                Role = role,
+                FadeIn = fadeIn,
+                FadeOut = fadeOut,
+                Language = language,
+            });
+            return (added, TimelineEditor.Place(p, added, mode, before));
+        });
+        var made = mode == ClipEdit.Insert ? "inserted" : "added";
+        return $"{made} audio layer '{layer.Id}' at {Num(layer.Start)}s{(placed.Length > 0 ? $"\n{placed}" : "")}\n{LayerJson(layer)}";
     });
 
     [McpServerTool(Name = "update_layer")]

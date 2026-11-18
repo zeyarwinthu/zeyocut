@@ -619,6 +619,7 @@ Extra parameters:
 
 - `drawing`: the drawing shown initially
 - `flipX`: mirror around `anchorX`; children are not flipped
+- `edit`: `overlay` (the default), `insert` or `overwrite`, for a picture with an `end`: see [Insert and overwrite](#insert-and-overwrite)
 
 ```json
 { "asset": "tora_body", "id": "tora_body", "x": 640, "y": 600, "anchorX": 110, "anchorY": 234 }
@@ -691,6 +692,7 @@ Adds voice, music or a sound effect from an audio asset. It is heard only in the
 | `role` | `music` | `voice`, `music` or `effects`. With ducking on, music is lowered while voice plays |
 | `fadeIn`, `fadeOut` | 0 | Seconds |
 | `language` | every version | The sound is only in that [language's version](#languages), such as a dubbed voice |
+| `edit` | `overlay` | `overlay`, `insert` or `overwrite` on the role's lane: see [Insert and overwrite](#insert-and-overwrite) |
 
 ```json
 { "asset": "music", "volume": 0.6, "fadeOut": 1 }
@@ -2463,6 +2465,7 @@ Adds a clip. By default it is centered and scaled to fit the canvas. If it runs 
 | `role` | `voice` | `voice`, `music` or `effects`, for ducking |
 | `fadeIn`, `fadeOut` | 0 | Sound fades, seconds |
 | `language` | every version | The language of the clip's sound: the other [languages' versions](#languages) mute it. Its picture is in every version |
+| `edit` | `overlay` | `overlay`, `insert` or `overwrite`: see [Insert and overwrite](#insert-and-overwrite) |
 | `id`, `name`, `parentId`, `x`, `y`, `anchorX`, `anchorY`, `rotation`, `scaleX`, `scaleY`, `opacity`, `zIndex` | | As for image layers. Scale defaults to fit the canvas |
 
 `cropWidth`/`cropHeight` (set with `update_layer`) show only part of the frame; `cropX`/`cropY` place that window and can be keyframed.
@@ -2594,6 +2597,32 @@ Cuts timeline seconds `start`–`end` out of one layer, or out of every layer wi
 removed 0.5s (3–3.5s); duration 6s → 5.5s
 cut: street_2
 new pieces: street_3 (from street_2)
+```
+
+### Insert and overwrite
+
+`add_video_layer`, `add_audio_layer` and `add_image_layer` take `edit`, which says how a new clip makes room on its lane. A lane is one track of the editor's timeline: the layers without a parent on the clip's draw level (`zIndex`), leaving out caption tracks, cutouts and redactions, or the sound of the clip's role.
+
+- `overlay` (the default) adds the clip over what's there.
+- `insert` splits the clip its lane has at the new clip's start, then moves every layer that starts there or later, on any lane, later by the new clip's length, with its children, its keyframes, the camera's keyframes and the [markers](#markers). The project gets that much longer. Layers that started earlier, such as music under the whole video, stay where they are.
+- `overwrite` cuts what the lane has under the new clip, as `remove_range` does with `ripple` false. A clip it covers completely is removed.
+
+A picture needs an `end` for either. Without `zIndex`, footage and pictures go on a level of their own on top, so nothing is under them to split or cut.
+
+Here a 6 s clip `street` is on draw level 0:
+```json
+{ "assetId": "broll", "timelineStart": 3, "trimIn": 1, "trimOut": 3, "zIndex": 0, "edit": "insert" }
+```
+```text
+inserted video layer 'broll': source 1–3s at 1x → timeline 3–5s, scale 1.5, z=0
+split 'street' at 3s into 'street' and 'street_2'; moved 1 later layer(s) 2s later; the project is 8s long (was 6s)
+{"type":"video","id":"broll", ...}
+```
+With `"edit": "overwrite"` instead:
+```text
+added video layer 'broll': source 1–3s at 1x → timeline 3–5s, scale 1.5, z=0
+cut 'street' under it; new pieces: street_2 (from street)
+{"type":"video","id":"broll", ...}
 ```
 
 ### `move_layer`

@@ -290,8 +290,19 @@ public sealed record PackLanesOperation : EditOperation
 // one: footage fitted to the canvas, a still image for StillLength seconds (made smaller to fit the
 // canvas when it's bigger), or sound with Role (music by default). Footage and stills go on draw
 // level ZIndex, or on a level of their own on top when it's null. Footage and stills that run past
-// the end make the project longer, as add_video_layer does; sound doesn't.
-public sealed record AddClipOperation(AssetType Type, string AssetId, double Start, int? ZIndex = null, string? Role = null) : EditOperation
+// the end make the project longer, as add_video_layer does; sound doesn't. TrimIn and TrimOut pick
+// the part of footage or sound to use, Muted leaves footage's sound out, and Edit makes room for the
+// clip as those tools' edit does (TimelineEditor.Place).
+public sealed record AddClipOperation(
+    AssetType Type,
+    string AssetId,
+    double Start,
+    int? ZIndex = null,
+    string? Role = null,
+    double? TrimIn = null,
+    double? TrimOut = null,
+    bool Muted = false,
+    ClipEdit Edit = ClipEdit.Overlay) : EditOperation
 {
     public const double StillLength = 5;
 
@@ -302,10 +313,11 @@ public sealed record AddClipOperation(AssetType Type, string AssetId, double Sta
     public override string Apply(Project project)
     {
         Layer layer;
+        var before = project.Duration;
         switch (Type)
         {
             case AssetType.Video:
-                layer = ProjectEditor.AddVideoLayer(project, new VideoLayerOptions { Asset = AssetId, Start = Start, ZIndex = ZIndex });
+                layer = ProjectEditor.AddVideoLayer(project, new VideoLayerOptions { Asset = AssetId, Start = Start, ZIndex = ZIndex, TrimIn = TrimIn, TrimOut = TrimOut, Muted = Muted });
                 break;
             case AssetType.Image:
                 var asset = project.FindAsset(AssetId);
@@ -322,14 +334,16 @@ public sealed record AddClipOperation(AssetType Type, string AssetId, double Sta
                 ProjectEditor.ExtendToFit(project, Start + StillLength);
                 break;
             case AssetType.Audio:
-                layer = ProjectEditor.AddAudioLayer(project, new AudioLayerOptions { Asset = AssetId, Start = Start, Role = Role });
+                layer = ProjectEditor.AddAudioLayer(project, new AudioLayerOptions { Asset = AssetId, Start = Start, Role = Role, TrimIn = TrimIn, TrimOut = TrimOut });
                 break;
             default:
                 throw new ZeyoCutException($"'{AssetId}' is a {EnumNames.ToName(Type)}: only video, images and sound go on the timeline");
         }
 
+        var placed = TimelineEditor.Place(project, layer, Edit, before);
         var level = layer is VisualLayer visual ? $" on draw level {visual.ZIndex}" : layer is AudioLayer audio ? $" as {EnumNames.ToName(audio.Role)}" : "";
-        return $"added {layer.TypeName} layer '{layer.Id}' at {Num(Start)}s{level}";
+        var verb = Edit == ClipEdit.Insert ? "inserted" : "added";
+        return $"{verb} {layer.TypeName} layer '{layer.Id}' at {Num(Start)}s{level}{(placed.Length > 0 ? $"; {placed}" : "")}";
     }
 }
 

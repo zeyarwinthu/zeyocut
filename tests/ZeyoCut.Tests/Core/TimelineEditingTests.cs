@@ -436,4 +436,153 @@ public class TimelineEditingTests
         Assert.Contains("fadeToBlack needs image or video layers",
             Assert.Throws<ZeyoCutException>(() => TimelineEditor.AddTransition(project, "title", "b", TransitionType.FadeToBlack, 1)).Message);
     }
+
+    // Two clips on draw level 0 (0–4 s and 4–8 s) with a text attached to the second,
+    // a title on level 1 from 1 to 3 s, a logo on level 1 from 5 s to the end, music from 0 to 8 s,
+    // a voice from 5 to 7 s and a marker at 6 s; the clip to place is 2 s of footage.
+    private static Project Sequence()
+    {
+        var project = TestProjects.WithImageAssets("logo", "card");
+        project.Duration = 8;
+        project.Assets.Add(Clip());
+        project.Assets.Add(Clip("broll", 6));
+        project.Assets.Add(new Asset { Id = "song", Type = AssetType.Audio, File = "assets/song.mp3", Duration = 20 });
+        project.Assets.Add(new Asset { Id = "talk", Type = AssetType.Audio, File = "assets/talk.wav", Duration = 2 });
+        project.Assets.Add(new Asset { Id = "sting", Type = AssetType.Audio, File = "assets/sting.wav", Duration = 1.5 });
+        ProjectEditor.AddVideoLayer(project, new VideoLayerOptions { Asset = "clip", Id = "intro", Start = 0, TrimIn = 0, TrimOut = 4, ZIndex = 0 });
+        ProjectEditor.AddVideoLayer(project, new VideoLayerOptions { Asset = "clip", Id = "main", Start = 4, TrimIn = 4, TrimOut = 8, ZIndex = 0 });
+        ProjectEditor.AddTextLayer(project, new TextLayerOptions { Id = "label", Text = "Second", ParentId = "main", Start = 4, End = 8, ZIndex = 2 });
+        ProjectEditor.AddTextLayer(project, new TextLayerOptions { Id = "title", Text = "Hello", Start = 1, End = 3, ZIndex = 1 });
+        ProjectEditor.AddImageLayer(project, new ImageLayerOptions { Id = "logo", Drawings = new Dictionary<string, string> { ["normal"] = "logo" }, Start = 5, ZIndex = 1 });
+        ProjectEditor.AddAudioLayer(project, new AudioLayerOptions { Asset = "song", Id = "music", End = 8 });
+        ProjectEditor.AddAudioLayer(project, new AudioLayerOptions { Asset = "talk", Id = "talk", Start = 5, Role = "voice" });
+        KeyframeEditor.SetKeyframes(project, [Key("main", "x", 4, 300), Key("main", "x", 8, 340), Key("logo", "opacity", 5, 0), Key("logo", "opacity", 6, 1)]);
+        project.Markers.Add(new Marker { Id = "m1", Time = 6, Name = "Outro" });
+        return project;
+    }
+
+    // Insert at 3 s: the clip under 3 s on its level is split there, everything that starts at 3 s or
+    // later goes 2 s later with its children, keyframes and markers, and the project is 2 s longer.
+    // What played before 3 s plays as it did, and so does what played after, 2 s later; layers that
+    // started before (the title, the music) stay as they were.
+    [Fact]
+    public void InsertSplitsTheLaneAtThePlayheadAndPushesWhatComesLater()
+    {
+        var project = Sequence();
+        project.Layers.Remove(project.FindLayer("music")!);
+        project.Layers.Remove(project.FindLayer("title")!);
+        var before = Times(project, 8).ToDictionary(t => Math.Round(t * 30), t => Frame(project, t));
+        var added = ProjectEditor.AddVideoLayer(project, new VideoLayerOptions { Asset = "broll", Id = "broll", Start = 3, TrimIn = 1, TrimOut = 3, ZIndex = 0 });
+
+        Assert.Equal("split 'intro' at 3s into 'intro' and 'intro_2'; moved 5 later layer(s) 2s later; the project is 10s long (was 8s)", TimelineEditor.Place(project, added, ClipEdit.Insert, 8));
+
+        Assert.Equal(10, project.Duration);
+        var tail = Assert.IsType<VideoLayer>(project.FindLayer("intro_2"));
+        Assert.Equal((5.0, 3.0, 4.0), (tail.Start, tail.TrimIn, tail.TrimOut));
+        Assert.Equal(3, ((VideoLayer)project.FindLayer("intro")!).TrimOut);
+        Assert.Equal((6.0, 10.0), (project.FindLayer("main")!.Start, ((VideoLayer)project.FindLayer("main")!).TimelineEnd));
+        Assert.Equal((6.0, 10.0), (project.FindLayer("label")!.Start, project.FindLayer("label")!.End));
+        Assert.Equal(7, project.FindLayer("logo")!.Start);
+        Assert.Equal(7, project.FindLayer("talk")!.Start);
+        Assert.Equal(8, Assert.Single(project.Markers).Time);
+        Assert.Empty(ProjectValidator.Validate(project));
+
+        foreach (var t in Times(project, 10))
+        {
+            if (t < 3 - 1e-9)
+            {
+                SameFrame(before[Math.Round(t * 30)], Frame(project, t), $"t={At(t)}");
+            }
+            else if (t >= 5 - 1e-9)
+            {
+                SameFrame(before[Math.Round((t - 2) * 30)], Frame(project, t), $"t={At(t)} (was {At(t - 2)})");
+            }
+            else
+            {
+                Assert.Equal("broll", Frame(project, t)[0].Content);
+            }
+        }
+    }
+
+    [Fact]
+    public void InsertLeavesLayersThatStartedBeforeWhereTheyAre()
+    {
+        var project = Sequence();
+        var added = ProjectEditor.AddVideoLayer(project, new VideoLayerOptions { Asset = "broll", Id = "broll", Start = 2, TrimIn = 0, TrimOut = 2, ZIndex = 0 });
+        TimelineEditor.Place(project, added, ClipEdit.Insert, 8);
+
+        Assert.Equal((1.0, 3.0), (project.FindLayer("title")!.Start, project.FindLayer("title")!.End));
+        Assert.Equal((0.0, 8.0), (project.FindLayer("music")!.Start, project.FindLayer("music")!.End));
+        Assert.Equal(6, project.FindLayer("main")!.Start);
+        Assert.Equal(10, project.Duration);
+
+        // At the end nothing starts there to move, and the project grows to fit the clip as it would anyway.
+        var last = ProjectEditor.AddVideoLayer(project, new VideoLayerOptions { Asset = "broll", Id = "end", Start = 10, TrimIn = 0, TrimOut = 1, ZIndex = 0 });
+        Assert.Equal("the project is 11s long (was 10s)", TimelineEditor.Place(project, last, ClipEdit.Insert, 10));
+        Assert.Equal(11, project.Duration);
+    }
+
+    // Overwrite from 3 to 5 s: the lane's clips under it are cut (intro's end, main's start with
+    // the text attached to it), other lanes keep everything, and every frame outside 3–5 s is as it was.
+    [Fact]
+    public void OverwriteCutsOnlyWhatTheLaneHasUnderTheClip()
+    {
+        var project = Sequence();
+        var before = Times(project, 8).ToDictionary(t => Math.Round(t * 30), t => Frame(project, t));
+        var added = ProjectEditor.AddVideoLayer(project, new VideoLayerOptions { Asset = "broll", Id = "broll", Start = 3, TrimIn = 1, TrimOut = 3, ZIndex = 0 });
+
+        Assert.Equal("cut 'intro', 'main' under it", TimelineEditor.Place(project, added, ClipEdit.Overwrite, 8));
+
+        Assert.Equal(8, project.Duration);
+        Assert.Equal(3, ((VideoLayer)project.FindLayer("intro")!).TrimOut);
+        var second = (VideoLayer)project.FindLayer("main")!;
+        Assert.Equal((5.0, 5.0, 8.0), (second.Start, second.TrimIn, second.TrimOut));
+        Assert.Equal((5.0, 8.0), (project.FindLayer("label")!.Start, project.FindLayer("label")!.End));
+        Assert.Equal((1.0, 3.0), (project.FindLayer("title")!.Start, project.FindLayer("title")!.End));
+        Assert.Equal((0.0, 8.0), (project.FindLayer("music")!.Start, project.FindLayer("music")!.End));
+        Assert.Equal(6, Assert.Single(project.Markers).Time);
+        Assert.Empty(ProjectValidator.Validate(project));
+        foreach (var t in Times(project, 8).Where(t => t < 3 - 1e-9 || t >= 5 - 1e-9))
+        {
+            SameFrame(before[Math.Round(t * 30)], Frame(project, t), $"t={At(t)}");
+        }
+
+        // Over the middle of a clip it splits it; over a whole one it removes it.
+        var middle = ProjectEditor.AddVideoLayer(project, new VideoLayerOptions { Asset = "broll", Id = "middle", Start = 6, TrimIn = 0, TrimOut = 1, ZIndex = 0 });
+        Assert.Equal("cut 'main' under it; new pieces: main_2 (from main)", TimelineEditor.Place(project, middle, ClipEdit.Overwrite, 8));
+        Assert.Equal((5.0, 6.0), (project.FindLayer("main")!.Start, ((VideoLayer)project.FindLayer("main")!).TimelineEnd));
+        Assert.Equal((7.0, 8.0), (project.FindLayer("main_2")!.Start, ((VideoLayer)project.FindLayer("main_2")!).TimelineEnd));
+        var whole = ProjectEditor.AddVideoLayer(project, new VideoLayerOptions { Asset = "broll", Id = "whole", Start = 2.5, TrimIn = 0, TrimOut = 3, ZIndex = 0 });
+        Assert.Equal("cut 'intro', 'main' under it; removed 'broll'", TimelineEditor.Place(project, whole, ClipEdit.Overwrite, 8));
+        Assert.Null(project.FindLayer("broll"));
+    }
+
+    // A sound's lane is its role: overwrite and insert cut and split that role's sound only.
+    [Fact]
+    public void SoundGoesOnItsRolesLane()
+    {
+        var project = Sequence();
+        var sting = ProjectEditor.AddAudioLayer(project, new AudioLayerOptions { Asset = "sting", Id = "sting", Start = 6, Role = "voice" });
+        Assert.Equal("cut 'talk' under it", TimelineEditor.Place(project, sting, ClipEdit.Overwrite, 8));
+        var talk = (AudioLayer)project.FindLayer("talk")!;
+        Assert.Equal((5.0, 6.0), (talk.Start, talk.End));
+        Assert.Equal((0.0, 8.0), (project.FindLayer("music")!.Start, project.FindLayer("music")!.End));
+
+        var music = ProjectEditor.AddAudioLayer(project, new AudioLayerOptions { Asset = "sting", Id = "bed", Start = 2 });
+        Assert.Equal("split 'music' at 2s into 'music' and 'music_2'; moved 6 later layer(s) 1.5s later; the project is 9.5s long (was 8s)", TimelineEditor.Place(project, music, ClipEdit.Insert, 8));
+        var tail = (AudioLayer)project.FindLayer("music_2")!;
+        Assert.Equal((3.5, 2.0, 9.5), (tail.Start, tail.TrimIn, tail.End));
+        Assert.Equal(2, project.FindLayer("music")!.End);
+    }
+
+    [Fact]
+    public void InsertAndOverwriteNeedAClipOfItsOwnWithALength()
+    {
+        var project = Sequence();
+        var card = ProjectEditor.AddImageLayer(project, new ImageLayerOptions { Id = "card", Drawings = new Dictionary<string, string> { ["normal"] = "card" }, Start = 2, ZIndex = 0 });
+        Assert.Equal("insert needs the picture's length: give it an end", Assert.Throws<ZeyoCutException>(() => TimelineEditor.Place(project, card, ClipEdit.Insert, 8)).Message);
+        var child = ProjectEditor.AddVideoLayer(project, new VideoLayerOptions { Asset = "broll", Id = "child", ParentId = "intro", Start = 1, TrimOut = 1, ZIndex = 0 });
+        Assert.Equal("overwrite places a clip of its own: a video, picture or sound without a parent", Assert.Throws<ZeyoCutException>(() => TimelineEditor.Place(project, child, ClipEdit.Overwrite, 8)).Message);
+        Assert.Equal("", TimelineEditor.Place(project, card, ClipEdit.Overlay, 8));
+    }
 }

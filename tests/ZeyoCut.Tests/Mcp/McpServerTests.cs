@@ -606,6 +606,54 @@ public class McpServerTests
         Assert.Equal(TestProjects.WithoutRevision(File.ReadAllText(file)), TestProjects.WithoutRevision(ProjectJson.Serialize(editor)));
     }
 
+    // add_audio_layer and add_image_layer's insert and overwrite make the project the editor's
+    // AddClipOperation makes from the same start.
+    [Fact]
+    public async Task ServerInsertsAndOverwritesClipsAsTheEditorDoes()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var root = TestPaths.NewDirectory("mcp-clip-edits");
+        foreach (var (name, seconds) in new[] { ("a", 3.0), ("b", 2.0), ("c", 1.0) })
+        {
+            ZeyoCut.Mcp.Demo.ToneGenerator.WriteTone(Path.Combine(root, $"{name}.wav"), 440, seconds, 0.1);
+        }
+
+        var card = TestImages.Solid(Path.Combine(root, "card.png"), 20, 10, SKColors.Blue);
+        var file = Path.Combine(root, "projects", "edits", "project.json");
+        await using var client = await StartServer(root, Path.Combine(root, "projects"), Path.Combine(root, "logs"), ct);
+        await CallOk(client, "create_project", new() { ["name"] = "edits", ["width"] = 320, ["height"] = 180, ["fps"] = 10, ["duration"] = 8.0 }, ct);
+        foreach (var path in new[] { "a.wav", "b.wav", "c.wav" }.Select(f => Path.Combine(root, f)).Append(card))
+        {
+            await CallOk(client, "import_asset", new() { ["path"] = path }, ct);
+        }
+
+        await CallOk(client, "add_audio_layer", new() { ["asset"] = "a", ["role"] = "voice" }, ct);
+        await CallOk(client, "add_audio_layer", new() { ["asset"] = "b", ["role"] = "voice", ["start"] = 3.0 }, ct);
+        await CallOk(client, "add_image_layer", new() { ["asset"] = "card", ["id"] = "bg", ["end"] = 8.0, ["zIndex"] = 0 }, ct);
+        var before = File.ReadAllText(file);
+
+        var inserted = await CallOk(client, "add_audio_layer", new() { ["asset"] = "c", ["role"] = "voice", ["start"] = 1.0, ["edit"] = "insert" }, ct);
+        Assert.StartsWith("inserted audio layer 'c' at 1s\nsplit 'a' at 1s into 'a' and 'a_2'; moved 2 later layer(s) 1s later; the project is 9s long (was 8s)\n", inserted.ReplaceLineEndings("\n"));
+        var overwritten = await CallOk(client, "add_image_layer", new() { ["asset"] = "card", ["start"] = 2.0, ["end"] = 7.0, ["zIndex"] = 0, ["edit"] = "overwrite" }, ct);
+        Assert.StartsWith("added image layer 'card', anchor (10,5), z=0\ncut 'bg' under it; new pieces: bg_2 (from bg)\n", overwritten.ReplaceLineEndings("\n"));
+        var noEnd = await Call(client, "add_image_layer", new() { ["asset"] = "card", ["start"] = 2.0, ["edit"] = "insert" }, ct);
+        Assert.Contains("insert needs the picture's length: give it an end", Text(noEnd));
+        var badMode = await Call(client, "add_audio_layer", new() { ["asset"] = "c", ["edit"] = "replace" }, ct);
+        Assert.Contains("unknown edit 'replace'", Text(badMode));
+
+        var editor = ProjectJson.Deserialize(before);
+        new AddClipOperation(AssetType.Audio, "c", 1, Role: "voice", Edit: ClipEdit.Insert).Apply(editor);
+        new AddClipOperation(AssetType.Image, "card", 2, ZIndex: 0, Edit: ClipEdit.Overwrite).Apply(editor);
+        editor.Revision = ProjectJson.Deserialize(File.ReadAllText(file)).Revision;
+        Assert.Equal(TestProjects.WithoutRevision(File.ReadAllText(file)), TestProjects.WithoutRevision(ProjectJson.Serialize(editor)));
+        Assert.Equal((0.0, 1.0, 2.0, 4.0), (editor.FindLayer("a")!.Start, ((AudioLayer)editor.FindLayer("a")!).End!.Value, editor.FindLayer("a_2")!.Start, editor.FindLayer("b")!.Start));
+        Assert.Equal((2.0, 7.0), (editor.FindLayer("bg")!.End!.Value, editor.FindLayer("bg_2")!.Start));
+
+        Assert.StartsWith("undid: add_image_layer card", await CallOk(client, "undo", new(), ct));
+        Assert.StartsWith("undid: add_audio_layer c", await CallOk(client, "undo", new(), ct));
+        Assert.Equal(TestProjects.WithoutRevision(before), TestProjects.WithoutRevision(File.ReadAllText(file)));
+    }
+
     [Fact]
     public async Task ServerAppliesDeliveryPresets()
     {

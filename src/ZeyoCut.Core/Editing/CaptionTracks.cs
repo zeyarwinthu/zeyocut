@@ -46,6 +46,12 @@ public sealed record CaptionRestyle
 // language, so each language's version shows its own captions and none of the others'.
 public static partial class CaptionTracks
 {
+    // A caption track's null layer, which holds its captions: generate_captions' and
+    // add_caption_track's "captions" or "captions_<language>".
+    public static bool IsTrack(Layer layer) =>
+        layer is ImageLayer { Drawings.Count: 0 }
+        && (layer.Id == CaptionBuilder.DefaultGroup || layer.Id.StartsWith(CaptionBuilder.DefaultGroup + "_", StringComparison.Ordinal));
+
     // The box the subtitle style puts behind captions, and the outline Outline gives them, as shares
     // of the font size.
     public const string BoxColor = "#000000B3";

@@ -157,6 +157,11 @@ when they open.
   `tag_assets` adds and takes them off, `list_assets` shows them, and the editor's Media browser
   lists each tag as a bin. Tags that differ only in case are the same tag. Older projects update as
   they open.
+- **Insert and overwrite:** `add_video_layer`, `add_audio_layer` and `add_image_layer` take `edit`.
+  `insert` splits the clip under the new one's start on its lane (its draw level, or its role's
+  sound) and moves everything that starts there or later later by the new clip's length, with
+  markers and camera keys, so the project gets longer. `overwrite` cuts what the lane has under the
+  new clip. The editor's Source viewer inserts and overwrites the same way.
 
 ### Changed
 
