@@ -697,6 +697,50 @@ public class McpServerTests
         Assert.True(editor.FindLayer("three")!.Start < 4);
     }
 
+    // add_text_layer's style, animateIn and animateOut make the project the editor's AddTitleOperation
+    // makes, and the presets are the keyframes TitleAnimationOperation puts on a layer already there.
+    [Fact]
+    public async Task ServerAnimatesTitlesAsTheEditorDoes()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var root = TestPaths.NewDirectory("mcp-titles");
+        var directory = Path.Combine(root, "projects", "titles");
+        var file = Path.Combine(directory, "project.json");
+        await using var client = await StartServer(root, Path.Combine(root, "projects"), Path.Combine(root, "logs"), ct);
+        await CallOk(client, "create_project", new() { ["name"] = "titles", ["width"] = 320, ["height"] = 180, ["fps"] = 10, ["duration"] = 6.0 }, ct);
+        await CallOk(client, "add_text_layer", new() { ["text"] = "Gold", ["id"] = "gold", ["fontSize"] = 24, ["color"] = "#FFD700", ["bold"] = true, ["end"] = 2.0 }, ct);
+        await CallOk(client, "save_style", new() { ["layerId"] = "gold", ["name"] = "Gold" }, ct);
+        var before = File.ReadAllText(file);
+        void Same(Project editor)
+        {
+            editor.Revision = ProjectJson.Deserialize(File.ReadAllText(file)).Revision;
+            Assert.Equal(TestProjects.WithoutRevision(File.ReadAllText(file)), TestProjects.WithoutRevision(ProjectJson.Serialize(editor)));
+        }
+
+        var added = await CallOk(client, "add_text_layer", new() { ["text"] = "Hello", ["id"] = "hello", ["style"] = "Gold", ["start"] = 1.0, ["end"] = 4.0, ["animateIn"] = "pop", ["animateOut"] = "slide up" }, ct);
+        Assert.Contains("\"easing\":\"easeOutBack\"", added);
+        var library = new Library(Path.Combine(root, "library"));
+        using var renderer = new FrameRenderer(directory);
+        var editor = ProjectJson.Deserialize(before);
+        var title = new AddTitleOperation(new TextLayerOptions { Text = "Hello", Id = "hello", Start = 1, End = 4 }, library.Load<TextStyle>(LibraryKind.Style, "Gold"), directory, library,
+            TitleAnimation.Pop, TitleAnimation.SlideUp, p => new ZeyoCut.Render.Text.TextMeasurer(renderer, p));
+        Assert.Equal("add_text_layer hello", title.Label);
+        Assert.Equal("added text layer 'hello' at 1s in style 'Gold'", title.Apply(editor));
+        Same(editor);
+
+        editor = ProjectJson.Deserialize(before);
+        new TitleAnimationOperation("gold", TitleSide.In, TitleAnimation.Fade).Apply(editor);
+        new TitleAnimationOperation("gold", TitleSide.Out, TitleAnimation.Fade).Apply(editor);
+        Assert.StartsWith("undid: add_text_layer hello", await CallOk(client, "undo", new(), ct));
+        await CallOk(client, "remove_layer", new() { ["layerId"] = "gold" }, ct);
+        await CallOk(client, "add_text_layer", new() { ["text"] = "Gold", ["id"] = "gold", ["fontSize"] = 24, ["color"] = "#FFD700", ["bold"] = true, ["end"] = 2.0, ["animateIn"] = "fade", ["animateOut"] = "fade" }, ct);
+        Same(editor);
+        Assert.Equal(TitleAnimation.Fade, TitleAnimations.Detect(editor, (VisualLayer)editor.FindLayer("gold")!, TitleSide.Out));
+
+        var unknown = await Call(client, "add_text_layer", new() { ["text"] = "No", ["animateIn"] = "spin" }, ct);
+        Assert.Contains("unknown animateIn 'spin'; valid values: fade, pop, slideUp", Text(unknown));
+    }
+
     [Fact]
     public async Task ServerAppliesDeliveryPresets()
     {

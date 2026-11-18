@@ -173,6 +173,9 @@ when they open.
   sound) and moves everything that starts there or later later by the new clip's length, with
   markers and camera keys, so the project gets longer. `overwrite` cuts what the lane has under the
   new clip. The editor's Source viewer inserts and overwrites the same way.
+- **Title animations:** `add_text_layer` takes `animateIn` and `animateOut`: `fade`, `pop` or
+  `slideUp`, added as keyframes on opacity, scale and y over half a second (a third of a short
+  layer). The editor's Titles view uses the same presets.
 
 ### Changed
 

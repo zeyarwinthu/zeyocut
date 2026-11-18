@@ -224,6 +224,40 @@ public sealed record AddTransitionOperation(string LayerA, string LayerB, Transi
     }
 }
 
+// How a layer comes in or goes out (TitleAnimations.Set): the keyframes add_text_layer's animateIn
+// and animateOut add; null takes that side's away.
+public sealed record TitleAnimationOperation(string LayerId, TitleSide Side, TitleAnimation? Animation) : EditOperation
+{
+    public override string Label => $"animate_{(Side == TitleSide.In ? "in" : "out")} {LayerId}";
+
+    public override IReadOnlyList<string> Layers => [LayerId];
+
+    public override string Apply(Project project) => TitleAnimations.Set(project, LayerId, Side, Animation);
+}
+
+// A text layer as add_text_layer adds it (TitleAnimations.AddText): a library style filling in what
+// Options leaves out (its font copied from Library into the project's Directory), coming in and going
+// out with In and Out. Measurer measures text in the project it's applied to.
+public sealed record AddTitleOperation(
+    TextLayerOptions Options,
+    TextStyle? Style = null,
+    string? Directory = null,
+    Library? Library = null,
+    TitleAnimation? In = null,
+    TitleAnimation? Out = null,
+    Func<Project, ITextMeasurer>? Measurer = null) : EditOperation
+{
+    public override string Label => $"add_text_layer {Options.Id ?? Options.Name}";
+
+    public override IReadOnlyList<string> Layers => [];
+
+    public override string Apply(Project project)
+    {
+        var text = TitleAnimations.AddText(project, Directory ?? "", Library, Style, Options, In, Out, Measurer?.Invoke(project));
+        return $"added text layer '{text.Id}' at {Num(text.Start)}s" + (Style is null ? "" : $" in style '{Style.Name}'");
+    }
+}
+
 // The project's settings, as update_project changes them: the Audio view's mixer, ducking and loudness.
 public sealed record UpdateProjectOperation(ProjectOptions Options) : EditOperation
 {

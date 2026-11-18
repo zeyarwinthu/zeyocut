@@ -207,7 +207,7 @@ Add a sound effect from the library at a time (one undo step): the file is impor
 
 ### `add_text_layer`
 
-Add a text layer (titles, subtitles). Complex scripts are shaped with HarfBuzz; use fontFamily "Myanmar Text" for Burmese and "Yu Gothic" for Japanese. With a language and neither fontFamily nor fontAsset, the text gets that language's font from the settings (my: Myanmar Text, ja: Yu Gothic), even over a style's font. Warns about characters the font has no glyphs for. The text's own pixel space starts at the top-left of its box; the box is maxWidth wide if set, otherwise as wide as the longest line. Returns the measured box size. 'style' fills in everything you leave out from a library style (save_style).
+Add a text layer (titles, subtitles). Complex scripts are shaped with HarfBuzz; use fontFamily "Myanmar Text" for Burmese and "Yu Gothic" for Japanese. With a language and neither fontFamily nor fontAsset, the text gets that language's font from the settings (my: Myanmar Text, ja: Yu Gothic), even over a style's font. Warns about characters the font has no glyphs for. The text's own pixel space starts at the top-left of its box; the box is maxWidth wide if set, otherwise as wide as the longest line. Returns the measured box size. 'style' fills in everything you leave out from a library style (save_style). animateIn and animateOut make it come in at its start and go out at its end: fade, pop (scale from nothing, with a small overshoot) or slideUp (a fade while it rises 5% of the canvas height), as keyframes on opacity, scaleX, scaleY and y over 0.5 s, or a third of the layer when it's shorter.
 
 | Parameter | Type | Description |
 |---|---|---|
@@ -242,6 +242,8 @@ Add a text layer (titles, subtitles). Complex scripts are shaped with HarfBuzz; 
 | `end` | number |  |
 | `style` | string | Library style name (list_library); explicit parameters override it. |
 | `language` | string | Language tag (en, ja, my, pt-BR): the layer and its children are only in that language's version. Default: every version. |
+| `animateIn` | string | How it comes in: fade, pop or slideUp. Default: it just appears. |
+| `animateOut` | string | How it goes out: fade, pop or slideUp. Default: it just goes. |
 
 ### `add_transition`
 

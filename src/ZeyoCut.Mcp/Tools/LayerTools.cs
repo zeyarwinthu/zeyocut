@@ -82,7 +82,7 @@ public static class LayerTools
     });
 
     [McpServerTool(Name = "add_text_layer")]
-    [Description("Add a text layer (titles, subtitles). Complex scripts are shaped with HarfBuzz; use fontFamily \"Myanmar Text\" for Burmese and \"Yu Gothic\" for Japanese. With a language and neither fontFamily nor fontAsset, the text gets that language's font from the settings (my: Myanmar Text, ja: Yu Gothic), even over a style's font. Warns about characters the font has no glyphs for. The text's own pixel space starts at the top-left of its box; the box is maxWidth wide if set, otherwise as wide as the longest line. Returns the measured box size. 'style' fills in everything you leave out from a library style (save_style).")]
+    [Description("Add a text layer (titles, subtitles). Complex scripts are shaped with HarfBuzz; use fontFamily \"Myanmar Text\" for Burmese and \"Yu Gothic\" for Japanese. With a language and neither fontFamily nor fontAsset, the text gets that language's font from the settings (my: Myanmar Text, ja: Yu Gothic), even over a style's font. Warns about characters the font has no glyphs for. The text's own pixel space starts at the top-left of its box; the box is maxWidth wide if set, otherwise as wide as the longest line. Returns the measured box size. 'style' fills in everything you leave out from a library style (save_style). animateIn and animateOut make it come in at its start and go out at its end: fade, pop (scale from nothing, with a small overshoot) or slideUp (a fade while it rises 5% of the canvas height), as keyframes on opacity, scaleX, scaleY and y over 0.5 s, or a third of the layer when it's shorter.")]
     public static string AddTextLayer(
         EditorState state,
         [Description("The text. Use \\n for line breaks.")] string text,
@@ -112,9 +112,13 @@ public static class LayerTools
         double? start = null,
         double? end = null,
         [Description("Library style name (list_library); explicit parameters override it.")] string? style = null,
-        [Description("Language tag (en, ja, my, pt-BR): the layer and its children are only in that language's version. Default: every version.")] string? language = null) => Guard(() =>
+        [Description("Language tag (en, ja, my, pt-BR): the layer and its children are only in that language's version. Default: every version.")] string? language = null,
+        [Description("How it comes in: fade, pop or slideUp. Default: it just appears.")] string? animateIn = null,
+        [Description("How it goes out: fade, pop or slideUp. Default: it just goes.")] string? animateOut = null) => Guard(() =>
     {
         var libraryStyle = string.IsNullOrWhiteSpace(style) ? null : state.Library.Load<TextStyle>(LibraryKind.Style, style);
+        TitleAnimation? comeIn = string.IsNullOrWhiteSpace(animateIn) ? null : EnumNames.Parse<TitleAnimation>(animateIn, "animateIn");
+        TitleAnimation? goOut = string.IsNullOrWhiteSpace(animateOut) ? null : EnumNames.Parse<TitleAnimation>(animateOut, "animateOut");
         var tag = string.IsNullOrWhiteSpace(language) ? null : Languages.Normalize(language);
         var options = new TextLayerOptions
         {
@@ -150,8 +154,7 @@ public static class LayerTools
         var renderer = state.Renderer;
         var (layer, size, warnings) = session.Mutate($"add_text_layer {id ?? name}", p =>
         {
-            var styled = libraryStyle is null ? options : TextStyles.Defaults(p, session.Directory, state.Library, libraryStyle, options);
-            var added = ProjectEditor.AddTextLayer(p, styled, new TextMeasurer(renderer, p));
+            var added = TitleAnimations.AddText(p, session.Directory, state.Library, libraryStyle, options, comeIn, goOut, new TextMeasurer(renderer, p));
             var layout = renderer.Text.Layout(p, session.Directory, added);
             return (added, $"{Num(layout.BoxWidth)}x{Num(layout.BoxHeight)}", layout.Warnings);
         });

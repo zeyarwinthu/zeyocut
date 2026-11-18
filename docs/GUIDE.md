@@ -657,6 +657,7 @@ Adds a title or subtitle. Text is shaped with HarfBuzz, and each layer uses one 
 | `lineHeight` | 1 | Multiple of the font's natural line spacing |
 | `box` | | Background `{ "color": "#000000B3", "padding": 16, "cornerRadius": 0 }` |
 | `style` | | A library style ([`save_style`](#save_style)). It fills every look parameter you leave out, scaled to the canvas |
+| `animateIn`, `animateOut` | none | How it comes in at its start and goes out at its end: `fade`, `pop` or `slideUp`. See [Title animations](#title-animations) |
 
 ```json
 { "text": "မင်္ဂလာပါ", "id": "subtitle_my", "fontFamily": "Myanmar Text", "fontSize": 56, "color": "#FFFFFF",
@@ -676,6 +677,26 @@ added text layer 'subtitle_ja', box 129.297x53.203 px, anchor (64.648,26.602), z
 {...}
 Warnings:
 - font 'Segoe UI' has no glyphs for "こんにちは"; pick a font that covers this script (Burmese: "Myanmar Text", Japanese: "Yu Gothic")
+```
+
+#### Title animations
+
+`animateIn` and `animateOut` add keyframes on the text's `opacity`, `scaleX`, `scaleY` and `y`. Each plays for 0.5 s from the layer's start or up to its end, or for a third of the layer when that's shorter, so the two never meet. They come in to, and go out from, the values the layer has there.
+
+| Preset | In | Out |
+|---|---|---|
+| `fade` | `opacity` from 0, easing out | `opacity` to 0, easing in |
+| `pop` | `scaleX` and `scaleY` from 0, with a small overshoot (`easeOutBack`) | `scaleX` and `scaleY` to 0, easing in |
+| `slideUp` | rises 5% of the canvas height into place while it fades in | rises 5% more while it fades out |
+
+They are ordinary keyframes: change them with `set_keyframes`, or take them off with `remove_keyframes`. A preset replaces the keyframes those four values had in its time. The editor's Titles view puts the same presets on a selected text.
+
+```json
+{ "text": "Episode 3", "id": "title", "fontSize": 96, "color": "#FFFFFF", "start": 1, "end": 4, "animateIn": "pop", "animateOut": "fade" }
+```
+```text
+added text layer 'title', box 410.063x127.688 px, anchor (205.031,63.844), z=0
+{"type":"text","id":"title", ... ,"scaleX":{"value":1,"keyframes":[{"time":1,"value":0,"easing":"easeOutBack"},{"time":1.5,"value":1,"easing":"linear"}]}, ... ,"opacity":{"value":1,"keyframes":[{"time":3.5,"value":1,"easing":"easeIn"},{"time":4,"value":0,"easing":"linear"}]}}
 ```
 
 ### `add_audio_layer`
