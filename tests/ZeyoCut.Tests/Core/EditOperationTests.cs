@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 
+using System.Text.Json;
 using System.Text.Json.Nodes;
 using ZeyoCut.Core;
 using ZeyoCut.Core.Animation;
@@ -14,6 +15,9 @@ namespace ZeyoCut.Tests.Core;
 public class EditOperationTests
 {
     private static T Layer<T>(Project project, string id) where T : Layer => Assert.IsType<T>(project.FindLayer(id));
+
+    private static KeyframeEntry Key(string layer, string property, double time, object value, string? easing = null, double[]? bezier = null) =>
+        new(layer, property, time, JsonSerializer.SerializeToElement(value), easing, bezier);
 
     // The layers drawn every quarter second, bottom first.
     private static List<string> DrawOrders(Project project) =>
@@ -415,6 +419,126 @@ public class EditOperationTests
 
         Assert.True(document.Undo());
         Assert.Equal(original, TestProjects.WithoutRevision(File.ReadAllText(file)));
+    }
+
+    // The Animate view's drags: keyframes to other times, and in its graph to other values, each
+    // keeping its easing, as one step.
+    [Fact]
+    public void MovingKeyframesKeepsTheirValueAndEasingAndIsOneStep()
+    {
+        var directory = TestPaths.NewDirectory("edit-move-keys");
+        var project = TestProjects.Rig();
+        KeyframeEditor.SetKeyframes(project,
+        [
+            Key("tora_head", "y", 0, 100, bezier: [0, 0, 0.4, 1]),
+            Key("tora_head", "y", 1, 200, "easeOutBack"),
+            Key("tora_head", "y", 2, 150),
+            Key("tora_head", "drawing", 0.5, "shocked"),
+            Key("camera", "zoom", 0, 1, "easeIn"),
+            Key("camera", "zoom", 2, 2),
+        ]);
+        ProjectSession.Create(directory, project);
+        var file = Path.Combine(directory, ProjectStore.ProjectFileName);
+        var original = TestProjects.WithoutRevision(File.ReadAllText(file));
+        var document = EditorDocument.Open(directory);
+
+        var retime = new MoveKeyframesOperation([new KeyframeMove("tora_head", "y", 0, 0.4), new KeyframeMove("tora_head", "y", 1, 1.2), new KeyframeMove("tora_head", "drawing", 0.5, 0.9)]);
+        Assert.Equal("move_keyframes tora_head", retime.Label);
+        Assert.Equal(["tora_head"], retime.Layers);
+        Assert.True(document.Apply(retime), document.Status);
+        Assert.Equal("moved 3 keyframes on tora_head.y, tora_head.drawing", document.Summary);
+        Assert.Equal(1, document.Session.UndoCount);
+        var head = Layer<ImageLayer>(ProjectStore.Load(directory), "tora_head");
+        Assert.Equal([(0.4, 100.0, Easing.CubicBezier), (1.2, 200.0, Easing.EaseOutBack), (2.0, 150.0, Easing.Linear)], head.Y.Keyframes.Select(k => (k.Time, k.Value, k.Easing)));
+        Assert.Equal([0, 0, 0.4, 1], head.Y.Keyframes[0].Bezier!);
+        Assert.Equal((0.9, "shocked"), (head.Drawing.Keyframes.Single().Time, head.Drawing.Keyframes.Single().Value));
+
+        // In the graph a drag changes the value too; past its neighbour a key keeps its own easing.
+        Assert.True(document.Apply(new MoveKeyframesOperation([new KeyframeMove("tora_head", "y", 1.2, 2.5, 260)])), document.Status);
+        Assert.Equal("moved tora_head.y's keyframe from 1.2s to 2.5s, value 260", document.Summary);
+        head = Layer<ImageLayer>(ProjectStore.Load(directory), "tora_head");
+        Assert.Equal([(0.4, 100.0, Easing.CubicBezier), (2.0, 150.0, Easing.Linear), (2.5, 260.0, Easing.EaseOutBack)], head.Y.Keyframes.Select(k => (k.Time, k.Value, k.Easing)));
+
+        // A keyframe can't land on another, and then nothing changes.
+        Assert.False(document.Apply(new MoveKeyframesOperation([new KeyframeMove("tora_head", "y", 0.4, 0.6), new KeyframeMove("camera", "zoom", 0, 2)])));
+        Assert.Equal("move_keyframes tora_head camera wasn't saved: camera.zoom has a keyframe at 2s already, and a keyframe can't land on another", document.Status);
+        Assert.Equal(0.4, Layer<ImageLayer>(ProjectStore.Load(directory), "tora_head").Y.Keyframes[0].Time);
+
+        // Each drag is one step back.
+        Assert.True(document.Undo());
+        Assert.Equal(1.2, Layer<ImageLayer>(ProjectStore.Load(directory), "tora_head").Y.Keyframes[1].Time);
+        Assert.True(document.Undo());
+        Assert.Equal(original, TestProjects.WithoutRevision(File.ReadAllText(file)));
+    }
+
+    [Fact]
+    public void AMoveNeedsTheKeyframeAndATimeAndKeepsADrawingsName()
+    {
+        var project = TestProjects.Rig();
+        KeyframeEditor.SetKeyframes(project, [Key("tora_head", "y", 0, 100), Key("tora_head", "y", 1, 200), Key("tora_head", "drawing", 0.5, "shocked")]);
+        string Refused(params KeyframeMove[] moves) => Assert.Throws<ZeyoCutException>(() => KeyframeEditor.MoveKeyframes(project, moves)).Message;
+
+        Assert.Equal("no keyframe at 3s on tora_head.y; keyframe times: 0, 1", Refused(new KeyframeMove("tora_head", "y", 3, 2)));
+        Assert.Equal("time must be >= 0 (got -0.5)", Refused(new KeyframeMove("tora_head", "y", 0, -0.5)));
+        Assert.Equal("tora_head.drawing keyframes are drawing names, which a move keeps; set_keyframes changes one", Refused(new KeyframeMove("tora_head", "drawing", 0.5, 1, 2)));
+        Assert.Equal("tora_head.y has a keyframe at 1s already, and a keyframe can't land on another", Refused(new KeyframeMove("tora_head", "y", 0, 1)));
+        Assert.Equal("""
+            2 problems, so nothing was changed:
+            - entry 1 (tora_head.wobble @ 0s): unknown property 'wobble'; animatable properties: x, y, rotation, scaleX, scaleY, opacity; brightness, contrast, saturation (image and video layers); cropX, cropY (video layers); drawing (image layers); shadow.x, shadow.y, shadow.blur, shadow.opacity, outline.width, blur.x, blur.y, tint.amount (layers with that effect, see set_effect); mask.x, mask.y, mask.width, mask.height, mask.feather (layers with a mask, see set_mask)
+            - entry 2 (tora_head.y @ 0s): the keyframe at 0s on tora_head.y is moved twice
+            """, Refused(new KeyframeMove("tora_head", "y", 0, 0.5), new KeyframeMove("tora_head", "wobble", 0, 1), new KeyframeMove("tora_head", "y", 0, 0.7)));
+        Assert.Equal([0.0, 1.0], ((ImageLayer)project.FindLayer("tora_head")!).Y.Keyframes.Select(k => k.Time));
+
+        // Two keyframes can trade places.
+        Assert.Equal("moved 2 keyframes on tora_head.y", KeyframeEditor.MoveKeyframes(project, [new KeyframeMove("tora_head", "y", 0, 1), new KeyframeMove("tora_head", "y", 1, 0)]));
+        Assert.Equal([(0.0, 200.0), (1.0, 100.0)], ((ImageLayer)project.FindLayer("tora_head")!).Y.Keyframes.Select(k => (k.Time, k.Value)));
+    }
+
+    // The Animate view's easing tiles, Linear, Smooth and Hold, and its custom bezier: the keyframes
+    // eased as set_keyframes eases them when it replaces them.
+    [Fact]
+    public void SettingAnEasingMakesTheProjectSetKeyframesMakes()
+    {
+        static Project Animated()
+        {
+            var project = TestProjects.Rig();
+            KeyframeEditor.SetKeyframes(project,
+            [
+                Key("tora_head", "y", 0, 100, "easeIn"),
+                Key("tora_head", "y", 1, 200),
+                Key("tora_head", "rotation", 0.5, 10, bezier: [0.1, 0.2, 0.3, 0.4]),
+                Key("tora_head", "rotation", 1.5, -10),
+            ]);
+            return project;
+        }
+
+        foreach (var easing in Enum.GetValues<Easing>())
+        {
+            double[]? bezier = easing == Easing.CubicBezier ? [0.25, 0.1, 0.25, 1] : null;
+            var name = EnumNames.ToName(easing);
+            var edited = Animated();
+            var operation = new SetEasingOperation([new KeyframeRef("tora_head", "y", 0), new KeyframeRef("tora_head", "rotation", 0.5)], easing, bezier);
+            Assert.Equal("set_keyframes tora_head", operation.Label);
+            Assert.Equal($"set 2 keyframe(s) on tora_head.y, tora_head.rotation to {name}{(bezier is null ? "" : " [0.25, 0.1, 0.25, 1]")}", operation.Apply(edited));
+
+            var expected = Animated();
+            KeyframeEditor.SetKeyframes(expected, [Key("tora_head", "y", 0, 100, name, bezier), Key("tora_head", "rotation", 0.5, 10, name, bezier)]);
+            Assert.Equal(ProjectJson.Serialize(expected), ProjectJson.Serialize(edited));
+        }
+
+        var project = Animated();
+        KeyframeEditor.SetKeyframes(project, [Key("tora_head", "drawing", 0.5, "shocked")]);
+        string Refused(Easing easing, double[]? bezier, params KeyframeRef[] refs) =>
+            Assert.Throws<ZeyoCutException>(() => KeyframeEditor.SetEasing(project, refs, easing, bezier)).Message;
+        Assert.Equal("bezier must be 4 numbers, [x1, y1, x2, y2] (got none)", Refused(Easing.CubicBezier, null, new KeyframeRef("tora_head", "y", 0)));
+        Assert.Equal("bezier goes with easing cubicBezier, not easeIn", Refused(Easing.EaseIn, [0, 0, 1, 1], new KeyframeRef("tora_head", "y", 0)));
+        Assert.Equal("tora_head.drawing keyframes always hold", Refused(Easing.Linear, null, new KeyframeRef("tora_head", "drawing", 0.5)));
+        Assert.Equal("""
+            2 problems, so nothing was changed:
+            - entry 0 (tora_head.y @ 0.5s): no keyframe at 0.5s on tora_head.y; keyframe times: 0, 1
+            - entry 2 (tora_head.drawing @ 0.5s): tora_head.drawing keyframes always hold
+            """, Refused(Easing.Hold, null, new KeyframeRef("tora_head", "y", 0.5), new KeyframeRef("tora_head", "y", 1), new KeyframeRef("tora_head", "drawing", 0.5)));
+        Assert.Equal(Easing.Linear, ((ImageLayer)project.FindLayer("tora_head")!).Y.Keyframes[1].Easing);
     }
 
     // Ctrl+D: duplicate_layer with its defaults, the layer with its children.

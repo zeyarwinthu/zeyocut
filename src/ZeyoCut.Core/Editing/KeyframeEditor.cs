@@ -12,6 +12,9 @@ public sealed record KeyframeEntry(string LayerId, string Property, double Time,
 
 public sealed record KeyframeRef(string LayerId, string Property, double Time);
 
+// A keyframe dragged to another time and, in the Animate view's graph, to another value (null keeps it).
+public sealed record KeyframeMove(string LayerId, string Property, double Time, double NewTime, double? Value = null);
+
 public sealed record KeyframeChange(int Added, int Replaced, IReadOnlyList<string> Warnings);
 
 public static class KeyframeEditor
@@ -174,6 +177,174 @@ public static class KeyframeEditor
         }
 
         return count;
+    }
+
+    // Keyframes dragged to other times, and in the Animate view's graph to other values, each keeping
+    // its easing: all or nothing, and none lands on a keyframe that stays. Returns a one-line summary.
+    public static string MoveKeyframes(Project project, IReadOnlyList<KeyframeMove>? moves)
+    {
+        if (moves is null || moves.Count == 0)
+        {
+            throw new ZeyoCutException("there are no keyframes to move");
+        }
+
+        var errors = new List<string>();
+        var tracks = new Dictionary<object, (string Where, List<double> Times, Dictionary<int, (double Time, double? Value)> Moved)>(ReferenceEqualityComparer.Instance);
+        var wheres = new List<string>();
+        for (var i = 0; i < moves.Count; i++)
+        {
+            var move = moves[i];
+            try
+            {
+                if (move is null)
+                {
+                    throw new ZeyoCutException("entry is empty");
+                }
+
+                if (!double.IsFinite(move.NewTime) || move.NewTime < 0)
+                {
+                    throw new ZeyoCutException($"time must be >= 0 (got {move.NewTime})");
+                }
+
+                if (move.Value is { } value && !double.IsFinite(value))
+                {
+                    throw new ZeyoCutException($"value must be a finite number (got {value})");
+                }
+
+                var (numbers, drawings, where) = KeysOf(project, move.LayerId, move.Property);
+                if (drawings is not null && move.Value is not null)
+                {
+                    throw new ZeyoCutException($"{where} keyframes are drawing names, which a move keeps; set_keyframes changes one");
+                }
+
+                var list = (object?)numbers ?? drawings!;
+                if (!tracks.TryGetValue(list, out var track))
+                {
+                    track = (where, numbers?.Select(k => k.Time).ToList() ?? drawings!.Select(k => k.Time).ToList(), []);
+                    tracks[list] = track;
+                }
+
+                var index = track.Times.FindIndex(t => Math.Abs(t - move.Time) < TimeTolerance);
+                if (index < 0)
+                {
+                    throw NoKeyframe(track.Times, move.Time, where);
+                }
+
+                if (!track.Moved.TryAdd(index, (KeyframeWindow.Round(move.NewTime), move.Value)))
+                {
+                    throw new ZeyoCutException($"the keyframe at {Num(move.Time)}s on {where} is moved twice");
+                }
+
+                if (!wheres.Contains(where))
+                {
+                    wheres.Add(where);
+                }
+            }
+            catch (ZeyoCutException ex)
+            {
+                errors.Add(moves.Count == 1 ? ex.Message : $"entry {i} ({move?.LayerId}.{move?.Property} @ {move?.Time}s): {ex.Message}");
+            }
+        }
+
+        foreach (var (where, times, moved) in tracks.Values)
+        {
+            var after = times.Select((t, i) => moved.TryGetValue(i, out var to) ? to.Time : t).ToList();
+            foreach (var (index, to) in moved)
+            {
+                if (after.Where((t, i) => i != index && Math.Abs(t - to.Time) < TimeTolerance).Any())
+                {
+                    errors.Add($"{where} has a keyframe at {Num(to.Time)}s already, and a keyframe can't land on another");
+                }
+            }
+        }
+
+        Refuse(errors.Distinct().ToList());
+        foreach (var (list, (_, _, moved)) in tracks)
+        {
+            if (list is List<Keyframe> numbers)
+            {
+                foreach (var (index, to) in moved)
+                {
+                    numbers[index].Time = to.Time;
+                    numbers[index].Value = to.Value ?? numbers[index].Value;
+                }
+
+                numbers.Sort((a, b) => a.Time.CompareTo(b.Time));
+            }
+            else if (list is List<DrawingKeyframe> drawings)
+            {
+                foreach (var (index, to) in moved)
+                {
+                    drawings[index].Time = to.Time;
+                }
+
+                drawings.Sort((a, b) => a.Time.CompareTo(b.Time));
+            }
+        }
+
+        if (moves.Count > 1)
+        {
+            return $"moved {moves.Count} keyframes on {string.Join(", ", wheres)}";
+        }
+
+        var only = moves[0];
+        return $"moved {wheres[0]}'s keyframe from {Num(only.Time)}s to {Num(only.NewTime)}s" + (only.Value is { } shown ? $", value {Num(shown)}" : "");
+    }
+
+    // The easing of keyframes, as set_keyframes gives it when it replaces them with their own time
+    // and value: all or nothing. Drawings always hold. Returns how many changed.
+    public static int SetEasing(Project project, IReadOnlyList<KeyframeRef>? refs, Easing easing, IReadOnlyList<double>? bezier = null)
+    {
+        if (refs is null || refs.Count == 0)
+        {
+            throw new ZeyoCutException("there are no keyframes to ease");
+        }
+
+        var numbers = easing == Easing.CubicBezier ? bezier?.ToArray() : null;
+        if (easing == Easing.CubicBezier && EasingFunctions.BezierProblem(numbers) is { } problem)
+        {
+            throw new ZeyoCutException(problem);
+        }
+
+        if (easing != Easing.CubicBezier && bezier is not null)
+        {
+            throw new ZeyoCutException($"bezier goes with easing cubicBezier, not {EnumNames.ToName(easing)}");
+        }
+
+        var errors = new List<string>();
+        var keys = new List<Keyframe>();
+        for (var i = 0; i < refs.Count; i++)
+        {
+            var target = refs[i];
+            try
+            {
+                if (target is null)
+                {
+                    throw new ZeyoCutException("entry is empty");
+                }
+
+                var (list, drawings, where) = KeysOf(project, target.LayerId, target.Property);
+                if (drawings is not null)
+                {
+                    throw new ZeyoCutException($"{where} keyframes always hold");
+                }
+
+                keys.Add(list!.Find(k => Math.Abs(k.Time - target.Time) < TimeTolerance) ?? throw NoKeyframe(list.Select(k => k.Time), target.Time, where));
+            }
+            catch (ZeyoCutException ex)
+            {
+                errors.Add(refs.Count == 1 ? ex.Message : $"entry {i} ({target?.LayerId}.{target?.Property} @ {target?.Time}s): {ex.Message}");
+            }
+        }
+
+        Refuse(errors);
+        foreach (var key in keys)
+        {
+            key.Easing = easing;
+            key.Bezier = numbers?.ToArray();
+        }
+
+        return keys.Count;
     }
 
     private static bool SetOne(Project project, KeyframeEntry entry, ISet<string> warnings)
@@ -339,6 +510,65 @@ public static class KeyframeEditor
         RemoveAt(value.Keyframes, target.Time, k => k.Time, $"{layer.Id}.{property}");
     }
 
+    // The keyframes of one property, a value's or a drawing track's, and its name for messages.
+    private static (List<Keyframe>? Numbers, List<DrawingKeyframe>? Drawings, string Where) KeysOf(Project project, string layerId, string property)
+    {
+        if (layerId == Camera.Id)
+        {
+            var keys = AnimatableProperties.GetNumeric(RequireCamera(project), property).Keyframes;
+            return (keys, null, $"camera.{AnimatableProperties.CameraCanonical(property)}");
+        }
+
+        if (project.FindLayer(layerId) is CutoutLayer cutout)
+        {
+            return (CutoutOpacity(cutout, property).Keyframes, null, $"{cutout.Id}.opacity");
+        }
+
+        if (project.FindLayer(layerId) is RedactionLayer redaction)
+        {
+            throw new ZeyoCutException($"'{redaction.Id}' is a redaction, whose boxes are in its footage's own seconds; set_keyframes changes them");
+        }
+
+        var layer = ProjectEditor.GetVisualLayer(project, layerId);
+        var name = CanonicalProperty(property);
+        if (name == AnimatableProperties.Drawing)
+        {
+            return layer is ImageLayer image
+                ? (null, image.Drawing.Keyframes, $"{layer.Id}.drawing")
+                : throw new ZeyoCutException($"'drawing' is only for image layers; '{layer.Id}' is a {layer.TypeName} layer");
+        }
+
+        if (name == AnimatableProperties.Path)
+        {
+            throw PathByHand();
+        }
+
+        return (AnimatableProperties.GetNumeric(layer, name).Keyframes, null, $"{layer.Id}.{name}");
+    }
+
+    private static ZeyoCutException NoKeyframe(IEnumerable<double> times, double time, string where)
+    {
+        var list = times.ToList();
+        var shown = list.Count == 0 ? "(none)" : string.Join(", ", list.Select(t => t.ToString("0.######", CultureInfo.InvariantCulture)));
+        return new ZeyoCutException($"no keyframe at {time}s on {where}; keyframe times: {shown}");
+    }
+
+    // One problem as it is, several as a list.
+    private static void Refuse(IReadOnlyList<string> errors)
+    {
+        if (errors.Count == 1)
+        {
+            throw new ZeyoCutException(errors[0]);
+        }
+
+        if (errors.Count > 1)
+        {
+            throw new ZeyoCutException($"{errors.Count} problems, so nothing was changed:\n- " + string.Join("\n- ", errors));
+        }
+    }
+
+    private static string Num(double value) => value.ToString("0.###", CultureInfo.InvariantCulture);
+
     // A cutout's only animated setting is its opacity; the rest follows its sources.
     private static AnimatedValue CutoutOpacity(CutoutLayer cutout, string? property) =>
         string.Equals(property, "opacity", StringComparison.OrdinalIgnoreCase) ? cutout.Opacity : throw SubjectEditor.Follows(cutout);
@@ -380,10 +610,7 @@ public static class KeyframeEditor
         var index = keys.FindIndex(k => Math.Abs(timeOf(k) - time) < TimeTolerance);
         if (index < 0)
         {
-            var times = keys.Count == 0
-                ? "(none)"
-                : string.Join(", ", keys.Select(k => timeOf(k).ToString("0.######", CultureInfo.InvariantCulture)));
-            throw new ZeyoCutException($"no keyframe at {time}s on {where}; keyframe times: {times}");
+            throw NoKeyframe(keys.Select(timeOf), time, where);
         }
 
         keys.RemoveAt(index);

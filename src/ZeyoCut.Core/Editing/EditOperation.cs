@@ -113,6 +113,32 @@ public sealed record SetKeyframesOperation(IReadOnlyList<KeyframeEntry> Entries)
     }
 }
 
+// Keyframes dragged in the Animate view's dope sheet or graph, each keeping its easing, as one step.
+public sealed record MoveKeyframesOperation(IReadOnlyList<KeyframeMove> Moves) : EditOperation
+{
+    public override string Label => $"move_keyframes {string.Join(" ", Layers)}";
+
+    public override IReadOnlyList<string> Layers => Moves.Select(m => m.LayerId).Distinct(StringComparer.Ordinal).ToList();
+
+    public override string Apply(Project project) => KeyframeEditor.MoveKeyframes(project, Moves);
+}
+
+// Keyframes' easing, as set_keyframes gives it: a named one, or cubicBezier with its four numbers.
+public sealed record SetEasingOperation(IReadOnlyList<KeyframeRef> Refs, Easing Easing, IReadOnlyList<double>? Bezier = null) : EditOperation
+{
+    public override string Label => $"set_keyframes {string.Join(" ", Layers)}";
+
+    public override IReadOnlyList<string> Layers => Refs.Select(r => r.LayerId).Distinct(StringComparer.Ordinal).ToList();
+
+    public override string Apply(Project project)
+    {
+        var count = KeyframeEditor.SetEasing(project, Refs, Easing, Bezier);
+        var targets = Refs.Select(r => $"{r.LayerId}.{r.Property}").Distinct().ToList();
+        var numbers = Bezier is null ? "" : " [" + string.Join(", ", Bezier.Select(Num)) + "]";
+        return $"set {count} keyframe(s) on {string.Join(", ", targets)} to {EnumNames.ToName(Easing)}{numbers}";
+    }
+}
+
 // Keyframes taken away, as remove_keyframes takes them.
 public sealed record RemoveKeyframesOperation(IReadOnlyList<KeyframeRef> Refs) : EditOperation
 {
