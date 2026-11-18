@@ -467,6 +467,24 @@ public sealed record TagAssetsOperation(IReadOnlyList<string> AssetIds, IReadOnl
     public override string Apply(Project project) => AssetTags.Tag(project, AssetIds, Add, Remove);
 }
 
+// A track that TrackRunner tracked (from TrackEditor.Plan or PlanCorrection) added to the project, or
+// put in place of the version whose file was Replacing, as track_object and reanchor_track (Tool)
+// save it: SaveTrack. It works on no layer: a clip changed meanwhile still shows the same footage.
+public sealed record SaveTrackOperation(Track Track, string? Replacing, string Tool) : EditOperation
+{
+    public override string Label => $"{Tool} {Track.Id}";
+
+    public override IReadOnlyList<string> Layers => [];
+
+    public override string Apply(Project project)
+    {
+        TrackEditor.SaveTrack(project, Serialization.ProjectJson.Copy(Track), Replacing);
+        return Replacing is null
+            ? $"tracked {Track.Id}: frames {Track.FirstFrame}–{Track.LastFrame} of '{Track.Asset}'"
+            : $"corrected {Track.Id}: frames {Track.FirstFrame}–{Track.LastFrame} of '{Track.Asset}'";
+    }
+}
+
 // An asset pointed at a file Prepare copied into assets\, as relink_asset does: Relink.
 public sealed record RelinkAssetOperation(string AssetId, PreparedAsset Asset) : EditOperation
 {

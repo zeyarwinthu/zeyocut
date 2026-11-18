@@ -3,6 +3,7 @@
 using System.Globalization;
 using ZeyoCut.Core.Animation;
 using ZeyoCut.Core.Model;
+using ZeyoCut.Core.Serialization;
 
 namespace ZeyoCut.Core.Editing;
 
@@ -14,6 +15,15 @@ public sealed record DriftSpan(int First, int Last, double Lowest, int Lost);
 public sealed record TrackRun(int From, int To)
 {
     public int Frames => Math.Abs(To - From);
+}
+
+// What track_object or reanchor_track tracks: the track as it is saved once tracked (TrackRunner
+// gives it its file), its footage, the clip the box was drawn on and the time it was drawn at, the box
+// tracking starts from and the runs from it. Replacing is the file of the version a correction
+// replaces; null for a new track.
+public sealed record TrackPlan(Track Track, Asset Asset, string Clip, double Shown, TrackBox Anchor, IReadOnlyList<TrackRun> Runs, string? Replacing)
+{
+    public int Frames => Runs.Sum(r => r.Frames);
 }
 
 // track_object and reanchor_track: which frames and source pixels a box drawn on the canvas means,
@@ -75,6 +85,82 @@ public static class TrackEditor
             project.Tracks.Add(track);
         }
     }
+
+    // track_object: a new track from a box drawn on the canvas at 'time' on a clip (x, y, width,
+    // height in canvas pixels), tracked from that frame to the end of the clip's trimmed range, its
+    // start, or both. Its id is the one asked for or track_N, never one in use or reserved.
+    public static TrackPlan Plan(Project project, string? layerId, double time, double x, double y, double width, double height, TrackDirection direction, TrackMethod method,
+        string? id, Func<string, bool> reserved)
+    {
+        if (method is TrackMethod.Faces or TrackMethod.Plates)
+        {
+            throw new ZeyoCutException($"unknown method '{EnumNames.ToName(method)}'; valid values: csrt, template, opticalFlow (detect_and_track finds faces and plates)");
+        }
+
+        var (layer, footage) = Clip(project, layerId);
+        var (frame, at) = SourceFrameAt(project, layer, footage, time);
+        var anchor = SourceBox(project, layer, footage, at, frame, x, y, width, height);
+        var (first, last) = Frames(layer, footage);
+        var track = new Track
+        {
+            Id = NewId(project, id, reserved),
+            Asset = footage.Id,
+            Layer = layer.Id,
+            Method = method,
+            Direction = direction,
+            FirstFrame = direction == TrackDirection.Forward ? frame : first,
+            LastFrame = direction == TrackDirection.Backward ? frame : last,
+            Origin = frame,
+            Anchors = [anchor],
+        };
+        return new TrackPlan(track, footage, layer.Id, at, anchor, Runs(direction, track.Origin, track.FirstFrame, track.LastFrame), null);
+    }
+
+    // reanchor_track: the track with the box at 'time' set by hand (canvas pixels, mapped through the
+    // clip it was made on, or layerId, another clip of its footage), tracked again from there away
+    // from its origin up to the next box set by hand (Rerun). Track is a copy; the project's is left
+    // as it is.
+    public static TrackPlan PlanCorrection(Project project, string trackId, double time, double x, double y, double width, double height, string? layerId)
+    {
+        var found = project.FindTrack(trackId)
+            ?? throw new ZeyoCutException($"track '{trackId}' not found; tracks: {Ids.List(project.Tracks.Select(t => t.Id))}");
+        if (found.Method is TrackMethod.Faces or TrackMethod.Plates)
+        {
+            throw new ZeyoCutException(
+                $"track '{trackId}' was found on every frame by detect_and_track, not tracked from a box, so reanchor_track can't correct it; where it missed the face or plate, track_object makes a track from a box there, which apply_redaction can hide too");
+        }
+
+        if (layerId is null && (project.FindLayer(found.Layer) is not VideoLayer original || original.Asset != found.Asset))
+        {
+            var clips = project.Layers.OfType<VideoLayer>().Where(v => v.Asset == found.Asset).Select(v => v.Id);
+            throw new ZeyoCutException($"clip '{found.Layer}', which track '{trackId}' was made on, is gone or plays other footage; pass layerId, a clip of '{found.Asset}': {Ids.List(clips)}");
+        }
+
+        var (layer, footage) = Clip(project, layerId ?? found.Layer);
+        if (layer.Asset != found.Asset)
+        {
+            throw new ZeyoCutException($"clip '{layer.Id}' plays '{layer.Asset}', but track '{trackId}' follows '{found.Asset}'");
+        }
+
+        var (frame, at) = SourceFrameAt(project, layer, footage, time);
+        if (frame < found.FirstFrame || frame > found.LastFrame)
+        {
+            throw new ZeyoCutException(
+                $"{Num(at)}s on '{layer.Id}' shows frame {frame} of '{footage.Id}', outside track '{trackId}' (frames {found.FirstFrame}–{found.LastFrame}); reanchor_track corrects frames inside a track, and track_object starts a new one");
+        }
+
+        var anchor = SourceBox(project, layer, footage, at, frame, x, y, width, height);
+        var track = ProjectJson.Copy(found);
+        var runs = Rerun(track, anchor.Frame);
+        var replacing = track.File;
+        track.Anchors = WithAnchor(track.Anchors, anchor);
+        return new TrackPlan(track, footage, layer.Id, at, anchor, runs, replacing);
+    }
+
+    // The timeline time a clip shows a source frame of its footage at (its trim in for a frame
+    // before it).
+    public static double TimelineTime(VideoLayer clip, Asset asset, int frame) =>
+        VideoTiming.TimelineTime(clip, Math.Max(clip.TrimIn, VideoTiming.TimeOfFrame(asset, frame)));
 
     public static (VideoLayer Layer, Asset Asset) Clip(Project project, string? layerId)
     {
