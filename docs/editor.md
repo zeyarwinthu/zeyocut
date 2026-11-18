@@ -4,7 +4,7 @@
 
 ![The editor with the Tora Jumps example open: the media on the left, the frame at 0.967 seconds in the middle, the inspector on the right with Tora's position and rotation animated, and the timeline below with the keyframes on Tora's clip](editor-edit.png)
 
-It imports, browses and tags media, plays the edit with its sound, marks the part of a video or sound to use and inserts or overwrites it at the playhead, moves, trims and splits clips on a timeline, places, crops and animates layers with keyframes, retimes and eases keyframes on a dope sheet or as curves, sets effects, color adjustments and face-blur settings, puts transitions on cuts, adds titles in the library's styles and its templates with a way in and out, edits captions, changes volumes and a video's speed, mixes the sound roles with volume keyframes and ducking, and exports. Masks and motion paths stay with the model: ask it for those.
+It imports, browses and tags media, plays the edit with its sound, marks the part of a video or sound to use and inserts or overwrites it at the playhead, moves, trims and splits clips on a timeline, places, crops and animates layers with keyframes, retimes and eases keyframes on a dope sheet or as curves, sets effects, color adjustments and face-blur settings, tracks objects in footage and hides them with corrections where the tracker lost them, puts transitions on cuts, adds titles in the library's styles and its templates with a way in and out, edits captions, changes volumes and a video's speed, mixes the sound roles with volume keyframes and ducking, and exports. Masks and motion paths stay with the model: ask it for those.
 
 ## Open a project
 
@@ -25,7 +25,7 @@ When a project opens with files missing (moved or renamed), the **Relink** view 
 
 The first time the editor starts, when it has no settings file yet, the **Welcome** view shows the projects folder and how to connect Claude: the `zeyocut` entry for Claude Desktop's `claude_desktop_config.json`, with the path of the `ZeyoCut.Mcp.exe` next to the editor, to copy, or the bundle to install instead. Its Connect step turns green when a client lists the server's tools after the Welcome opened (the server notes the last one in `connected.json` in its log folder). The last step copies the sample `examples\tora-jump` into the projects folder, unless a project of that name is there already, and opens it. Skip setup, or I'll do this later, goes to Home, and the Welcome doesn't open again.
 
-The header across the top names the project and whether it's saved ("Saved · rev N"). The logo and **Projects** close the project and go back to Home. In the middle, **Edit**, **Audio**, **Animate**, **Captions** and **Activity** switch views; on the right are Undo and Redo, when Claude last saved the project, and **Export**, which opens the Export view (Ctrl+1, Ctrl+2, Ctrl+3, Ctrl+5, Ctrl+6 and Ctrl+E go to Edit, Audio, Animate, Captions, Activity and Export; ? or F1 lists every key). The Media browser, the source viewer, Titles and Effects, like Export, have Back to edit in place of the views. The status bar at the bottom names the selected clip, counts the layers and lanes, and says what the last change did.
+The header across the top names the project and whether it's saved ("Saved · rev N"). The logo and **Projects** close the project and go back to Home. In the middle, **Edit**, **Audio**, **Animate**, **Track & blur**, **Captions** and **Activity** switch views; on the right are Undo and Redo, when Claude last saved the project, and **Export**, which opens the Export view (Ctrl+1 to Ctrl+6 go to Edit, Audio, Animate, Track & blur, Captions and Activity, and Ctrl+E to Export; ? or F1 lists every key). The Media browser, the source viewer, Titles and Effects, like Export, have Back to edit in place of the views. The status bar at the bottom names the selected clip, counts the layers and lanes, and says what the last change did.
 
 ## Media
 
@@ -144,7 +144,7 @@ Its header names the clip with a badge for its kind, and says where it comes fro
 - **Crop:** a video's Left, Top, Right and Bottom cut that many pixels of its file off each side. What's left of the picture stays where it was, and so do child layers on it. A crop the model animated is changed with keyframes; ask the model.
 - **Effects:** Blur, Shadow, Border (the outline effect) and Tint switch an effect on and off, as `set_effect` does. Switched on, each shows its settings: the blur's size each way; the shadow's color, offset, softness and opacity; the border's color and width; the tint's color and amount (a new tint is white). Captions don't have them.
 - **Color:** a video's or picture's Brightness, Contrast and Saturation, in percent: 0, 100 and 100 leave it as it is.
-- **Face blur:** a video whose footage a redaction hides (`apply_redaction`) shows its settings: Style, Strength (pixelate and blur) or Fill color (solid), Padding, Feather and Hold frames, a section for each redaction. They are the redaction's, so they change every clip of that footage.
+- **Face blur:** a video whose footage a redaction hides (`apply_redaction`) shows its settings: Style, Strength (pixelate and blur) or Fill color (solid), Padding, Feather, Hold frames, Shape and Smooth, a section for each redaction. They are the redaction's, so they change every clip of that footage. The Track & blur view sets most of them too.
 
 ![The title of Tora Jumps with a shadow switched on: the inspector's Effects tab shows the shadow's color, offset, blur and opacity, each number with a keyframe diamond](editor-effects.png)
 
@@ -197,6 +197,19 @@ To blur seconds 2 to 4, say:
 - **Onion skin** draws the selected layer with the layers under it at the frames around the playhead: 3 before and 2 after, fainter the further they are, the ones after in green. The menu beside it sets how many, up to five each way, and Alt+O turns it off and on. It shows while paused and is never in an export.
 - **Motion path** draws the selected layer's path across the frame: where its anchor goes, with a dot at each keyframe. Moving the path is the model's.
 - **Alt+K** adds a keyframe at the playhead to the value clicked last in the list, or to the selected layer's position. **Delete** takes the selected keys away, and **Escape** clears them.
+
+## Track & blur
+
+![The Track & blur view with a demo project open on the clip street_b at frame 236: three tracked objects listed, the new track_3 chosen and hidden by a pixelated ellipse, the tracker unsure of it on some frames, with Fix; the frame as exported in the viewer; and below the tracking timeline, track_3's green and orange spans from the box set by hand at 7.87 s](editor-track.png)
+
+**Track & blur** in the header (Ctrl+4) follows things in footage and hides them, as `track_object`, `reanchor_track` and `apply_redaction` do. It works on the selected video clip when it's at the playhead, else on the top clip there. ← and → step through frames and Home and End go to the first and last, but the view doesn't play.
+
+- **The list on the left** has the clip's footage's tracked objects: each one's name and kind (a face or plate `detect_and_track` found, or an object a box was drawn on), how it's hidden, its time on the clip, and a bar of the frames tracked (green) and those the tracker lost or wasn't sure of (orange). The first such stretch is named under it ("Lost for 10 frames at 8.8 s") with **Fix**, which goes to its first frame. Clicking an object chooses it and goes to its first frame when its box isn't on the one showing.
+- **Draw a box to track**, then drag over the object in the viewer. **Backward** tracks the box from its frame to the clip's start and **Forward** to its end, as `track_object` does (method `csrt`), in the background with progress and **Stop**; Esc drops the box. A new object isn't hidden until you choose how.
+- **The viewer** draws each object's box on the frame with how sure the tracker was ("track_1 · 96%", "lost", or "set by hand" on a frame where a box was drawn or corrected), and the chosen one's path over the last 12 frames. **Boxes** shows the frame without its redactions, **Result** as it exports, and **Split** both, the original on the left.
+- **Correcting:** drag the chosen object's box, or one of its corners, to where the object is. The track is corrected on that frame and tracked again from there to the next box set by hand, as `reanchor_track` does, and Ctrl+Z takes the correction back. A face's or plate's boxes are found on every frame and can't be moved: draw a box where one was missed and track that.
+- **Hide with** Blur, Pixelate or Solid box hides the chosen object, as `apply_redaction` does, or changes how it's hidden. **Strength**, **Feather** and **Grow box** (the redaction's padding), **Shape** (a rectangle, or the ellipse inside it, as for a face) and **Smooth the motion** (its center and size averaged over 6 frames each side, so it doesn't jitter) are the redaction's settings, each one undo step as `update_layer` saves them. When one redaction hides several objects, the note above says the settings are theirs too. Hold frames and a solid box's color are in the inspector.
+- **The tracking timeline** at the bottom has a row for each object over the clip's time: the frames tracked, the frames lost or unsure, and a diamond where a box was set by hand. Clicking it moves the playhead; clicking a row chooses the object.
 
 ## Captions
 
@@ -263,12 +276,12 @@ Under **Exports folder**, an export running here has its progress and Stop; expo
 | M | Add a chapter marker at the playhead |
 | Delete or Backspace | Delete the selected clip with its child layers; in Animate, the selected keys; in Audio, the selected volume point |
 | Ctrl+D | Duplicate the selected clip with its child layers |
-| Escape | Close the view open over the window, else cancel a drag, else go back to the Select tool, else clear the selection; in a field, put it back |
+| Escape | Close the view open over the window, else cancel a drag, else go back to the Select tool, else clear the selection; in Track & blur, stop drawing or drop the box drawn; in a field, put it back |
 | − / + | Zoom the timeline out and in (also Ctrl+wheel) |
 | Shift+Z | Fit the whole video in the timeline |
 | N | Snapping on and off |
 | Ctrl+Z / Ctrl+Shift+Z or Ctrl+Y | Undo and redo; in a field, the typing there |
-| Ctrl+1 / Ctrl+2 / Ctrl+3 / Ctrl+5 / Ctrl+6 / Ctrl+E | Edit, Audio, Animate, Captions, Activity and Export |
+| Ctrl+1 to Ctrl+6 / Ctrl+E | Edit, Audio, Animate, Track & blur, Captions, Activity and Export |
 | Ctrl+N | New project |
 | Ctrl+O | Open a project |
 | Ctrl+I | Import media, in the Edit view and the Media browser |
@@ -284,5 +297,6 @@ The editor reads `FfmpegPath`, `ProjectsRoot`, `LibraryPath` and `VideoEncoder` 
 - A transition's easing and motion blur as settings: it's keyframes and fades once on, which Animate retimes and eases.
 - Making a style or a template: the model's `save_style` and `save_template` do that, and the Titles view uses them.
 - Saving a custom easing as a preset, and a curve's bezier handles in the graph: type the curve's numbers instead.
+- Finding faces and plates (`detect_and_track`), attaching a layer to a track (`attach_to_track`) and the redaction report (`redaction_report`). The Track & blur view shows and corrects what they found.
 - Closing a gap: deleting a clip leaves one. The model's `remove_range` cuts a stretch of time out of every layer.
 - One clip is selected at a time.

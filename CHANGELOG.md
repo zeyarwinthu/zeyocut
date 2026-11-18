@@ -70,9 +70,18 @@ when they open.
     animated value or its diamond while playing stops the playback first. Effects (blur, shadow,
     border, tint) switch on and off and take their settings, animatable too; a video's or picture's
     brightness, contrast and saturation are set in percent; a clip a face blur follows shows the
-    redaction's style, strength, padding, feather, hold frames and fill; and a video's crop is set
+    redaction's style, strength, padding, feather, hold frames, fill, shape and smoothing; and a video's crop is set
     by its sides, keeping what's left of the picture in place. With nothing selected, it sets the
     project's Duration.
+  - **Track & blur view** (Ctrl+4): the tracked objects of the clip at the playhead with how each is
+    hidden, its time and a bar of the frames tracked and those lost or unsure, the first of which
+    Fix goes to. A box drawn on the frame is tracked backward or forward as `track_object` tracks it,
+    in the background with progress and Stop; dragging a box or its corner corrects the track there
+    as `reanchor_track` does. The viewer shows the boxes with the tracker's confidence and the
+    chosen one's path on the frame without redactions (Boxes), as exported (Result) or both (Split).
+    Blur, Pixelate and Solid box hide the chosen object as `apply_redaction` does; strength,
+    feather, grow box, shape and smoothing are set as `update_layer` sets them. A tracking timeline
+    with each object's tracked, lost and set-by-hand frames, which moves the playhead.
   - **Captions view:** the caption tracks side by side, a row for each caption of the source track
     (English when there is one) with the other languages' captions that overlap it most, and chips
     with how many rows each track fills. A cell saves its caption's text, removes it when emptied, or

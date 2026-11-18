@@ -132,6 +132,20 @@ public partial class MainWindow : Window
 
     // The Audio view's loudness measurement: running, and the last one with the mix it measured.
     private CancellationTokenSource? _loudness;
+
+    // The Track & blur view: the clip it works on, the track chosen, a box drawn to track and the
+    // frame it was drawn on, the tracking running, the track files read (by file), and the frame
+    // without its redactions.
+    private string? _trackClip;
+    private string? _trackSelected;
+    private (Rect Box, int Frame)? _trackPending;
+    private TrackJob? _tracking;
+    private readonly Dictionary<string, TrackData?> _trackData = new(StringComparer.Ordinal);
+    private TrackFrames? _trackFrames;
+    private TrackFrameRequest? _trackAsked;
+    private BitmapSource? _trackPlain;
+    private (Project Project, Project Plain)? _plainFrom;
+    private bool _fillingTrack;
     private (string? Key, AudioLevelsReport? Report, string? Error)? _measured;
     private bool _settingDuck;
     private FileSystemWatcher? _watcher;
@@ -462,6 +476,8 @@ public partial class MainWindow : Window
 
     private bool Hearing => _document is not null && AudioMode.IsChecked == true;
 
+    private bool Tracking => _document is not null && TrackMode.IsChecked == true;
+
     private bool Browsing => _document is not null && MediaMode.IsChecked == true;
 
     // The source viewer is showing, with a file open in it.
@@ -560,16 +576,18 @@ public partial class MainWindow : Window
         var animating = Animating;
         var hearing = Hearing;
         var playable = editing || animating || hearing;
+        var tracking = Tracking;
+        var stepping = playable || tracking;
         var source = Sourcing ? _source : null;
         return command switch
         {
             Command.Play => playable ? TogglePlay : source is not null ? source.Toggle : null,
-            Command.PreviousFrame => playable ? () => Step(-1) : source is not null ? () => StepSource(-1) : null,
-            Command.NextFrame => playable ? () => Step(1) : source is not null ? () => StepSource(1) : null,
-            Command.BackSecond => playable ? () => Step(-_document!.View.Fps) : source is not null ? () => StepSource(-source.Source.Fps) : null,
-            Command.ForwardSecond => playable ? () => Step(_document!.View.Fps) : source is not null ? () => StepSource(source.Source.Fps) : null,
-            Command.FirstFrame => playable ? () => Seek(0) : source is not null ? () => source.Seek(0) : null,
-            Command.LastFrame => playable ? () => Seek(_frames - 1) : source is not null ? () => source.Seek(source.Frames - 1) : null,
+            Command.PreviousFrame => stepping ? () => Step(-1) : source is not null ? () => StepSource(-1) : null,
+            Command.NextFrame => stepping ? () => Step(1) : source is not null ? () => StepSource(1) : null,
+            Command.BackSecond => stepping ? () => Step(-_document!.View.Fps) : source is not null ? () => StepSource(-source.Source.Fps) : null,
+            Command.ForwardSecond => stepping ? () => Step(_document!.View.Fps) : source is not null ? () => StepSource(source.Source.Fps) : null,
+            Command.FirstFrame => stepping ? () => Seek(0) : source is not null ? () => source.Seek(0) : null,
+            Command.LastFrame => stepping ? () => Seek(_frames - 1) : source is not null ? () => source.Seek(source.Frames - 1) : null,
             Command.PreviousEdit => editing ? () => JumpToEdit(next: false) : null,
             Command.NextEdit => editing ? () => JumpToEdit(next: true) : null,
             Command.FullScreen => editing ? ShowFullScreen : null,
@@ -579,7 +597,7 @@ public partial class MainWindow : Window
             Command.Undo => open && !inField ? Undo : null,
             Command.Redo => open && !inField ? Redo : null,
             Command.Import => editing || Browsing ? ChooseMedia : null,
-            Command.Cancel => editing ? CancelHandler() : animating ? AnimateCancelHandler() : hearing && VolumeLanes.Dragging ? VolumeLanes.CancelDrag : null,
+            Command.Cancel => editing ? CancelHandler() : animating ? AnimateCancelHandler() : tracking ? TrackCancelHandler() : hearing && VolumeLanes.Dragging ? VolumeLanes.CancelDrag : null,
             Command.AddMarker => editing ? AddMarker : null,
             Command.Snap => editing ? ToggleSnap : null,
             Command.ZoomIn => editing ? () => Timeline.ZoomBy(1.5) : null,
@@ -600,6 +618,7 @@ public partial class MainWindow : Window
             Command.Edit => open ? () => TurnOn(EditMode) : null,
             Command.Audio => open ? () => TurnOn(AudioMode) : null,
             Command.Animate => open ? () => TurnOn(AnimateMode) : null,
+            Command.Track => open ? () => TurnOn(TrackMode) : null,
             Command.Captions => open ? () => TurnOn(CaptionsMode) : null,
             Command.Activity => open ? () => TurnOn(ActivityMode) : null,
             Command.Export => open ? () => TurnOn(ExportMode) : null,
@@ -616,6 +635,19 @@ public partial class MainWindow : Window
         : _drag is not null ? CancelPreviewDrag
         : BladeTool.IsChecked == true ? () => TurnOn(SelectTool)
         : _selectedLayer is not null || MediaList.SelectedItem is not null ? ClearSelection
+        : null;
+
+    // Esc in the Track & blur view lets go of a box being dragged, stops drawing one, or drops the box
+    // drawn.
+    private Action? TrackCancelHandler() =>
+        TrackViewer.Dragging ? TrackViewer.CancelDrag
+        : TrackDraw.IsChecked == true ? () => StopDrawing()
+        : _trackPending is not null ? () =>
+        {
+            _trackPending = null;
+            ShowTrackButtons();
+            ShowTrackPosition();
+        }
         : null;
 
     // Esc in the Animate view lets go of a drag of keyframes, or clears their selection.
@@ -880,6 +912,21 @@ public partial class MainWindow : Window
         _onion = null;
         _onionAsked = null;
         _onionPicture = null;
+        _tracking?.Job.Cancellation.Cancel();
+        _tracking = null;
+        if (_trackFrames is { } trackFrames)
+        {
+            _ = Task.Run(trackFrames.Dispose);
+        }
+
+        _trackFrames = null;
+        _trackAsked = null;
+        _trackPlain = null;
+        _plainFrom = null;
+        _trackData.Clear();
+        _trackPending = null;
+        _trackSelected = null;
+        _trackClip = null;
         _pathFor = null;
         _path = ([], []);
         _shown = _shownFrom = null;
@@ -1649,6 +1696,11 @@ public partial class MainWindow : Window
             ShowAnimatePosition();
         }
 
+        if (TrackMode.IsChecked == true)
+        {
+            ShowTrackPosition();
+        }
+
         if (AudioMode.IsChecked == true)
         {
             ShowAudioPosition();
@@ -2291,6 +2343,10 @@ public partial class MainWindow : Window
         }
 
         JobsText.Text = string.Join(" · ", progress);
+        if (_tracking is not null && TrackMode.IsChecked == true)
+        {
+            ShowTrackProgress();
+        }
         foreach (var item in _importer?.Pending ?? [])
         {
             item.Update();
@@ -2569,6 +2625,7 @@ public partial class MainWindow : Window
     {
         Workspace.Visibility = Visibility.Collapsed;
         AnimatePage.Visibility = Visibility.Collapsed;
+        TrackPage.Visibility = Visibility.Collapsed;
         AudioPage.Visibility = Visibility.Collapsed;
         CaptionsPage.Visibility = Visibility.Collapsed;
         ActivityPage.Visibility = Visibility.Collapsed;
@@ -4454,6 +4511,7 @@ public partial class MainWindow : Window
 
         Workspace.Visibility = editing ? Visibility.Visible : Visibility.Collapsed;
         AnimatePage.Visibility = AnimateMode.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
+        TrackPage.Visibility = TrackMode.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
         AudioPage.Visibility = AudioMode.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
         CaptionsPage.Visibility = CaptionsMode.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
         ActivityPage.Visibility = ActivityMode.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
@@ -4467,13 +4525,18 @@ public partial class MainWindow : Window
             _source?.Pause();
         }
 
+        if (TrackMode.IsChecked != true)
+        {
+            TrackViewer.CancelDrag();
+        }
+
         ShowHeader();
         UpdateEditButtons();
         ShowPage();
     }
 
-    // Brings the Audio, Animate, Captions, Activity, Export, Media, Source, Titles or Effects view up to
-    // date when it is the one showing.
+    // Brings the Audio, Animate, Track & blur, Captions, Activity, Export, Media, Source, Titles or
+    // Effects view up to date when it is the one showing.
     private void ShowPage()
     {
         if (_document is null)
@@ -4488,6 +4551,10 @@ public partial class MainWindow : Window
         else if (AnimateMode.IsChecked == true)
         {
             ShowAnimate();
+        }
+        else if (TrackMode.IsChecked == true)
+        {
+            ShowTrack();
         }
         else if (CaptionsMode.IsChecked == true)
         {
@@ -6441,6 +6508,602 @@ public partial class MainWindow : Window
     }
 
     private void OnFullScreen(object sender, RoutedEventArgs e) => ShowFullScreen();
+
+    // A tracking the Track & blur view runs: the job, what it tracks, the edit that saves it, and the
+    // box it tracks from on the canvas and the frame that box is on.
+    private sealed record TrackJob(BackgroundJob Job, TrackPlan Plan, string Tool, Rect Box, int Frame);
+
+    // The Track & blur view: the tracks of the clip at the playhead (TrackModel) in the list, on the
+    // frame and on the tracking timeline, and the chosen one's redaction settings.
+    private void ShowTrack()
+    {
+        var project = Shown;
+        var clip = TrackModel.Clip(project, _selectedLayer, FrameMath.TimeOf(project, _frame), _trackClip);
+        if (clip?.Id != _trackClip)
+        {
+            _trackPending = null;
+        }
+
+        _trackClip = clip?.Id;
+        if (_trackSelected is not null && (clip is null || !TrackModel.TracksOn(project, clip).Any(t => t.Id == _trackSelected)))
+        {
+            _trackSelected = null;
+        }
+
+        TrackClipText.Text = clip is null ? "" : $"on {clip.Id}";
+        TrackViewClip.Text = clip?.Id ?? "No clip";
+        if (clip is null)
+        {
+            TrackCards.ItemsSource = null;
+            TrackEmpty.Text = "No video clip at the playhead. Move the playhead to a clip to track something in it.";
+            TrackEmpty.Visibility = Visibility.Visible;
+            TrackTimeline.Show([], 0, Math.Max(1, project.Duration), null);
+        }
+        else
+        {
+            var cards = TrackModel.Cards(project, clip, TrackDataOf, _trackSelected);
+            TrackCards.ItemsSource = cards;
+            TrackEmpty.Text = "Nothing on this clip is tracked yet. Draw a box around a face, a plate or anything else to track it, then choose how to hide it.";
+            TrackEmpty.Visibility = cards.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+            TrackTimeline.Show(TrackModel.Rows(project, clip, TrackDataOf), clip.Start, clip.TimelineEnd, _trackSelected);
+        }
+
+        ShowTrackSettings();
+        ShowTrackButtons();
+        ShowTrackPosition();
+    }
+
+    // The frame at the playhead in the viewer, with the boxes on it, and the tracking timeline's
+    // playhead. Built again when the playhead goes to another clip.
+    private void ShowTrackPosition()
+    {
+        var project = Shown;
+        var time = FrameMath.TimeOf(project, _frame);
+        if (TrackModel.Clip(project, _selectedLayer, time, _trackClip)?.Id != _trackClip)
+        {
+            ShowTrack();
+            return;
+        }
+
+        TrackTimecode.Text = Timecode.Of(_frame, project.Fps);
+        TrackTimeline.Playhead = time;
+        var clip = _trackClip is null ? null : project.FindLayer(_trackClip) as VideoLayer;
+        var showing = clip is not null && TrackModel.Showing(project, clip, time);
+        TrackFrameText.Text = $"frame {_frame} · {time.ToString("0.00", CultureInfo.InvariantCulture)} s" + (clip is not null && !showing ? $" · {clip.Id} isn't at the playhead" : "");
+        var shapes = showing ? TrackModel.Shapes(project, clip!, time, TrackDataOf) : [];
+        var trail = showing && _trackSelected is { } id && project.FindTrack(id) is { } track && TrackDataOf(track) is { } data
+            ? TrackModel.Trail(project, clip!, _frame, data)
+            : [];
+        var (pending, label) = _tracking is { } running ? (running.Frame == _frame ? running.Box : (Rect?)null, running.Plan.Replacing is null ? "tracking…" : "tracking again…")
+            : _trackPending is { } drawn && drawn.Frame == _frame ? (drawn.Box, "new box")
+            : ((Rect?)null, "");
+        RequestTrackPlain();
+        TrackViewer.Show(new Size(project.Width, project.Height), _trackPlain, shapes, trail, _trackSelected, pending, label);
+        TrackViewMessage.Text = clip is null ? "No video clip at the playhead." : "";
+        TrackViewMessage.Visibility = clip is null ? Visibility.Visible : Visibility.Collapsed;
+        ShowTrackButtons();
+    }
+
+    // A track's boxes, from its file; null when it can't be read. Kept by file, which a new version of
+    // the track never reuses.
+    private TrackData? TrackDataOf(ZeyoCut.Core.Model.Track track)
+    {
+        if (!_trackData.TryGetValue(track.File, out var data))
+        {
+            try
+            {
+                data = TrackFiles.Load(_document!.Session.Directory, track);
+            }
+            catch (Exception ex) when (ex is ZeyoCutException or IOException or UnauthorizedAccessException)
+            {
+                data = null;
+            }
+
+            _trackData[track.File] = data;
+        }
+
+        return data;
+    }
+
+    // The frame without its redactions, for the viewer's Boxes and Split: drawn on a worker thread and
+    // shown once it's done (OnTrackPlain), or the frame itself when nothing is hidden.
+    private void RequestTrackPlain()
+    {
+        var shown = Shown;
+        if (_plainFrom is not { } from || !ReferenceEquals(from.Project, shown))
+        {
+            _plainFrom = from = (shown, TrackFrames.Plain(shown));
+        }
+
+        if (ReferenceEquals(from.Plain, shown))
+        {
+            _trackAsked = null;
+            _trackPlain = null;
+            return;
+        }
+
+        if (TrackResult.IsChecked == true)
+        {
+            return;
+        }
+
+        var scale = Math.Min(1, 1280.0 / Math.Max(shown.Width, shown.Height));
+        if (_trackAsked is { } asked && ReferenceEquals(asked.Project, from.Plain) && asked.Frame == _frame && asked.Scale == scale)
+        {
+            return;
+        }
+
+        if (_trackFrames is null)
+        {
+            TrackFrames? frames = null;
+            frames = new TrackFrames(_document!.Session.Directory, () => Ffmpeg().Ffmpeg, picture => Dispatcher.InvokeAsync(() =>
+            {
+                if (ReferenceEquals(frames, _trackFrames))
+                {
+                    OnTrackPlain(picture);
+                }
+            }));
+            _trackFrames = frames;
+        }
+
+        _trackAsked = new TrackFrameRequest(from.Plain, _frame, scale);
+        _trackFrames.Request(_trackAsked);
+    }
+
+    private void OnTrackPlain(TrackFramePicture picture)
+    {
+        if (!ReferenceEquals(picture.Request, _trackAsked) || _document is null)
+        {
+            return;
+        }
+
+        if (picture.Pixels is null)
+        {
+            _trackPlain = null;
+            Message($"Frame {picture.Request.Frame} can't be drawn without its redactions: {picture.Error}");
+        }
+        else
+        {
+            var bitmap = BitmapSource.Create(picture.Width, picture.Height, 96, 96, PixelFormats.Pbgra32, null, picture.Pixels, picture.Width * 4);
+            bitmap.Freeze();
+            _trackPlain = bitmap;
+        }
+
+        if (TrackMode.IsChecked == true)
+        {
+            ShowTrackPosition();
+        }
+    }
+
+    // Drawing a box is for a clip at the playhead; Backward and Forward track the box drawn; one
+    // tracking runs at a time, with its progress and Stop.
+    private void ShowTrackButtons()
+    {
+        var project = _document!.View;
+        var clip = _trackClip is null ? null : project.FindLayer(_trackClip) as VideoLayer;
+        var showing = clip is not null && TrackModel.Showing(project, clip, FrameMath.TimeOf(project, _frame));
+        var busy = _tracking is not null;
+        TrackDraw.IsEnabled = showing && !busy;
+        if (!TrackDraw.IsEnabled && TrackDraw.IsChecked == true)
+        {
+            TrackDraw.IsChecked = false;
+            TrackViewer.Drawing = false;
+        }
+
+        TrackDrawText.Text = TrackDraw.IsChecked == true ? "Drag over the object in the viewer" : "Draw a box to track";
+        TrackBackward.IsEnabled = TrackForward.IsEnabled = _trackPending is not null && !busy;
+        TrackProgressPanel.Visibility = busy ? Visibility.Visible : Visibility.Collapsed;
+        ShowTrackProgress();
+    }
+
+    private void ShowTrackProgress()
+    {
+        if (_tracking is { } tracking)
+        {
+            TrackProgress.Value = tracking.Job.Percent;
+            TrackProgressText.Text = $"{(tracking.Plan.Replacing is null ? "Tracking" : "Tracking again")} {tracking.Plan.Track.Id} · {tracking.Job.Percent}%";
+        }
+    }
+
+    // The chosen track's redaction, its settings as update_layer sets them, as the inspector's do; a
+    // track not hidden yet gets one from the style chosen, as apply_redaction makes it.
+    private void ShowTrackSettings()
+    {
+        var project = _document!.View;
+        var track = _trackSelected is { } id ? project.FindTrack(id) : null;
+        var redaction = track is null ? null : RedactionEditor.Of(project, track.Id);
+        _fillingTrack = true;
+        try
+        {
+            TrackSettingsTitle.Text = track is null ? "No object chosen" : TrackModel.Title(track);
+            TrackSettingsColor.Background = track is null ? Brushes.Transparent : (Brush)new BrushConverter().ConvertFromString(TrackModel.ColorOf(project, track.Id))!;
+            TrackSettingsHint.Text = track is null ? "Choose a tracked object, or draw a box around one to track it."
+                : redaction is null ? "Not hidden yet: choose how to hide it."
+                : redaction.Tracks.Count > 1 ? $"Hidden by '{redaction.Id}' with {Ids.List(redaction.Tracks.Where(t => t != track.Id))}: these settings are theirs too."
+                : $"Hidden by '{redaction.Id}' in every clip of '{track.Asset}'.";
+            TrackSettings.IsEnabled = track is not null;
+            TrackBlur.IsChecked = redaction?.Style == RedactionStyle.Blur;
+            TrackPixelate.IsChecked = redaction?.Style == RedactionStyle.Pixelate;
+            TrackSolid.IsChecked = redaction?.Style == RedactionStyle.Solid;
+            TrackSliders.IsEnabled = redaction is not null;
+            TrackSliders.Opacity = redaction is null ? 0.45 : 1;
+            TrackStrength.IsEnabled = redaction is { Style: not RedactionStyle.Solid };
+            TrackStrength.Opacity = TrackStrength.IsEnabled || redaction is null ? 1 : 0.45;
+            TrackStrength.Value = redaction?.Strength ?? 50;
+            TrackFeather.Value = redaction?.Feather ?? 4;
+            TrackGrow.Value = redaction?.PaddingPercent ?? 15;
+            ShowTrackSliders();
+            TrackRectangle.IsChecked = redaction?.Shape != RedactionShape.Ellipse;
+            TrackEllipse.IsChecked = redaction?.Shape == RedactionShape.Ellipse;
+            TrackSmooth.IsChecked = redaction?.Smooth == true;
+            TrackRectangle.IsEnabled = TrackEllipse.IsEnabled = TrackSmooth.IsEnabled = redaction is not null;
+            TrackNote.Text = track is not null && !TrackModel.Correctable(track)
+                ? "Faces and plates are found on every frame, so their boxes can't be moved. Where one was missed, draw a box there and track it."
+                : "Drag a box, or one of its corners, to where the object is: tracking runs again from that frame up to the next box you set.";
+        }
+        finally
+        {
+            _fillingTrack = false;
+        }
+    }
+
+    private void ShowTrackSliders()
+    {
+        TrackStrengthText.Text = TrackStrength.IsEnabled ? Number(TrackStrength.Value) : "–";
+        TrackFeatherText.Text = $"{Number(TrackFeather.Value)} px";
+        TrackGrowText.Text = $"+{Number(TrackGrow.Value)}%";
+    }
+
+    private RedactionLayer? TrackRedaction() => _document is not null && _trackSelected is { } id ? RedactionEditor.Of(_document.View, id) : null;
+
+    // update_layer on the chosen track's redaction.
+    private void UpdateTrackRedaction(string id, string field, JsonNode? value) => WhenSaved(() =>
+    {
+        if (_document?.View.FindLayer(id) is RedactionLayer)
+        {
+            Apply(new UpdateLayerOperation(id, new JsonObject { [field] = value }));
+        }
+    });
+
+    private void OnTrackStyle(object sender, RoutedEventArgs e)
+    {
+        if (_fillingTrack || sender is not RadioButton { Tag: string name } || _document is null || _trackSelected is not { } id)
+        {
+            return;
+        }
+
+        var style = Enum.Parse<RedactionStyle>(name);
+        WhenSaved(() =>
+        {
+            if (_document?.View.FindTrack(id) is null)
+            {
+                return;
+            }
+
+            var redaction = RedactionEditor.Of(_document.View, id);
+            if (redaction?.Style == style)
+            {
+                ShowTrackSettings();
+                return;
+            }
+
+            Apply(redaction is null
+                ? new ApplyRedactionOperation([id], new RedactionSettings(style, 50, 15, 4, 15, "#000000"))
+                : new UpdateLayerOperation(redaction.Id, new JsonObject { ["style"] = EnumNames.ToName(style) }));
+        });
+    }
+
+    private void OnTrackSliderMoved(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (!_fillingTrack && IsLoaded)
+        {
+            ShowTrackSliders();
+        }
+    }
+
+    private void OnTrackSliderReleased(object sender, MouseButtonEventArgs e) => CommitTrackSlider(sender as Slider);
+
+    private void OnTrackSliderKey(object sender, KeyEventArgs e) => CommitTrackSlider(sender as Slider);
+
+    // A slider let go of saves its value: strength, feather or paddingPercent (Grow box).
+    private void CommitTrackSlider(Slider? slider)
+    {
+        if (slider is not { Tag: string field } || TrackRedaction() is not { } redaction)
+        {
+            return;
+        }
+
+        var saved = field switch
+        {
+            "strength" => redaction.Strength,
+            "feather" => redaction.Feather,
+            _ => redaction.PaddingPercent,
+        };
+        if (Math.Abs(slider.Value - saved) > 1e-9)
+        {
+            UpdateTrackRedaction(redaction.Id, field, slider.Value);
+        }
+    }
+
+    private void OnTrackShape(object sender, RoutedEventArgs e)
+    {
+        if (!_fillingTrack && sender is RadioButton { Tag: string shape } && TrackRedaction() is { } redaction && EnumNames.ToName(redaction.Shape) != shape)
+        {
+            UpdateTrackRedaction(redaction.Id, "shape", shape);
+        }
+    }
+
+    private void OnTrackSmooth(object sender, RoutedEventArgs e)
+    {
+        if (!_fillingTrack && TrackRedaction() is { } redaction && redaction.Smooth != (TrackSmooth.IsChecked == true))
+        {
+            UpdateTrackRedaction(redaction.Id, "smooth", TrackSmooth.IsChecked == true);
+        }
+    }
+
+    private void OnTrackViewMode(object sender, RoutedEventArgs e)
+    {
+        if (!IsLoaded || sender is not RadioButton { Tag: string mode })
+        {
+            return;
+        }
+
+        TrackViewer.Mode = Enum.Parse<TrackViewMode>(mode);
+        if (TrackViewer.Mode == TrackViewMode.Result && TrackDraw.IsChecked == true)
+        {
+            StopDrawing();
+        }
+
+        if (Tracking)
+        {
+            ShowTrackPosition();
+        }
+    }
+
+    private void OnTrackDraw(object sender, RoutedEventArgs e)
+    {
+        TrackViewer.Drawing = TrackDraw.IsChecked == true;
+        if (TrackViewer.Drawing && TrackResult.IsChecked == true)
+        {
+            TrackBoxes.IsChecked = true;
+        }
+
+        ShowTrackButtons();
+    }
+
+    private void StopDrawing()
+    {
+        TrackDraw.IsChecked = false;
+        TrackViewer.Drawing = false;
+        ShowTrackButtons();
+    }
+
+    // A box drawn on the frame: checked as track_object checks it, then waits for Backward or Forward.
+    private void OnTrackBoxDrawn(Rect box)
+    {
+        StopDrawing();
+        var project = _document!.View;
+        try
+        {
+            TrackEditor.Plan(project, _trackClip, FrameMath.TimeOf(project, _frame), box.X, box.Y, box.Width, box.Height, TrackDirection.Forward, TrackMethod.Csrt, null, _ => false);
+            _trackPending = (box, _frame);
+            Message("Now track it: Backward or Forward, below the list");
+        }
+        catch (ZeyoCutException ex)
+        {
+            _trackPending = null;
+            Message(TrackProblem(ex));
+        }
+
+        ShowTrackButtons();
+        ShowTrackPosition();
+    }
+
+    // What track_object or reanchor_track refused, as the editor says it.
+    private static string TrackProblem(ZeyoCutException ex) =>
+        ex.Message.StartsWith("the box ", StringComparison.Ordinal) ? "Draw the box over the clip's picture, at least 4 of its pixels across" : ex.Message;
+
+    private void OnTrackBackward(object sender, RoutedEventArgs e) => TrackDrawnBox(TrackDirection.Backward);
+
+    private void OnTrackForward(object sender, RoutedEventArgs e) => TrackDrawnBox(TrackDirection.Forward);
+
+    // The box drawn, tracked as track_object tracks it with csrt: from its frame back to the clip's
+    // start, or on to its end.
+    private void TrackDrawnBox(TrackDirection direction) => WhenSaved(() =>
+    {
+        if (_document is not { } document || _tracking is not null || _trackPending is not { } drawn)
+        {
+            return;
+        }
+
+        var project = document.View;
+        TrackPlan plan;
+        try
+        {
+            plan = TrackEditor.Plan(project, _trackClip, FrameMath.TimeOf(project, drawn.Frame), drawn.Box.X, drawn.Box.Y, drawn.Box.Width, drawn.Box.Height, direction, TrackMethod.Csrt, null,
+                _ => false);
+        }
+        catch (ZeyoCutException ex)
+        {
+            Message(TrackProblem(ex));
+            return;
+        }
+
+        if (plan.Frames == 0)
+        {
+            Message(direction == TrackDirection.Backward ? "The box is on the clip's first frame: track it forward" : "The box is on the clip's last frame: track it backward");
+            return;
+        }
+
+        RunTracking(plan, null, "track_object", drawn.Box, drawn.Frame);
+    });
+
+    // A box moved or resized on a frame: the track corrected there as reanchor_track corrects it,
+    // tracked again from that frame up to the next box set by hand.
+    private void OnTrackBoxMoved(string trackId, Rect box)
+    {
+        var frame = _frame;
+        WhenSaved(() =>
+        {
+            if (_document is not { } document)
+            {
+                return;
+            }
+
+            if (_tracking is not null)
+            {
+                Message("Wait until the tracking is done, or stop it, then move the box");
+                ShowTrackPosition();
+                return;
+            }
+
+            var project = document.View;
+            TrackPlan plan;
+            TrackData old;
+            try
+            {
+                plan = TrackEditor.PlanCorrection(project, trackId, FrameMath.TimeOf(project, frame), box.X, box.Y, box.Width, box.Height, _trackClip);
+                old = TrackFiles.Load(document.Session.Directory, project.FindTrack(trackId)!);
+            }
+            catch (ZeyoCutException ex)
+            {
+                Message(TrackProblem(ex));
+                ShowTrackPosition();
+                return;
+            }
+
+            RunTracking(plan, old, "reanchor_track", box, frame);
+        });
+    }
+
+    // Tracks in the background, as the server's tracking job does; the track is saved as one edit
+    // when it's done (OnTracked).
+    private void RunTracking(TrackPlan plan, TrackData? old, string tool, Rect box, int frame)
+    {
+        var directory = _document!.Session.Directory;
+        string file;
+        string ffmpeg;
+        try
+        {
+            file = TrackRunner.SourceFile(directory, plan.Asset);
+            ffmpeg = Ffmpeg().Ffmpeg;
+        }
+        catch (Exception ex) when (ex is ZeyoCutException or IOException)
+        {
+            Message(ex.Message);
+            return;
+        }
+
+        var id = plan.Track.Id;
+        var stage = plan.Replacing is null ? $"Tracking {id}" : $"Tracking {id} again";
+        var job = _jobs.Start("tracking", $"{tool} {id}", (job, ct) =>
+        {
+            TrackRunner.Run(ffmpeg, directory, file, plan, old, p => job.Report(p, stage), ct);
+            return $"{tool} {id}";
+        });
+        _tracking = new TrackJob(job, plan, tool, box, frame);
+        if (plan.Replacing is null)
+        {
+            _trackPending = null;
+        }
+
+        _ = job.Completion.ContinueWith(_ => Dispatcher.InvokeAsync(() => OnTracked(job)), CancellationToken.None, TaskContinuationOptions.None, TaskScheduler.Default);
+        Message($"{stage}: {plan.Frames} frames of '{plan.Asset.Id}'");
+        ShowTrackButtons();
+        ShowTrackPosition();
+    }
+
+    private void OnTracked(BackgroundJob job)
+    {
+        if (_tracking is not { } tracking || !ReferenceEquals(tracking.Job, job))
+        {
+            return;
+        }
+
+        _tracking = null;
+        if (_document is null)
+        {
+            return;
+        }
+
+        var plan = tracking.Plan;
+        if (job.State == JobState.Completed)
+        {
+            Apply(new SaveTrackOperation(plan.Track, plan.Replacing, tracking.Tool), then: (saved, _) =>
+            {
+                if (saved && Tracking)
+                {
+                    _trackSelected = plan.Track.Id;
+                    ShowTrack();
+                }
+            });
+        }
+        else
+        {
+            if (plan.Replacing is null)
+            {
+                _trackPending = (tracking.Box, tracking.Frame);
+            }
+
+            Message(job.State == JobState.Cancelled ? $"Stopped tracking {plan.Track.Id}; nothing was saved" : $"Couldn't track {plan.Track.Id}: {job.Error}");
+        }
+
+        if (Tracking)
+        {
+            ShowTrack();
+        }
+    }
+
+    private void OnTrackStop(object sender, RoutedEventArgs e) => _tracking?.Job.Cancellation.Cancel();
+
+    private void OnTrackCard(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button { Tag: string id })
+        {
+            ChooseTrack(id, seek: true);
+        }
+    }
+
+    // Fix: the first frame the tracker lost the object or wasn't sure, its box on it to drag.
+    private void OnTrackFix(object sender, RoutedEventArgs e)
+    {
+        e.Handled = true;
+        if (sender is not Button { Tag: string id } || (TrackCards.ItemsSource as IEnumerable<TrackCard>)?.FirstOrDefault(c => c.Id == id) is not { ProblemFrame: { } frame })
+        {
+            return;
+        }
+
+        _trackSelected = id;
+        TrackBoxes.IsChecked = true;
+        Pause();
+        Seek(frame);
+        ShowTrack();
+    }
+
+    private void OnTrackChosen(string id) => ChooseTrack(id, seek: false);
+
+    // A track chosen: its box, trail and settings. From its card, the playhead goes to the track's
+    // first frame on the clip when its box isn't on the frame at the playhead.
+    private void ChooseTrack(string id, bool seek)
+    {
+        _trackSelected = id;
+        if (seek && !TrackViewer.Shapes.Any(s => s.Id == id) && (TrackCards.ItemsSource as IEnumerable<TrackCard>)?.FirstOrDefault(c => c.Id == id) is { First: { } first })
+        {
+            Pause();
+            Seek(first);
+        }
+
+        ShowTrack();
+    }
+
+    private void OnTrackStripSeek(double time)
+    {
+        if (_document is not null)
+        {
+            Pause();
+            Seek(FrameMath.NearestFrame(_document.View, time));
+        }
+    }
 
     // The Animate view: the project's keyframes in the dope sheet or the graph, the easing of those
     // selected, and over the preview the selected layer's onion skin and motion path.

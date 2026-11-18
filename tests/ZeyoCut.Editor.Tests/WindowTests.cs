@@ -2510,6 +2510,143 @@ public class WindowTests
     // in the chosen style with their presets, as add_text_layer adds them; the selected title's fields
     // and presets change it, Apply puts the style back, Update saved style saves its look over the
     // style, and a template goes in from the playhead as add_template puts it.
+    // The Track & blur view tracks a box drawn on the frame as track_object does, hides it as
+    // apply_redaction and update_layer do, and corrects it where its box is dragged to as
+    // reanchor_track does; each is one step to undo.
+    [Fact]
+    public void TheTrackViewTracksADrawnBoxHidesItAndCorrectsIt() => TestWindow.Run("window-track", (window, folder) =>
+    {
+        var project = TestFiles.Project(640, 360, 2);
+        project.Fps = 30;
+        project.Assets.Add(new Asset { Id = "square", Type = AssetType.Video, File = "assets/square.mp4", Width = 320, Height = 180, FrameRate = "30", FrameCount = 60, Duration = 2, Codec = "h264" });
+        ProjectEditor.AddVideoLayer(project, new VideoLayerOptions { Id = "clip", Asset = "square" });
+        var directory = Path.Combine(folder, "square");
+        ProjectSession.Create(directory, project);
+        Directory.CreateDirectory(Path.Combine(directory, ProjectStore.AssetsFolder));
+
+        // A white 40 px square on black, from 20,60 moving right 2 px a frame; the clip is twice its size.
+        TestFiles.Video(Path.Combine(directory, ProjectStore.AssetsFolder, "square.mp4"),
+            "color=c=black:s=320x180:r=30:d=2[bg];color=c=white:s=40x40:r=30:d=2[sq];[bg][sq]overlay=x=20+60*t:y=60[out0]");
+        window.OpenProject(directory);
+        Assert.Equal(Command.Track, window.RunKey(Key.D4, ModifierKeys.Control, inField: false));
+        TestWindow.Pump();
+        Assert.Equal(Visibility.Visible, Shown(window, "TrackPage"));
+        Assert.Equal(Visibility.Visible, Shown(window, "ModeBar"));
+        Assert.Equal(("on clip", Visibility.Visible), (Text(window, "TrackClipText"), Shown(window, "TrackEmpty")));
+        Assert.True(window.CanRun(Command.NextFrame));
+        Assert.False(window.CanRun(Command.Play));
+        var viewer = (TrackView)window.FindName("TrackViewer");
+        var draw = (System.Windows.Controls.Primitives.ToggleButton)window.FindName("TrackDraw");
+        var forward = (Button)window.FindName("TrackForward");
+        Assert.True(draw.IsEnabled);
+        Assert.False(forward.IsEnabled);
+        void Drag(Point from, Point to)
+        {
+            viewer.Press(viewer.ToView(from));
+            viewer.MoveTo(viewer.ToView(new Point((from.X + to.X) / 2, (from.Y + to.Y) / 2)), pressed: true);
+            viewer.MoveTo(viewer.ToView(to), pressed: true);
+            viewer.Release();
+            TestWindow.Pump();
+        }
+
+        void WaitForTracking()
+        {
+            TestWindow.Pump();
+            for (var i = 0; i < 3000 && Shown(window, "TrackProgressPanel") == Visibility.Visible; i++)
+            {
+                TestWindow.Pump(10);
+            }
+
+            WaitForSaves(window);
+        }
+
+        Track Saved() => ProjectStore.Load(directory).Tracks.Single();
+
+        // Draw a box around the square at frame 0 (40,120 80x80 on the canvas), and Esc drops it.
+        draw.IsChecked = true;
+        draw.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+        Assert.True(viewer.Drawing);
+        Drag(new Point(40, 120), new Point(120, 200));
+        Assert.False(viewer.Drawing);
+        Assert.True(forward.IsEnabled);
+        Assert.Equal(Command.Cancel, window.RunKey(Key.Escape, ModifierKeys.None, inField: false));
+        Assert.False(forward.IsEnabled);
+        draw.IsChecked = true;
+        draw.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+        Drag(new Point(40, 120), new Point(120, 200));
+        var drawn = viewer.Pending!.Value;
+        Assert.Equal(new Rect(40, 120, 80, 80), new Rect(Math.Round(drawn.X, 6), Math.Round(drawn.Y, 6), Math.Round(drawn.Width, 6), Math.Round(drawn.Height, 6)));
+
+        // Forward: the track track_object makes, from frame 0 to the clip's end, chosen.
+        Click(window, "TrackForward");
+        WaitForTracking();
+        var tracked = Saved();
+        Assert.Equal(("track_1", "clip", TrackMethod.Csrt, TrackDirection.Forward, 0, 59, 0), (tracked.Id, tracked.Layer, tracked.Method, tracked.Direction, tracked.FirstFrame, tracked.LastFrame, tracked.Origin));
+        var anchor = tracked.Anchors.Single();
+        Assert.Equal((0, 20.0, 60.0, 40.0, 40.0), (anchor.Frame, Math.Round(anchor.X, 6), Math.Round(anchor.Y, 6), Math.Round(anchor.Width, 6), Math.Round(anchor.Height, 6)));
+        var firstFile = tracked.File;
+        var halfway = TrackFiles.Load(directory, tracked).Frames.Single(f => f.Frame == 30);
+        Assert.InRange(halfway.X, 75, 85);
+        var card = ((IEnumerable<TrackCard>)((ItemsControl)window.FindName("TrackCards")).ItemsSource).Single();
+        Assert.Equal(("track_1 · Object", "Not hidden", "0.00 – 2.00 s · 60 frames", true), (card.Title, card.Hide, card.Span, card.Selected));
+        Assert.Equal(["track_1 · set by hand"], viewer.Shapes.Select(s => s.Label));
+        Assert.Equal("Not hidden yet: choose how to hide it.", Text(window, "TrackSettingsHint"));
+        Assert.False(((Slider)window.FindName("TrackStrength")).IsEnabled);
+
+        // Hide it with a blur as apply_redaction does, then an ellipse, smoothed, strength 80.
+        var blur = (RadioButton)window.FindName("TrackBlur");
+        blur.IsChecked = true;
+        blur.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+        WaitForSaves(window);
+        ((RadioButton)window.FindName("TrackEllipse")).IsChecked = true;
+        WaitForSaves(window);
+        var smooth = (CheckBox)window.FindName("TrackSmooth");
+        smooth.IsChecked = true;
+        smooth.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+        WaitForSaves(window);
+        var strength = (Slider)window.FindName("TrackStrength");
+        Assert.True(strength.IsEnabled);
+        strength.Value = 80;
+        strength.RaiseEvent(new MouseButtonEventArgs(Mouse.PrimaryDevice, 0, MouseButton.Left) { RoutedEvent = UIElement.PreviewMouseLeftButtonUpEvent });
+        WaitForSaves(window);
+        var redaction = Assert.IsType<RedactionLayer>(ProjectStore.Load(directory).FindLayer("redaction_1"));
+        Assert.Equal(["track_1"], redaction.Tracks);
+        Assert.Equal((RedactionStyle.Blur, 80.0, RedactionShape.Ellipse, true), (redaction.Style, redaction.Strength, redaction.Shape, redaction.Smooth));
+        Assert.Equal(("Blur", "80"), (((IEnumerable<TrackCard>)((ItemsControl)window.FindName("TrackCards")).ItemsSource).Single().Hide, Text(window, "TrackStrengthText")));
+        Assert.Equal("Hidden by 'redaction_1' in every clip of 'square'.", Text(window, "TrackSettingsHint"));
+
+        // The viewer's modes.
+        foreach (var (name, mode) in new[] { ("TrackResult", TrackViewMode.Result), ("TrackSplit", TrackViewMode.Split), ("TrackBoxes", TrackViewMode.Boxes) })
+        {
+            ((RadioButton)window.FindName(name)).IsChecked = true;
+            TestWindow.Pump();
+            Assert.Equal(mode, viewer.Mode);
+        }
+
+        // At frame 40 (from the tracking timeline), the box dragged onto the square, 200,120 80x80:
+        // tracked again from there to the end, as reanchor_track does.
+        var strip = (TrackStrip)window.FindName("TrackTimeline");
+        strip.Press(new Point(strip.XOf(40 / 30.0), TrackStrip.RulerHeight + 10));
+        strip.Release();
+        TestWindow.Pump();
+        Assert.Equal("frame 40 · 1.33 s", Text(window, "TrackFrameText"));
+        var box = viewer.Shapes.Single().Bounds;
+        Drag(new Point(box.X + box.Width / 2, box.Y + box.Height / 2), new Point(240, 160));
+        WaitForTracking();
+        var corrected = Saved();
+        Assert.Equal([0, 40], corrected.Anchors.Select(a => a.Frame));
+        var set = corrected.Anchors[1];
+        Assert.Equal((120.0, 80.0), (Math.Round(set.X + set.Width / 2, 6), Math.Round(set.Y + set.Height / 2, 6)));
+        Assert.NotEqual(firstFile, corrected.File);
+        Assert.Equal(["track_1 · set by hand"], viewer.Shapes.Select(s => s.Label));
+        Assert.Equal([0, 1.333], strip.Rows.Single().Anchors.Select(a => Math.Round(a, 3)));
+
+        // Undo takes the correction back.
+        Click(window, "UndoButton");
+        WaitForSaves(window);
+        Assert.Equal(firstFile, Saved().File);
+    });
+
     [Fact]
     public void TheTitlesViewAddsTitlesAndTemplatesAsTheirToolsDo() => TestWindow.Run("window-titles", (window, folder) =>
     {

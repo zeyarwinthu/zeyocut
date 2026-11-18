@@ -492,7 +492,8 @@ public static partial class InspectorFields
     }
 
     // The face blurs (apply_redaction) that hide parts of the clip's footage, with their settings as
-    // update_layer sets them on the redaction: a strength for pixelate and blur, a fill for solid.
+    // update_layer sets them on the redaction: a strength for pixelate and blur, a fill for solid, the
+    // shape and the smoothing.
     private static void AddRedactions(List<InspectorField> fields, Project project, VideoLayer video)
     {
         var redactions = project.Layers.OfType<RedactionLayer>()
@@ -520,6 +521,9 @@ public static partial class InspectorFields
                 "A soft edge outside the box, in the footage's pixels"));
             fields.Add(Number("Hold frames", redaction.HoldFrames, "", text => Update(id, "holdFrames", (int)Parse(text, "Hold frames", min: 0, max: RedactionEditor.MaxHold, whole: true)),
                 "How many frames a box stays before a face is first found and after it's last seen"));
+            fields.Add(new InspectorField("Shape", FieldKind.Choice, EnumNames.ToName(redaction.Shape), value => Update(id, "shape", value), EnumNames.All<RedactionShape>().ToList(),
+                Tip: "Rectangle hides the whole box; ellipse only the ellipse inside it, as for a face"));
+            fields.Add(Toggle("Smooth", redaction.Smooth, on => Update(id, "smooth", on), "Keeps the box steady through the tracker's jitter"));
         }
     }
 

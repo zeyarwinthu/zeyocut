@@ -996,6 +996,96 @@
       </DockPanel>
     </DataTemplate>
 
+    <DataTemplate x:Key="TrackCardTemplate">
+      <Button Tag="{Binding Id}" Click="OnTrackCard" Margin="0,0,0,8" Cursor="Hand" FocusVisualStyle="{x:Null}" AutomationProperties.Name="{Binding Title}"
+              ToolTip="Choose this object: its box is shown on the frame, and its settings on the right">
+        <Button.Template>
+          <ControlTemplate TargetType="Button">
+            <Border x:Name="Bd" CornerRadius="10" BorderThickness="1" BorderBrush="{StaticResource BorderBrush}" Background="{StaticResource HeaderBrush}" Padding="12">
+              <ContentPresenter />
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource ScrollThumbHoverBrush}" />
+              </Trigger>
+              <DataTrigger Binding="{Binding Selected}" Value="True">
+                <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource AccentBrush}" />
+                <Setter TargetName="Bd" Property="BorderThickness" Value="2" />
+                <Setter TargetName="Bd" Property="Padding" Value="11" />
+                <Setter TargetName="Bd" Property="Background" Value="{StaticResource ChosenCardBrush}" />
+              </DataTrigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Button.Template>
+        <StackPanel>
+          <DockPanel>
+            <Border DockPanel.Dock="Right" CornerRadius="4" Padding="6,2" VerticalAlignment="Center" Margin="8,0,0,0">
+              <Border.Style>
+                <Style TargetType="Border">
+                  <Setter Property="Background" Value="Transparent" />
+                  <Setter Property="BorderBrush" Value="#3A3F4B" />
+                  <Setter Property="BorderThickness" Value="1" />
+                  <Style.Triggers>
+                    <DataTrigger Binding="{Binding Hide}" Value="Blur">
+                      <Setter Property="Background" Value="#1F3A2C" />
+                      <Setter Property="BorderThickness" Value="0" />
+                    </DataTrigger>
+                    <DataTrigger Binding="{Binding Hide}" Value="Pixelate">
+                      <Setter Property="Background" Value="#2D2547" />
+                      <Setter Property="BorderThickness" Value="0" />
+                    </DataTrigger>
+                    <DataTrigger Binding="{Binding Hide}" Value="Solid">
+                      <Setter Property="Background" Value="#2A2E37" />
+                      <Setter Property="BorderThickness" Value="0" />
+                    </DataTrigger>
+                  </Style.Triggers>
+                </Style>
+              </Border.Style>
+              <TextBlock Text="{Binding Hide}" FontSize="11" FontWeight="SemiBold">
+                <TextBlock.Style>
+                  <Style TargetType="TextBlock">
+                    <Setter Property="Foreground" Value="{StaticResource SecondaryTextBrush}" />
+                    <Style.Triggers>
+                      <DataTrigger Binding="{Binding Hide}" Value="Blur">
+                        <Setter Property="Foreground" Value="#8EE0B0" />
+                      </DataTrigger>
+                      <DataTrigger Binding="{Binding Hide}" Value="Pixelate">
+                        <Setter Property="Foreground" Value="#CDBBFF" />
+                      </DataTrigger>
+                      <DataTrigger Binding="{Binding Hide}" Value="Solid">
+                        <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+                      </DataTrigger>
+                    </Style.Triggers>
+                  </Style>
+                </TextBlock.Style>
+              </TextBlock>
+            </Border>
+            <Border Width="10" Height="10" CornerRadius="3" Background="{Binding Color}" Margin="0,0,8,0" VerticalAlignment="Center" />
+            <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+          </DockPanel>
+          <TextBlock Text="{Binding Span}" Style="{StaticResource Secondary}" FontSize="12" Margin="0,8,0,0" />
+          <local:TrackBar Parts="{Binding Parts}" Margin="0,8,0,0" />
+          <DockPanel Margin="0,8,0,0">
+            <DockPanel.Style>
+              <Style TargetType="DockPanel">
+                <Style.Triggers>
+                  <DataTrigger Binding="{Binding Problem}" Value="{x:Null}">
+                    <Setter Property="Visibility" Value="Collapsed" />
+                  </DataTrigger>
+                </Style.Triggers>
+              </Style>
+            </DockPanel.Style>
+            <Button DockPanel.Dock="Right" Style="{StaticResource LinkButton}" Tag="{Binding Id}" Click="OnTrackFix" Foreground="#FFE2A8" FontWeight="SemiBold" FontSize="12"
+                    AutomationProperties.Name="Fix" ToolTip="Go to the first frame where the tracker lost it or wasn't sure, to drag its box where it is">
+              <TextBlock Text="Fix" TextDecorations="Underline" />
+            </Button>
+            <TextBlock FontFamily="{StaticResource IconFont}" Text="&#xE7BA;" FontSize="12" Foreground="#F5D394" Margin="0,0,6,0" VerticalAlignment="Center" />
+            <TextBlock Text="{Binding Problem}" Foreground="#F5D394" FontSize="12" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+          </DockPanel>
+        </StackPanel>
+      </Button>
+    </DataTemplate>
+
     <DataTemplate x:Key="EasingTileTemplate">
       <Button Tag="{Binding Easing}" Margin="0,0,8,8" IsEnabled="{Binding Enabled}" Click="OnEasingTile" ToolTip="{Binding Tip}" AutomationProperties.Name="{Binding Name}" FocusVisualStyle="{x:Null}">
         <Button.Template>
@@ -1117,6 +1207,8 @@
                          ToolTip="Each sound role's level, pan and mute, the loudness, the ducking and volume keyframes (Ctrl+2)" />
             <RadioButton x:Name="AnimateMode" GroupName="Mode" Style="{StaticResource TabSegment}" Content="Animate" Checked="OnMode"
                          ToolTip="Keyframes as a dope sheet or as curves, their easing, and the onion skin (Ctrl+3)" />
+            <RadioButton x:Name="TrackMode" GroupName="Mode" Style="{StaticResource TabSegment}" Content="Track &amp; blur" Checked="OnMode"
+                         ToolTip="Track objects in a clip, correct their boxes, and hide them with a blur, pixels or a solid box (Ctrl+4)" />
             <RadioButton x:Name="CaptionsMode" GroupName="Mode" Style="{StaticResource TabSegment}" Content="Captions" Checked="OnMode"
                          ToolTip="Every language's captions side by side, and their style (Ctrl+5)" />
             <RadioButton x:Name="ActivityMode" GroupName="Mode" Style="{StaticResource TabSegment}" Content="Activity" Checked="OnMode"
@@ -1386,6 +1478,280 @@
             </DockPanel>
           </Border>
           <local:KeyframeView x:Name="Keyframes" Seek="OnSeek" Edit="OnTimelineEdit" SelectionChanged="OnKeySelection" LayerChosen="OnKeyLayer" />
+        </DockPanel>
+      </Border>
+    </Grid>
+
+    <Grid x:Name="TrackPage" Grid.Row="1" Visibility="Collapsed">
+      <Grid.Resources>
+        <Style x:Key="HideTile" TargetType="RadioButton">
+          <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+          <Setter Property="Cursor" Value="Hand" />
+          <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+          <Setter Property="Height" Value="56" />
+          <Setter Property="Margin" Value="0,0,6,0" />
+          <Setter Property="Template">
+            <Setter.Value>
+              <ControlTemplate TargetType="RadioButton">
+                <Border x:Name="Bd" Background="{StaticResource HeaderBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="8">
+                  <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                </Border>
+                <ControlTemplate.Triggers>
+                  <Trigger Property="IsMouseOver" Value="True">
+                    <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource ScrollThumbHoverBrush}" />
+                  </Trigger>
+                  <Trigger Property="IsChecked" Value="True">
+                    <Setter TargetName="Bd" Property="Background" Value="{StaticResource ChosenCardBrush}" />
+                    <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource AccentBrush}" />
+                    <Setter TargetName="Bd" Property="BorderThickness" Value="2" />
+                  </Trigger>
+                  <Trigger Property="IsEnabled" Value="False">
+                    <Setter TargetName="Bd" Property="Background" Value="{StaticResource PanelBrush}" />
+                    <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource DividerBrush}" />
+                    <Setter Property="Foreground" Value="{StaticResource UnusableTextBrush}" />
+                    <Setter Property="Cursor" Value="Arrow" />
+                  </Trigger>
+                </ControlTemplate.Triggers>
+              </ControlTemplate>
+            </Setter.Value>
+          </Setter>
+        </Style>
+      </Grid.Resources>
+      <Grid.RowDefinitions>
+        <RowDefinition Height="*" MinHeight="260" />
+        <RowDefinition Height="Auto" />
+      </Grid.RowDefinitions>
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="300" />
+        <ColumnDefinition Width="*" MinWidth="360" />
+        <ColumnDefinition Width="320" />
+      </Grid.ColumnDefinitions>
+
+      <Border Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,0,1,0">
+        <DockPanel Margin="14">
+          <DockPanel DockPanel.Dock="Top" Margin="0,0,0,12">
+            <TextBlock x:Name="TrackClipText" DockPanel.Dock="Right" Style="{StaticResource Secondary}" FontSize="12" VerticalAlignment="Center" Margin="8,0,0,0" />
+            <TextBlock Text="Tracked objects" FontWeight="SemiBold" VerticalAlignment="Center" />
+          </DockPanel>
+          <ToggleButton x:Name="TrackDraw" DockPanel.Dock="Top" Height="36" Margin="0,0,0,12" Click="OnTrackDraw" Cursor="Hand" FocusVisualStyle="{x:Null}" Foreground="{StaticResource TextBrush}"
+                        AutomationProperties.Name="Draw a box to track"
+                        ToolTip="Then drag over the object in the viewer, on the frame where it's clearest, and track it backward or forward">
+            <ToggleButton.Template>
+              <ControlTemplate TargetType="ToggleButton">
+                <Grid Background="Transparent">
+                  <Rectangle x:Name="Edge" RadiusX="8" RadiusY="8" Stroke="#3A3F4B" StrokeThickness="1" StrokeDashArray="4 3" />
+                  <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                </Grid>
+                <ControlTemplate.Triggers>
+                  <Trigger Property="IsMouseOver" Value="True">
+                    <Setter TargetName="Edge" Property="Stroke" Value="{StaticResource ScrollThumbHoverBrush}" />
+                  </Trigger>
+                  <Trigger Property="IsChecked" Value="True">
+                    <Setter TargetName="Edge" Property="Stroke" Value="{StaticResource AccentBrush}" />
+                    <Setter TargetName="Edge" Property="Fill" Value="{StaticResource AccentSoftBrush}" />
+                  </Trigger>
+                  <Trigger Property="IsEnabled" Value="False">
+                    <Setter Property="Foreground" Value="{StaticResource UnusableTextBrush}" />
+                    <Setter Property="Cursor" Value="Arrow" />
+                  </Trigger>
+                </ControlTemplate.Triggers>
+              </ControlTemplate>
+            </ToggleButton.Template>
+            <StackPanel Orientation="Horizontal">
+              <TextBlock FontFamily="{StaticResource IconFont}" Text="&#xE710;" FontSize="12" Margin="0,0,8,0" VerticalAlignment="Center" />
+              <TextBlock x:Name="TrackDrawText" Text="Draw a box to track" FontSize="12" FontWeight="Medium" VerticalAlignment="Center" />
+            </StackPanel>
+          </ToggleButton>
+          <StackPanel DockPanel.Dock="Bottom" Margin="0,12,0,0">
+            <Border x:Name="TrackProgressPanel" Background="{StaticResource HeaderBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="8" Padding="10,8"
+                    Margin="0,0,0,12" Visibility="Collapsed">
+              <DockPanel>
+                <Button x:Name="TrackStop" DockPanel.Dock="Right" Content="Stop" Padding="10,4" Margin="10,0,0,0" VerticalAlignment="Center" Click="OnTrackStop"
+                        ToolTip="Stop tracking; nothing is saved" />
+                <StackPanel VerticalAlignment="Center">
+                  <TextBlock x:Name="TrackProgressText" FontSize="12" TextTrimming="CharacterEllipsis" />
+                  <ProgressBar x:Name="TrackProgress" Height="4" Maximum="100" Margin="0,6,0,0" />
+                </StackPanel>
+              </DockPanel>
+            </Border>
+            <TextBlock Text="TRACK THE BOX YOU DREW" Style="{StaticResource PanelTitle}" Margin="0,0,0,8" />
+            <UniformGrid Columns="2">
+              <Button x:Name="TrackBackward" Height="34" Margin="0,0,3,0" Click="OnTrackBackward" ToolTip="Track the box from its frame back to the start of the clip">
+                <StackPanel Orientation="Horizontal">
+                  <TextBlock FontFamily="{StaticResource IconFont}" Text="&#xE76B;" FontSize="11" Margin="0,0,8,0" VerticalAlignment="Center" />
+                  <TextBlock Text="Backward" FontWeight="Medium" VerticalAlignment="Center" />
+                </StackPanel>
+              </Button>
+              <Button x:Name="TrackForward" Height="34" Margin="3,0,0,0" Click="OnTrackForward" ToolTip="Track the box from its frame on to the end of the clip">
+                <StackPanel Orientation="Horizontal">
+                  <TextBlock Text="Forward" FontWeight="Medium" VerticalAlignment="Center" />
+                  <TextBlock FontFamily="{StaticResource IconFont}" Text="&#xE76C;" FontSize="11" Margin="8,0,0,0" VerticalAlignment="Center" />
+                </StackPanel>
+              </Button>
+            </UniformGrid>
+          </StackPanel>
+          <Grid>
+            <ScrollViewer VerticalScrollBarVisibility="Auto" Focusable="False">
+              <ItemsControl x:Name="TrackCards" Focusable="False" ItemTemplate="{StaticResource TrackCardTemplate}" />
+            </ScrollViewer>
+            <TextBlock x:Name="TrackEmpty" Style="{StaticResource Secondary}" FontSize="12" TextWrapping="Wrap" TextTrimming="None" LineHeight="18" VerticalAlignment="Top" />
+          </Grid>
+        </DockPanel>
+      </Border>
+
+      <DockPanel Grid.Column="1" Background="{StaticResource PreviewBrush}">
+        <Border DockPanel.Dock="Top" Height="40" BorderBrush="{StaticResource MenuBrush}" BorderThickness="0,0,0,1" Padding="12,0">
+          <DockPanel TextElement.FontSize="12">
+            <Border DockPanel.Dock="Right" Background="{StaticResource PanelBrush}" CornerRadius="7" Padding="2" VerticalAlignment="Center">
+              <StackPanel Orientation="Horizontal">
+                <RadioButton x:Name="TrackBoxes" GroupName="TrackViewMode" Style="{StaticResource SegmentButton}" Content="Boxes" Tag="Boxes" IsChecked="True" Checked="OnTrackViewMode"
+                             ToolTip="The frame without its redactions, each track's box on it with how sure the tracker is" />
+                <RadioButton x:Name="TrackResult" GroupName="TrackViewMode" Style="{StaticResource SegmentButton}" Content="Result" Tag="Result" Checked="OnTrackViewMode"
+                             ToolTip="The frame as it's exported, the boxes hidden" />
+                <RadioButton x:Name="TrackSplit" GroupName="TrackViewMode" Style="{StaticResource SegmentButton}" Content="Split" Tag="Split" Checked="OnTrackViewMode"
+                             ToolTip="The frame without its redactions on the left, as it's exported on the right" />
+              </StackPanel>
+            </Border>
+            <TextBlock x:Name="TrackViewClip" Foreground="{StaticResource TextBrush}" FontWeight="Medium" VerticalAlignment="Center" />
+            <TextBlock x:Name="TrackFrameText" Foreground="{StaticResource SecondaryTextBrush}" Margin="10,0,0,0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+          </DockPanel>
+        </Border>
+        <Grid>
+          <local:TrackView x:Name="TrackViewer" Frame="{Binding Source, ElementName=PreviewImage}" RenderOptions.BitmapScalingMode="HighQuality"
+                           BoxDrawn="OnTrackBoxDrawn" BoxMoved="OnTrackBoxMoved" TrackChosen="OnTrackChosen" />
+          <TextBlock x:Name="TrackViewMessage" Style="{StaticResource Secondary}" TextWrapping="Wrap" TextTrimming="None" Margin="24" MaxWidth="520"
+                     HorizontalAlignment="Center" VerticalAlignment="Center" TextAlignment="Center" Visibility="Collapsed" />
+        </Grid>
+      </DockPanel>
+
+      <Border Grid.Column="2" Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource DividerBrush}" BorderThickness="1,0,0,0">
+        <DockPanel Margin="14">
+          <Border DockPanel.Dock="Bottom" Background="{StaticResource NoteBrush}" BorderBrush="{StaticResource NoteBorderBrush}" BorderThickness="1" CornerRadius="8" Padding="12,10" Margin="0,14,0,0">
+            <TextBlock x:Name="TrackNote" Foreground="{StaticResource AccentSoftTextBrush}" FontSize="12" TextWrapping="Wrap" LineHeight="18" />
+          </Border>
+          <ScrollViewer VerticalScrollBarVisibility="Auto" Focusable="False">
+            <StackPanel>
+              <DockPanel>
+                <Border x:Name="TrackSettingsColor" Width="10" Height="10" CornerRadius="3" Margin="0,0,8,0" VerticalAlignment="Center" />
+                <TextBlock x:Name="TrackSettingsTitle" FontSize="13" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+              </DockPanel>
+              <TextBlock x:Name="TrackSettingsHint" Style="{StaticResource Secondary}" FontSize="12" TextWrapping="Wrap" TextTrimming="None" LineHeight="18" Margin="0,6,0,0" />
+              <StackPanel x:Name="TrackSettings" Margin="0,16,0,0">
+                <TextBlock Text="HIDE WITH" Style="{StaticResource PanelTitle}" Margin="0,0,0,8" />
+                <UniformGrid Columns="3" Margin="0,0,-6,16">
+                  <RadioButton x:Name="TrackBlur" GroupName="TrackStyle" Style="{StaticResource HideTile}" Tag="Blur" Click="OnTrackStyle" AutomationProperties.Name="Blur"
+                               ToolTip="A blur over the box, its radius scaled to the box's size">
+                    <StackPanel>
+                      <Border Width="22" Height="14" CornerRadius="3" Background="#8C96AA" HorizontalAlignment="Center">
+                        <Border.Effect>
+                          <BlurEffect Radius="3" />
+                        </Border.Effect>
+                      </Border>
+                      <TextBlock Text="Blur" FontSize="12" FontWeight="Medium" Margin="0,5,0,0" HorizontalAlignment="Center" />
+                    </StackPanel>
+                  </RadioButton>
+                  <RadioButton x:Name="TrackPixelate" GroupName="TrackStyle" Style="{StaticResource HideTile}" Tag="Pixelate" Click="OnTrackStyle" AutomationProperties.Name="Pixelate"
+                               ToolTip="Big pixels over the box, as many across a small box as a big one">
+                    <StackPanel>
+                      <Rectangle Width="22" Height="14" HorizontalAlignment="Center">
+                        <Rectangle.Fill>
+                          <DrawingBrush TileMode="Tile" Viewport="0,0,7,7" ViewportUnits="Absolute">
+                            <DrawingBrush.Drawing>
+                              <DrawingGroup>
+                                <GeometryDrawing Brush="#9AA1AE" Geometry="M0,0 H2 V2 H0 Z" />
+                                <GeometryDrawing Brush="#6B7385" Geometry="M0,0 H1 V1 H0 Z M1,1 H2 V2 H1 Z" />
+                              </DrawingGroup>
+                            </DrawingBrush.Drawing>
+                          </DrawingBrush>
+                        </Rectangle.Fill>
+                      </Rectangle>
+                      <TextBlock Text="Pixelate" FontSize="12" FontWeight="Medium" Margin="0,5,0,0" HorizontalAlignment="Center" />
+                    </StackPanel>
+                  </RadioButton>
+                  <RadioButton x:Name="TrackSolid" GroupName="TrackStyle" Style="{StaticResource HideTile}" Tag="Solid" Click="OnTrackStyle" AutomationProperties.Name="Solid box"
+                               ToolTip="The box filled with one color; the Edit view's inspector sets the color">
+                    <StackPanel>
+                      <Border Width="22" Height="14" CornerRadius="2" Background="Black" BorderBrush="#3A3F4B" BorderThickness="1" HorizontalAlignment="Center" />
+                      <TextBlock Text="Solid box" FontSize="12" FontWeight="Medium" Margin="0,5,0,0" HorizontalAlignment="Center" />
+                    </StackPanel>
+                  </RadioButton>
+                </UniformGrid>
+                <Grid x:Name="TrackSliders" Margin="0,0,0,8">
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="84" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="52" />
+                  </Grid.ColumnDefinitions>
+                  <Grid.RowDefinitions>
+                    <RowDefinition Height="32" />
+                    <RowDefinition Height="32" />
+                    <RowDefinition Height="32" />
+                  </Grid.RowDefinitions>
+                  <TextBlock Text="Strength" Foreground="{StaticResource IconTextBrush}" VerticalAlignment="Center" />
+                  <Slider x:Name="TrackStrength" Grid.Column="1" Minimum="0" Maximum="100" SmallChange="1" LargeChange="10" TickFrequency="1" IsSnapToTickEnabled="True" IsMoveToPointEnabled="True"
+                          VerticalAlignment="Center" Tag="strength" AutomationProperties.Name="Strength" ToolTip="0 to 100: bigger blocks, or more blur"
+                          ValueChanged="OnTrackSliderMoved" PreviewMouseLeftButtonUp="OnTrackSliderReleased" KeyUp="OnTrackSliderKey" />
+                  <TextBlock x:Name="TrackStrengthText" Grid.Column="2" TextAlignment="Right" FontFamily="Consolas" FontSize="12" VerticalAlignment="Center" />
+                  <TextBlock Grid.Row="1" Text="Feather" Foreground="{StaticResource IconTextBrush}" VerticalAlignment="Center" />
+                  <Slider x:Name="TrackFeather" Grid.Row="1" Grid.Column="1" Minimum="0" Maximum="100" SmallChange="1" LargeChange="4" TickFrequency="1" IsSnapToTickEnabled="True" IsMoveToPointEnabled="True"
+                          VerticalAlignment="Center" Tag="feather" AutomationProperties.Name="Feather" ToolTip="A soft edge outside the box, in the footage's pixels"
+                          ValueChanged="OnTrackSliderMoved" PreviewMouseLeftButtonUp="OnTrackSliderReleased" KeyUp="OnTrackSliderKey" />
+                  <TextBlock x:Name="TrackFeatherText" Grid.Row="1" Grid.Column="2" TextAlignment="Right" FontFamily="Consolas" FontSize="12" VerticalAlignment="Center" />
+                  <TextBlock Grid.Row="2" Text="Grow box" Foreground="{StaticResource IconTextBrush}" VerticalAlignment="Center" />
+                  <Slider x:Name="TrackGrow" Grid.Row="2" Grid.Column="1" Minimum="0" Maximum="100" SmallChange="1" LargeChange="5" TickFrequency="1" IsSnapToTickEnabled="True" IsMoveToPointEnabled="True"
+                          VerticalAlignment="Center" Tag="paddingPercent" AutomationProperties.Name="Grow box" ToolTip="Each side of a box grows by this share of its size, so the edges stay hidden"
+                          ValueChanged="OnTrackSliderMoved" PreviewMouseLeftButtonUp="OnTrackSliderReleased" KeyUp="OnTrackSliderKey" />
+                  <TextBlock x:Name="TrackGrowText" Grid.Row="2" Grid.Column="2" TextAlignment="Right" FontFamily="Consolas" FontSize="12" VerticalAlignment="Center" />
+                </Grid>
+                <DockPanel Margin="0,0,0,16">
+                  <TextBlock Text="Shape" Width="84" Foreground="{StaticResource IconTextBrush}" VerticalAlignment="Center" />
+                  <Border Background="{StaticResource InputBrush}" CornerRadius="7" Padding="2" HorizontalAlignment="Left">
+                    <StackPanel Orientation="Horizontal">
+                      <RadioButton x:Name="TrackRectangle" GroupName="TrackShape" Style="{StaticResource SegmentButton}" Content="Rectangle" Tag="rectangle" Checked="OnTrackShape"
+                                   ToolTip="Hide the whole box" />
+                      <RadioButton x:Name="TrackEllipse" GroupName="TrackShape" Style="{StaticResource SegmentButton}" Content="Ellipse" Tag="ellipse" Checked="OnTrackShape"
+                                   ToolTip="Hide the ellipse inside the box, as for a face" />
+                    </StackPanel>
+                  </Border>
+                </DockPanel>
+                <DockPanel>
+                  <CheckBox x:Name="TrackSmooth" DockPanel.Dock="Right" Style="{StaticResource Switch}" VerticalAlignment="Center" Click="OnTrackSmooth" AutomationProperties.Name="Smooth the motion"
+                            ToolTip="The box's middle and size averaged over 6 frames each side, always holding the object's own box" />
+                  <StackPanel>
+                    <TextBlock Text="Smooth the motion" FontWeight="Medium" />
+                    <TextBlock Text="Keeps the box steady through the tracker's jitter" Style="{StaticResource Secondary}" FontSize="12" TextWrapping="Wrap" TextTrimming="None" Margin="0,2,0,0" />
+                  </StackPanel>
+                </DockPanel>
+              </StackPanel>
+            </StackPanel>
+          </ScrollViewer>
+        </DockPanel>
+      </Border>
+
+      <Border Grid.Row="1" Grid.ColumnSpan="3" Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,1,0,0">
+        <DockPanel>
+          <Border DockPanel.Dock="Top" Height="36" BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,0,0,1" Padding="12,0">
+            <DockPanel TextElement.FontSize="12">
+              <TextBlock x:Name="TrackTimecode" DockPanel.Dock="Right" FontFamily="Consolas" FontSize="13" VerticalAlignment="Center" />
+              <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                <TextBlock Text="Tracking" FontWeight="SemiBold" FontSize="13" Margin="0,0,14,0" VerticalAlignment="Center" />
+                <Border Width="10" Height="6" CornerRadius="2" Background="{StaticResource SuccessBrush}" Margin="0,0,6,0" VerticalAlignment="Center" />
+                <TextBlock Text="Tracked" Foreground="{StaticResource SecondaryTextBrush}" Margin="0,0,14,0" VerticalAlignment="Center" />
+                <Border Width="10" Height="6" CornerRadius="2" Background="{StaticResource WarningBrush}" Margin="0,0,6,0" VerticalAlignment="Center" />
+                <TextBlock Text="Lost or unsure" Foreground="{StaticResource SecondaryTextBrush}" Margin="0,0,14,0" VerticalAlignment="Center" />
+                <Rectangle Width="8" Height="8" Fill="White" Margin="0,0,7,0" VerticalAlignment="Center" RenderTransformOrigin="0.5,0.5">
+                  <Rectangle.RenderTransform>
+                    <RotateTransform Angle="45" />
+                  </Rectangle.RenderTransform>
+                </Rectangle>
+                <TextBlock Text="Set by hand" Foreground="{StaticResource SecondaryTextBrush}" VerticalAlignment="Center" />
+              </StackPanel>
+            </DockPanel>
+          </Border>
+          <ScrollViewer MaxHeight="156" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Focusable="False">
+            <local:TrackStrip x:Name="TrackTimeline" Seek="OnTrackStripSeek" TrackChosen="OnTrackChosen"
+                              ToolTip="Each object's time on the clip: click to go there, drag to scrub" />
+          </ScrollViewer>
         </DockPanel>
       </Border>
     </Grid>

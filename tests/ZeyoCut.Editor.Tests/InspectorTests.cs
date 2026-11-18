@@ -487,20 +487,24 @@ public class InspectorTests
         var id = RedactionEditor.Apply(project, ["track_1"], new RedactionSettings(RedactionStyle.Pixelate, 50, 15, 4, 15, "#000000")).Layer.Id;
 
         var title = $"Redaction '{id}'";
-        Assert.Equal(["Style", "Strength", "Padding", "Feather", "Hold frames"], Section(project, "clip", title));
-        Assert.Equal(["pixelate", "50", "15", "4", "15"], new[] { "Style", "Strength", "Padding", "Feather", "Hold frames" }.Select(l => Field(project, "clip", l).Value));
+        Assert.Equal(["Style", "Strength", "Padding", "Feather", "Hold frames", "Shape", "Smooth"], Section(project, "clip", title));
+        Assert.Equal(["pixelate", "50", "15", "4", "15", "rectangle", "false"], new[] { "Style", "Strength", "Padding", "Feather", "Hold frames", "Shape", "Smooth" }.Select(l => Field(project, "clip", l).Value));
         Assert.Equal(["pixelate", "blur", "solid"], Field(project, "clip", "Style").Options.Select(o => o.Name));
+        Assert.Equal(["rectangle", "ellipse"], Field(project, "clip", "Shape").Options.Select(o => o.Name));
 
         // Each is update_layer on the redaction; solid fills with a color instead of a strength.
         Assert.Equal("update_layer " + id, Field(project, "clip", "Strength").Commit!("80").Label);
         Commit(project, "clip", "Strength", "80");
         Commit(project, "clip", "Padding", "25");
         Commit(project, "clip", "Hold frames", "30");
+        Commit(project, "clip", "Shape", "ellipse");
+        Commit(project, "clip", "Smooth", "true");
         Commit(project, "clip", "Style", "solid");
-        Assert.Equal(["Style", "Fill color", "Padding", "Feather", "Hold frames"], Section(project, "clip", title));
+        Assert.Equal(["Style", "Fill color", "Padding", "Feather", "Hold frames", "Shape", "Smooth"], Section(project, "clip", title));
         Commit(project, "clip", "Fill color", "#202020");
         var redaction = Assert.IsType<RedactionLayer>(project.FindLayer(id));
         Assert.Equal((80.0, 25.0, 30, RedactionStyle.Solid, "#202020"), (redaction.Strength, redaction.PaddingPercent, redaction.HoldFrames, redaction.Style, redaction.Color));
+        Assert.Equal((RedactionShape.Ellipse, true), (redaction.Shape, redaction.Smooth));
         Assert.Equal("Hold frames must be a whole number (got 2.5)", Error(project, "clip", "Hold frames", "2.5"));
         Assert.Equal("Feather can't be more than 100 (got 200)", Error(project, "clip", "Feather", "200"));
 
