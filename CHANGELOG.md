@@ -157,6 +157,11 @@ when they open.
   takes `project.lock`, so another program's saves don't wait for a big copy (they give up after
   5 s). A file is copied under a temporary name and renamed when complete.
 - The release zip and the bundle are about 63 MB larger, with the editor's exe.
+- Ducking follows the voice clips instead of a compressor listening to them: music goes down by the
+  project's duck level (-12 dB) over half a second before each voice clip and comes back over 1.5 s
+  after it, the same every time. It used to dip 12–18 dB depending on how loud the voice was, and
+  came back up in pauses inside a clip. The export notes say how far (`music ducked -12 dB under
+  voice`), and name each role's mixer setting in a `mix:` note.
 
 ### Fixed
 

@@ -218,6 +218,12 @@ public sealed record EditPlan(Project Project, IReadOnlyList<PlannedTrack> Track
             yield return $"the volume of {string.Join(", ", levels)}";
         }
 
+        var keyed = audio.Where(c => c.VolumeKeys is { Count: > 0 }).Select(c => $"'{c.LayerId}'").ToList();
+        if (keyed.Count > 0)
+        {
+            yield return $"the volume keyframes of {string.Join(", ", keyed)}";
+        }
+
         var fades = audio.Where(c => c.FadeIn > 0 || c.FadeOut > 0).Select(c => $"'{c.LayerId}'").ToList();
         if (fades.Count > 0)
         {
@@ -225,7 +231,13 @@ public sealed record EditPlan(Project Project, IReadOnlyList<PlannedTrack> Track
         }
 
         var settings = project.Audio;
-        if (FfmpegArgs.Ducks(audio, new AudioMix(settings.Ducking, settings.LoudnessTarget, settings.TruePeak, null)))
+        var strips = audio.Select(c => c.Role).Distinct().Where(r => settings.For(r) is { } strip && (strip.Gain != 0 || strip.Pan != 0)).Select(EnumNames.ToName).ToList();
+        if (strips.Count > 0)
+        {
+            yield return $"the mixer's gain and pan of {string.Join(", ", strips)}";
+        }
+
+        if (FfmpegArgs.Ducks(audio, AudioMix.Of(settings)))
         {
             yield return "the music ducking under the voice";
         }

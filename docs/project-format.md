@@ -304,13 +304,14 @@ Audio layers and the sound of video layers are mixed at export, and for the prev
 
 - `start` / `end`: placement on the timeline
 - `trimIn` / `trimOut`: the range used from the source file
-- `volume`: linear gain
+- `volume`: linear gain, animated (1 as recorded)
 - `fadeIn` / `fadeOut`: fade lengths in seconds
 - `role`: `voice`, `music` or `effects`. Audio layers default to `music`, video sound to `voice`.
 
 At export:
 
-- **Ducking.** Music is lowered under voice by a sidechain compressor, roughly 12–18 dB while someone speaks, depending on how loud the voice is. It comes back within about a second after they stop.
+- **Mixer.** Each clip's volume is multiplied by its role's `gain` (from `audio.voice`, `audio.music` or `audio.effects`) and panned by the role's `pan`: a pan to the right lowers the left channel (at 1 it's silent) and leaves the right as it is. A muted role is left out.
+- **Ducking.** Wherever a voice clip plays, music goes down by `duckLevel` dB (-12 by default). It starts going down `duckFadeIn` seconds before the clip and is back up `duckFadeOut` seconds after it ends, in straight lines of gain; between two voice clips closer than that it comes back up only part of the way. Ducking follows the voice clips, not how loud they are, so a pause inside one clip stays ducked.
 - **Loudness.** The mix is normalized with a two-pass `loudnorm` to the project's target, -14 LUFS by default. The first pass measures the mix; the second applies the gain linearly, with true peak at most -1 dBTP. Set the target with `update_project` (`loudnessTarget`, `0` = off).
 
 The mix is 48 kHz stereo AAC at 192 kbps (128 kbps for the preview page). Hidden audio layers are skipped.

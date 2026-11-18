@@ -270,10 +270,25 @@ public static class Exporter
         }
 
         var settings = project.Audio;
-        var mix = new AudioMix(settings.Ducking, settings.LoudnessTarget, settings.TruePeak, null);
+        var mix = AudioMix.Of(settings);
         if (FfmpegArgs.Ducks(audio, mix))
         {
-            notes.Add("music ducked under voice");
+            notes.Add($"music ducked {ProjectEditor.Decibels(settings.DuckLevel)} under voice");
+        }
+
+        // The strips of the roles heard, and the muted roles that have sound.
+        var sounding = project.Layers
+            .Select(l => l switch { AudioLayer { Visible: true } a => a.Role, VideoLayer { Visible: true, Muted: false } v => v.Role, _ => (AudioRole?)null })
+            .OfType<AudioRole>()
+            .ToHashSet();
+        var strips = Enum.GetValues<AudioRole>()
+            .Select(role => (Role: role, Name: EnumNames.ToName(role), Strip: settings.For(role)))
+            .Where(r => r.Strip.Muted ? sounding.Contains(r.Role) : (r.Strip.Gain != 0 || r.Strip.Pan != 0) && audio.Any(c => c.Role == r.Role))
+            .Select(r => r.Strip.Muted ? $"{r.Name} muted" : $"{r.Name} {string.Join(", ", new[] { r.Strip.Gain != 0 ? ProjectEditor.Decibels(r.Strip.Gain) : null, r.Strip.Pan != 0 ? ProjectEditor.PanText(r.Strip.Pan) : null }.OfType<string>())}")
+            .ToList();
+        if (strips.Count > 0)
+        {
+            notes.Add($"mix: {string.Join("; ", strips)}");
         }
 
         if (settings.LoudnessTarget is not { } target)

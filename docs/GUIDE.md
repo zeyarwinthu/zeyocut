@@ -154,6 +154,12 @@ Changes the open project's settings. Only the parameters you pass change, and at
 | `preset` | string | `youtube_1080p` or `shorts_1080p`: sets width, height, fps and loudness (other parameters you pass win) |
 | `loudnessTarget` | number | Export loudness in LUFS, -40 to -5 (-14 suits YouTube and most platforms). `0` turns normalization off |
 | `ducking` | bool | Lower music (role `music`) under voice (role `voice`) in the export |
+| `duckLevel` | number | How far the music goes down where a voice clip plays, in dB: 0 to -40 (default -12) |
+| `duckFadeIn`, `duckFadeOut` | number | Seconds the music takes to go down before a voice clip starts and to come back up after it ends, 0–5 (defaults 0.5 and 1.5) |
+| `role` | string | `voice`, `music` or `effects`: the mixer strip that `gain`, `pan` and `muted` change |
+| `gain` | number | The role's level in dB, -60 to +6 (0 as recorded), on top of each clip's volume |
+| `pan` | number | -1 (left only) to 1 (right only), 0 centered |
+| `muted` | bool | Leave the role's sound out of the export and the preview |
 
 The result lists each change and warns about:
 
@@ -195,6 +201,14 @@ Warnings:
 ```
 ```text
 An error occurred invoking 'update_project': nothing changed; the project already is 1920x1080 @ 30 fps, 6s, background #FFF4E0, loudness -14 LUFS, ducking on
+```
+The mixer: music a little quieter and further under the voice.
+```json
+{ "role": "music", "gain": -6, "duckLevel": -18 }
+```
+```text
+updated project 'tora-test': duck level -12 dB → -18 dB; music gain 0 dB → -6 dB
+1920x1080 @ 30 fps, 6s (180 frames), background #FFF4E0
 ```
 A landscape video project switched to vertical:
 ```json
@@ -660,7 +674,7 @@ Adds voice, music or a sound effect from an audio asset. It is heard only in the
 ```
 ```text
 added audio layer 'music' at 0s
-{"type":"audio","id":"music","name":"music","start":0,"end":null,"zIndex":0,"parentId":null,"visible":true,"asset":"music","trimIn":0,"trimOut":null,"volume":0.6,"role":"music","fadeIn":0,"fadeOut":1}
+{"type":"audio","id":"music","name":"music","start":0,"end":null,"zIndex":0,"parentId":null,"visible":true,"asset":"music","trimIn":0,"trimOut":null,"volume":{"value":0.6},"role":"music","fadeIn":0,"fadeOut":1}
 ```
 
 ### `update_layer`
@@ -769,6 +783,7 @@ Properties are `x`, `y`, `rotation`, `scaleX`, `scaleY` and `opacity`, plus:
 - `drawing` on image layers
 - `brightness` (-1 to 1, 0 = unchanged, -1 = black), `contrast` and `saturation` (0 to 4, 1 = unchanged) on image and video layers
 - `cropX`, `cropY` on video layers with a crop (source pixels), for example to follow a subject after `reframe_to_vertical`
+- `volume` on audio layers and on video layers' own sound (1 as recorded, 0 silent, up to 10), to ride a level by hand: an audio layer has only this one
 - `shadow.x`, `shadow.y`, `shadow.blur`, `shadow.opacity`, `outline.width`, `blur.x`, `blur.y`, `tint.amount` on layers with that effect, and `mask.x`, `mask.y`, `mask.width`, `mask.height`, `mask.feather` on layers with a mask (see [Effects and motion](#effects-and-motion))
 - `<track>.x`, `<track>.y`, `<track>.width`, `<track>.height` on a [redaction](#redaction) after `tracks_to_keyframes`, with time in the footage's own seconds
 
@@ -2435,7 +2450,7 @@ Adds a clip. By default it is centered and scaled to fit the canvas. If it runs 
 ```text
 added video layer 'talk': source 0–15.933s at 1x → timeline 0–15.933s, scale 1.5, z=0
 the project was extended from 5s to 15.933s to fit the clip
-{"type":"video","id":"talk","name":"talk","start":0,"zIndex":0,"parentId":null,"visible":true,"anchorX":640,"anchorY":360,"asset":"talk","trimIn":0,"trimOut":15.933333333333334,"speed":1,"volume":1,"muted":false,"role":"voice","fadeIn":0,"fadeOut":0,"cropWidth":null,"cropHeight":null,"x":{"value":960},"y":{"value":540},"rotation":{"value":0},"scaleX":{"value":1.5},"scaleY":{"value":1.5},"opacity":{"value":1},"brightness":{"value":0},"contrast":{"value":1},"saturation":{"value":1},"cropX":{"value":0},"cropY":{"value":0}}
+{"type":"video","id":"talk","name":"talk","start":0,"zIndex":0,"parentId":null,"visible":true,"anchorX":640,"anchorY":360,"asset":"talk","trimIn":0,"trimOut":15.933333333333334,"speed":1,"volume":{"value":1},"muted":false,"role":"voice","fadeIn":0,"fadeOut":0,"cropWidth":null,"cropHeight":null,"x":{"value":960},"y":{"value":540},"rotation":{"value":0},"scaleX":{"value":1.5},"scaleY":{"value":1.5},"opacity":{"value":1},"brightness":{"value":0},"contrast":{"value":1},"saturation":{"value":1},"cropX":{"value":0},"cropY":{"value":0}}
 ```
 
 ### `get_job_status`
@@ -3745,14 +3760,14 @@ Places a sound effect at a time, as an audio layer with role `effects`, in one u
 ```
 ```text
 added sound effect 'cartoon/boing' as audio layer 'boing' at 0.4s (volume 1, role effects, 0.6s long); imported 'cartoon/boing' as asset 'boing'
-{"type":"audio","id":"boing","name":"boing","start":0.4,"end":null,"zIndex":0,"parentId":null,"visible":true,"asset":"boing","trimIn":0,"trimOut":null,"volume":1,"role":"effects","fadeIn":0,"fadeOut":0}
+{"type":"audio","id":"boing","name":"boing","start":0.4,"end":null,"zIndex":0,"parentId":null,"visible":true,"asset":"boing","trimIn":0,"trimOut":null,"volume":{"value":1},"role":"effects","fadeIn":0,"fadeOut":0}
 ```
 ```json
 { "name": "cartoon/boing", "time": 3 }
 ```
 ```text
 added sound effect 'cartoon/boing' as audio layer 'boing_2' at 3s (volume 1, role effects, 0.6s long); reused asset 'boing'
-{"type":"audio","id":"boing_2","name":"boing_2","start":3,"end":null,"zIndex":0,"parentId":null,"visible":true,"asset":"boing","trimIn":0,"trimOut":null,"volume":1,"role":"effects","fadeIn":0,"fadeOut":0}
+{"type":"audio","id":"boing_2","name":"boing_2","start":3,"end":null,"zIndex":0,"parentId":null,"visible":true,"asset":"boing","trimIn":0,"trimOut":null,"volume":{"value":1},"role":"effects","fadeIn":0,"fadeOut":0}
 ```
 ```json
 { "name": "thu", "time": 1 }
@@ -4185,7 +4200,8 @@ Starts a background export of the open project to `exports\<fileName>`.
 
 - **Video:** H.264, yuv420p, BT.709, from the GPU's encoder where one works, else libx264 `-preset veryfast` (see **Encoder** below).
 - **Audio:** all audio layers and the sound of video layers, mixed to AAC 48 kHz stereo.
-    - **Ducking:** music (role `music`) is lowered under voice (role `voice`) with a sidechain compressor. It is on by default and can be turned off with `update_project` `ducking=false`.
+    - **Mixer:** each clip's volume (and its `volume` keyframes), then its role's `gain` and `pan` from `update_project`; a muted role is left out.
+    - **Ducking:** music (role `music`) goes down by `duckLevel` (-12 dB by default) wherever a voice clip (role `voice`) plays, over `duckFadeIn` (0.5 s) before the clip and back up over `duckFadeOut` (1.5 s) after it. It is on by default and can be turned off with `update_project` `ducking=false`.
     - **Loudness:** the mix is normalized with two-pass `loudnorm` to the project's target (-14 LUFS by default), with true peak at most -1 dBTP.
 - **Presets:** `youtube_1080p` and `shorts_1080p` encode for upload: H.264 high profile, `-preset medium` (or the GPU encoder's matching preset), 2 B-frames, a keyframe every half second, scaled to the preset size. The canvas must have the preset's aspect ratio; [`export_batch`](#export_batch) also fits other shapes.
 - **Encoder:** with the `VideoEncoder` setting at `auto` (the default), the first export on a computer tries NVIDIA NVENC, Intel Quick Sync and AMD AMF, in that order, with a half-second test encode (tried up to three times, as a GPU encoder's failure can come and go), and uses the first that works; if none does, libx264. What the tests found is kept in the library's `encoders.json` for this computer and this FFmpeg, so they run again only after a hardware or FFmpeg change. The setting can instead name `x264`, `nvenc`, `qsv` or `amf`; a GPU encoder that doesn't work falls back to libx264.
@@ -4291,7 +4307,7 @@ resolution: 1080x1920
 fps: 30
 video: h264 yuv420p, 267 frames
 audio: aac 2ch 48000 Hz (4 clip(s) mixed)
-processing: music ducked under voice
+processing: music ducked -12 dB under voice
 processing: loudness: -19.6 LUFS → -14 LUFS (true peak at most -1 dBTP)
 processing: preset shorts_1080p: 1080x1920, H.264 high profile, CRF 18, AAC 192k
 processing: encoder: h264_qsv (Intel Quick Sync, global_quality 19): the first GPU encoder that works on this computer
