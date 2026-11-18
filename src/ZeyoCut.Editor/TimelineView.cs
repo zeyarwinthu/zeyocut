@@ -51,7 +51,7 @@ public sealed class TimelineView : FrameworkElement
     private static readonly Brush EyeBrush = Frozen(0x7C, 0x83, 0x92);
     private static readonly Brush MixedBar = Frozen(0x9A, 0xA1, 0xAE);
     private static readonly Brush GlowBrush = Frozen(0x40, 0x7B, 0x93, 0xFF);
-    private static readonly Dictionary<ClipKind, Brush> Fills = new()
+    public static readonly Dictionary<ClipKind, Brush> Fills = new()
     {
         [ClipKind.Video] = Frozen(0x2B, 0x4A, 0x8A),
         [ClipKind.Image] = Frozen(0x1F, 0x6B, 0x52),

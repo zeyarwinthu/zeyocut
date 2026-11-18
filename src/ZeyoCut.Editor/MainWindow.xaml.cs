@@ -28,6 +28,7 @@ namespace ZeyoCut.Editor;
 
 // One asset as the media library lists it: a tile with its thumbnail or its sound's waveform
 // (Picture, once it's made), a dot in its kind's color (Badge), and a video's or sound's length.
+// The Media browser's cards add its size or length (Meta) and how often it's used (Use).
 public sealed record MediaItem(string Id, string Kind, Brush Badge, string Details, bool Missing)
 {
     public Brush? Picture { get; init; }
@@ -35,6 +36,10 @@ public sealed record MediaItem(string Id, string Kind, Brush Badge, string Detai
     public string? Length { get; init; }
 
     public string Tip { get; init; } = "";
+
+    public string Meta { get; init; } = "";
+
+    public string Use { get; init; } = "";
 }
 
 // An option of the Export view: a preset's card (its title, and its size or what it needs), a
@@ -57,6 +62,7 @@ public partial class MainWindow : Window
     private static readonly Brush ImageBadge = Frozen(0x3D, 0xD6, 0x8C);
     private static readonly Brush AudioBadge = Frozen(0xA9, 0x8B, 0xFF);
     private static readonly Brush FontBadge = Frozen(0xF0, 0xA9, 0x4B);
+    private static readonly Brush MissingTileBrush = Frozen(0x2A, 0x1A, 0x1A);
 
     // The Welcome's "Waiting for Claude…" pill.
     private static readonly Brush WaitingBrush = Frozen(0x3A, 0x2C, 0x16);
@@ -124,6 +130,20 @@ public partial class MainWindow : Window
 
     // The media panel's filter chip: the kind of asset shown, or null for all of them.
     private AssetType? _mediaFilter;
+
+    // The Media browser's shelf, its order, and the ids of the media selected in its grid.
+    private string _shelf = MediaBrowser.AllKey;
+    private MediaSort _mediaSort = MediaSort.Recent;
+    private List<string> _browserSelection = [];
+
+    // The source viewer: its player while a file is open in it, the in and out marks (frames of the
+    // file), whether footage's sound is used, the lane its clips go on, and its picture.
+    private SourceMonitor? _source;
+    private int? _sourceIn;
+    private int? _sourceOut;
+    private bool _sourceSound = true;
+    private string? _sourceTarget;
+    private WriteableBitmap? _sourceBitmap;
 
     // Thumbnails made since the media panel and the timeline were last drawn, waiting to be shown.
     private bool _thumbnailsDue;
@@ -423,6 +443,11 @@ public partial class MainWindow : Window
 
     private bool Hearing => _document is not null && AudioMode.IsChecked == true;
 
+    private bool Browsing => _document is not null && MediaMode.IsChecked == true;
+
+    // The source viewer is showing, with a file open in it.
+    private bool Sourcing => _document is not null && SourceMode.IsChecked == true && _source is not null;
+
     // Play (Space) runs wherever the focus is in the Edit view, before a focused button or list takes
     // its key.
     protected override void OnPreviewKeyDown(KeyEventArgs e)
@@ -516,15 +541,16 @@ public partial class MainWindow : Window
         var animating = Animating;
         var hearing = Hearing;
         var playable = editing || animating || hearing;
+        var source = Sourcing ? _source : null;
         return command switch
         {
-            Command.Play => playable ? TogglePlay : null,
-            Command.PreviousFrame => playable ? () => Step(-1) : null,
-            Command.NextFrame => playable ? () => Step(1) : null,
-            Command.BackSecond => playable ? () => Step(-_document!.View.Fps) : null,
-            Command.ForwardSecond => playable ? () => Step(_document!.View.Fps) : null,
-            Command.FirstFrame => playable ? () => Seek(0) : null,
-            Command.LastFrame => playable ? () => Seek(_frames - 1) : null,
+            Command.Play => playable ? TogglePlay : source is not null ? source.Toggle : null,
+            Command.PreviousFrame => playable ? () => Step(-1) : source is not null ? () => StepSource(-1) : null,
+            Command.NextFrame => playable ? () => Step(1) : source is not null ? () => StepSource(1) : null,
+            Command.BackSecond => playable ? () => Step(-_document!.View.Fps) : source is not null ? () => StepSource(-source.Source.Fps) : null,
+            Command.ForwardSecond => playable ? () => Step(_document!.View.Fps) : source is not null ? () => StepSource(source.Source.Fps) : null,
+            Command.FirstFrame => playable ? () => Seek(0) : source is not null ? () => source.Seek(0) : null,
+            Command.LastFrame => playable ? () => Seek(_frames - 1) : source is not null ? () => source.Seek(source.Frames - 1) : null,
             Command.PreviousEdit => editing ? () => JumpToEdit(next: false) : null,
             Command.NextEdit => editing ? () => JumpToEdit(next: true) : null,
             Command.FullScreen => editing ? ShowFullScreen : null,
@@ -533,7 +559,7 @@ public partial class MainWindow : Window
             Command.Duplicate => editing ? DuplicateSelected : null,
             Command.Undo => open && !inField ? Undo : null,
             Command.Redo => open && !inField ? Redo : null,
-            Command.Import => editing ? ChooseMedia : null,
+            Command.Import => editing || Browsing ? ChooseMedia : null,
             Command.Cancel => editing ? CancelHandler() : animating ? AnimateCancelHandler() : hearing && VolumeLanes.Dragging ? VolumeLanes.CancelDrag : null,
             Command.AddMarker => editing ? AddMarker : null,
             Command.Snap => editing ? ToggleSnap : null,
@@ -542,6 +568,11 @@ public partial class MainWindow : Window
             Command.Fit => editing ? Timeline.ZoomToFit : null,
             Command.SelectTool => editing ? () => TurnOn(SelectTool) : null,
             Command.BladeTool => editing ? () => TurnOn(BladeTool.IsChecked == true ? SelectTool : BladeTool) : null,
+            Command.MarkIn => source is not null ? MarkIn : null,
+            Command.MarkOut => source is not null ? MarkOut : null,
+            Command.ClearMarks => source is not null ? ClearMarks : null,
+            Command.Insert => source is not null ? () => PlaceSource(ClipEdit.Insert) : null,
+            Command.Overwrite => source is not null ? () => PlaceSource(ClipEdit.Overwrite) : null,
             Command.PreviousKeyframe => playable ? () => JumpToKeyframe(next: false) : null,
             Command.NextKeyframe => playable ? () => JumpToKeyframe(next: true) : null,
             Command.AddKeyframe => animating ? AddKeyframe : null,
@@ -802,6 +833,7 @@ public partial class MainWindow : Window
 
         _sound!.Changed -= OnSoundChanged;
         _sound.Dispose();
+        CloseSource();
         _loudness?.Cancel();
         _loudness = null;
         _thumbnails?.Dispose();
@@ -1410,16 +1442,19 @@ public partial class MainWindow : Window
     }
 
     // The header: the way back to the projects, the project's path and its commands while one is
-    // open; the Export view has a way back to Edit in place of the tabs and the Export button.
+    // open; the Export view, the Media browser and the source viewer have a way back to Edit in place
+    // of the tabs, and the Export view has it in place of the Export button too.
     private void ShowHeader()
     {
         var open = _document is not null;
         var exporting = open && ExportMode.IsChecked == true;
+        var away = exporting || open && (MediaMode.IsChecked == true || SourceMode.IsChecked == true);
         LogoButton.IsEnabled = open;
         AppName.Visibility = open ? Visibility.Collapsed : Visibility.Visible;
         Crumbs.Visibility = ProjectCommands.Visibility = open ? Visibility.Visible : Visibility.Collapsed;
-        ModeBar.Visibility = open && !exporting ? Visibility.Visible : Visibility.Collapsed;
-        ExportCrumb.Visibility = BackToEdit.Visibility = exporting ? Visibility.Visible : Visibility.Collapsed;
+        ModeBar.Visibility = open && !away ? Visibility.Visible : Visibility.Collapsed;
+        ExportCrumb.Visibility = BackToEdit.Visibility = away ? Visibility.Visible : Visibility.Collapsed;
+        CrumbName.Text = exporting ? "Export" : MediaMode.IsChecked == true ? "Media" : "Source";
         ExportViewButton.Visibility = exporting ? Visibility.Collapsed : Visibility.Visible;
     }
 
@@ -1588,6 +1623,11 @@ public partial class MainWindow : Window
         if (AudioMode.IsChecked == true)
         {
             ShowAudioPosition();
+        }
+
+        if (SourceMode.IsChecked == true)
+        {
+            ShowSource();
         }
     }
 
@@ -3114,6 +3154,634 @@ public partial class MainWindow : Window
         e.Handled = true;
     }
 
+    // Double-clicking a video or a sound opens it in the source viewer.
+    private void OnMediaOpened(object sender, MouseButtonEventArgs e)
+    {
+        if (_document is not null && e.OriginalSource is DependencyObject source && ItemsControl.ContainerFromElement(MediaList, source) is ListBoxItem { DataContext: MediaItem { Missing: false } item }
+            && _document.View.FindAsset(item.Id) is { Type: AssetType.Video or AssetType.Audio })
+        {
+            OpenSource(item.Id);
+        }
+    }
+
+    private void OnMediaBrowser(object sender, RoutedEventArgs e) => MediaMode.IsChecked = true;
+
+    // The Media browser: the shelves (each kind, and the bins, which are the assets' tags), the
+    // shelf's media as cards, searched and sorted, and the selected media's details.
+    private void ShowBrowser()
+    {
+        if (_document is not { } document)
+        {
+            return;
+        }
+
+        var project = document.View;
+        var directory = document.Session.Directory;
+        var shelf = MediaBrowser.Find(project, _shelf);
+        _shelf = shelf.Key;
+        var bins = MediaBrowser.Bins(project);
+        ShowShelves(LibraryShelves, MediaBrowser.Library(project), shelf.Key);
+        ShowShelves(BinShelves, bins, shelf.Key);
+        BinsEmpty.Visibility = bins.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        var missing = MissingAssets();
+        MissingCard.Content = missing.Count == 1 ? "1 file missing" : $"{missing.Count} files missing";
+        MissingCard.Visibility = missing.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+
+        var search = BrowserSearch.Text.Trim();
+        var items = MediaBrowser.Shown(project, shelf, search, _mediaSort).Select(a => Card(project, directory, a)).ToList();
+        _rebuilding = true;
+        try
+        {
+            BrowserList.ItemsSource = items;
+            foreach (var item in items.Where(i => _browserSelection.Contains(i.Id)))
+            {
+                BrowserList.SelectedItems.Add(item);
+            }
+        }
+        finally
+        {
+            _rebuilding = false;
+        }
+
+        _browserSelection = BrowserList.SelectedItems.Cast<MediaItem>().Select(i => i.Id).ToList();
+        BrowserTitle.Text = shelf.Name;
+        BrowserCount.Text = $" · {MediaBrowser.Items(items.Count)}";
+        BrowserSortButton.Content = $"Sort: {MediaBrowser.SortName(_mediaSort)}";
+        BrowserSearchHint.Visibility = BrowserSearch.Text.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
+        BrowserEmpty.Text = project.Assets.Count == 0 ? "No media yet. Import images, audio, fonts or video, or ask Claude to."
+            : search.Length > 0 ? $"Nothing in {shelf.Name} matches '{search}'."
+            : $"Nothing in {shelf.Name} yet.";
+        BrowserEmpty.Visibility = items.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        ShowBrowserDetails();
+    }
+
+    private List<Asset> MissingAssets() => _document!.View.Assets.Where(a => Item(_document.Session.Directory, a).Missing).ToList();
+
+    // A card of the browser's grid: the media panel's tile with its size or length and its uses.
+    private MediaItem Card(Project project, string directory, Asset asset)
+    {
+        var item = Item(directory, asset);
+        var opens = asset.Type is AssetType.Video or AssetType.Audio ? "Double-click to open it in the source viewer" : "Add at playhead puts it on the timeline";
+        return item with
+        {
+            Picture = item.Missing ? null : Picture(asset),
+            Meta = MediaBrowser.Meta(asset),
+            Use = MediaBrowser.Use(MediaBrowser.Uses(project, asset.Id), item.Missing),
+            Tip = item.Missing ? item.Details : $"{MediaBrowser.Summary(asset)}\n{(asset.Type == AssetType.Font ? "A text's Font file field uses it" : opens)}",
+        };
+    }
+
+    // A button for each shelf: a dot in its kind's color, or a folder for a bin, its name and how
+    // many files it has. A bin's menu removes it.
+    private void ShowShelves(Panel panel, IReadOnlyList<MediaShelf> shelves, string chosen)
+    {
+        panel.Children.Clear();
+        foreach (var shelf in shelves)
+        {
+            var row = new DockPanel();
+            var count = new TextBlock { Text = shelf.Count.ToString(CultureInfo.InvariantCulture), FontSize = 12, Foreground = (Brush)FindResource("SecondaryTextBrush"), Margin = new Thickness(8, 0, 0, 0) };
+            DockPanel.SetDock(count, Dock.Right);
+            row.Children.Add(count);
+            row.Children.Add(shelf.Tag is null
+                ? new Border { Width = 8, Height = 8, CornerRadius = new CornerRadius(2), Background = ShelfColor(shelf.Kind), Margin = new Thickness(0, 0, 10, 0), VerticalAlignment = VerticalAlignment.Center }
+                : new Icon { Data = (Geometry)FindResource("FolderShape"), Width = 14, Height = 14, Margin = new Thickness(-3, 0, 7, 0) });
+            row.Children.Add(new TextBlock { Text = shelf.Name, TextTrimming = TextTrimming.CharacterEllipsis });
+            var button = new RadioButton { Style = (Style)FindResource("ShelfButton"), GroupName = "Shelf", Content = row, Tag = shelf.Key, IsChecked = shelf.Key == chosen };
+            AutomationProperties.SetName(button, shelf.Name);
+            button.Checked += OnShelf;
+            if (shelf.Tag is { } tag)
+            {
+                button.ToolTip = $"The media tagged '{tag}'. Right-click to remove the bin";
+                button.MouseRightButtonUp += (_, e) => ShowBinMenu(button, tag, e);
+            }
+
+            panel.Children.Add(button);
+        }
+    }
+
+    private Brush ShelfColor(AssetType? kind) => kind switch
+    {
+        AssetType.Video => VideoBadge,
+        AssetType.Image => ImageBadge,
+        AssetType.Audio => AudioBadge,
+        AssetType.Font => FontBadge,
+        _ => (Brush)FindResource("TextBrush"),
+    };
+
+    private void OnShelf(object sender, RoutedEventArgs e)
+    {
+        _shelf = (string)((FrameworkElement)sender).Tag;
+        Dispatcher.BeginInvoke(ShowBrowser);
+    }
+
+    // Remove bin takes its tag off every file in it; the files stay in the project.
+    private void ShowBinMenu(FrameworkElement target, string tag, MouseButtonEventArgs e)
+    {
+        var ids = _document!.View.Assets.Where(a => AssetTags.Has(a, tag)).Select(a => a.Id).ToList();
+        var menu = new ContextMenu { PlacementTarget = target };
+        var remove = new MenuItem { Header = $"Remove bin '{tag}'", ToolTip = "Takes the tag off its files; the files stay in the project" };
+        remove.Click += (_, _) => Apply(new TagAssetsOperation(ids, [], [tag]));
+        menu.Items.Add(remove);
+        menu.IsOpen = true;
+        e.Handled = true;
+    }
+
+    private void OnBrowserSearch(object sender, TextChangedEventArgs e) => ShowBrowser();
+
+    private void OnBrowserSort(object sender, RoutedEventArgs e) =>
+        ShowChoices(BrowserSortButton, Enum.GetValues<MediaSort>().Select(sort => (MediaBrowser.SortName(sort), sort == _mediaSort, (Action)(() =>
+        {
+            _mediaSort = sort;
+            ShowBrowser();
+        }))));
+
+    // As many cards across as fit at 170 px or wider.
+    private void OnBrowserSized(object sender, SizeChangedEventArgs e) => BrowserList.Tag = Math.Max(1, (int)((e.NewSize.Width + 14) / (170 + 14)));
+
+    private void OnBrowserSelected(object sender, SelectionChangedEventArgs e)
+    {
+        if (_rebuilding)
+        {
+            return;
+        }
+
+        _browserSelection = BrowserList.SelectedItems.Cast<MediaItem>().Select(i => i.Id).ToList();
+        ShowBrowserDetails();
+    }
+
+    private List<Asset> BrowserAssets() => _document is { } document ? _browserSelection.Select(document.View.FindAsset).OfType<Asset>().ToList() : [];
+
+    // The details column: one file's picture, kind, uses, size, place and tags, or several files'
+    // kinds and tags; and what can be done with them.
+    private void ShowBrowserDetails()
+    {
+        var assets = BrowserAssets();
+        BrowserDetails.Visibility = assets.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        BrowserNoSelection.Visibility = assets.Count > 0 ? Visibility.Collapsed : Visibility.Visible;
+        NewBinButton.IsEnabled = assets.Count > 0;
+        NewBinButton.ToolTip = assets.Count > 0 ? "Put the selected media in a new bin" : "Select media in the grid to put it in a new bin";
+        if (assets.Count == 0)
+        {
+            TagBox.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        var document = _document!;
+        var single = assets.Count == 1 ? assets[0] : null;
+        var details = single is null ? MediaBrowser.Details(assets) : MediaBrowser.Details(document.View, document.Session.Directory, single);
+        var missing = single is not null && Item(document.Session.Directory, single).Missing;
+        DetailTitle.Text = details.Title;
+        DetailTitle.ToolTip = details.Title;
+        DetailSummary.Text = details.Summary;
+        DetailRows.Visibility = single is null ? Visibility.Collapsed : Visibility.Visible;
+        DetailUsedBy.Text = details.UsedBy;
+        DetailSize.Text = details.FileSize;
+        DetailSize.Foreground = (Brush)FindResource(missing ? "ErrorBrush" : "TextBrush");
+        DetailLocation.Text = details.Location;
+        DetailLocation.ToolTip = details.Path;
+        DetailFrame.Background = single switch
+        {
+            null => (Brush)FindResource("ControlBrush"),
+            _ when missing => MissingTileBrush,
+            { Type: AssetType.Image } => (Brush)FindResource("CheckerBrush"),
+            { Type: AssetType.Audio } => (Brush)FindResource("SoundTileBrush"),
+            _ => (Brush)FindResource("ControlBrush"),
+        };
+        DetailPicture.Background = single is null || missing ? null : Picture(single);
+        DetailPicture.Margin = new Thickness(single is { Type: AssetType.Video } ? 0 : 8);
+        DetailFont.Visibility = single is { Type: AssetType.Font } && !missing ? Visibility.Visible : Visibility.Collapsed;
+        ShowTags(details.Tags);
+
+        var time = FrameMath.TimeOf(document.View, _frame);
+        var clip = single is null || missing ? null : ClipFor(single, time, null);
+        BrowserAddButton.IsEnabled = clip is not null;
+        BrowserAddButton.ToolTip = single is null ? "Select one file to add it"
+            : missing ? "Relink the file first"
+            : clip is null ? "A font isn't a clip: a text's Font file field uses it"
+            : $"Adds it at the playhead ({Timecode.Short(time, tenths: true)}) on a level of its own, as the media panel's menu does";
+        var plays = single is { Type: AssetType.Video or AssetType.Audio } && !missing;
+        BrowserSourceButton.IsEnabled = plays;
+        BrowserSourceButton.ToolTip = plays ? "Choose the part to use, then insert or overwrite it at the playhead" : "The source viewer plays one video or sound";
+        BrowserFolderButton.IsEnabled = single is not null && details.Path is { } path && File.Exists(path);
+        BrowserFolderButton.ToolTip = BrowserFolderButton.IsEnabled ? details.Path : "Select one file that's there";
+    }
+
+    // A chip for each tag, whose × takes it off the selected media, then + tag to add one.
+    private void ShowTags(IReadOnlyList<string> tags)
+    {
+        DetailTags.Children.Clear();
+        foreach (var tag in tags)
+        {
+            var remove = new Button { Style = (Style)FindResource("IconButton"), Content = "", FontSize = 8, Padding = new Thickness(4), Margin = new Thickness(3, 0, 0, 0), ToolTip = $"Take '{tag}' off the selected media" };
+            AutomationProperties.SetName(remove, $"Remove tag {tag}");
+            remove.Click += (_, _) => TagSelected([], [tag]);
+            var name = new TextBlock { Text = tag, FontSize = 12, Foreground = (Brush)FindResource("AccentSoftTextBrush"), VerticalAlignment = VerticalAlignment.Center };
+            var chip = new Border
+            {
+                CornerRadius = new CornerRadius(12),
+                Background = (Brush)FindResource("AccentSoftBrush"),
+                Padding = new Thickness(10, 1, 2, 1),
+                Margin = new Thickness(0, 0, 6, 6),
+                Child = new StackPanel { Orientation = Orientation.Horizontal, Children = { name, remove } },
+            };
+            DetailTags.Children.Add(chip);
+        }
+
+        var add = new Button { Style = (Style)FindResource("Chip"), Content = "+ tag", FontSize = 12, ToolTip = "Tag the selected media; a tag is a bin" };
+        AutomationProperties.SetName(add, "Add a tag");
+        add.Click += (_, _) =>
+        {
+            TagBox.Text = "";
+            TagBox.Visibility = Visibility.Visible;
+            TagBox.Focus();
+        };
+        DetailTags.Children.Add(add);
+    }
+
+    private void TagSelected(IReadOnlyList<string> add, IReadOnlyList<string> remove)
+    {
+        var ids = BrowserAssets().Select(a => a.Id).ToList();
+        if (ids.Count > 0)
+        {
+            Apply(new TagAssetsOperation(ids, add, remove));
+        }
+    }
+
+    private void OnTagKey(object sender, KeyEventArgs e)
+    {
+        if (e.Key is not (Key.Enter or Key.Escape))
+        {
+            return;
+        }
+
+        var tag = TagBox.Text.Trim();
+        TagBox.Visibility = Visibility.Collapsed;
+        if (e.Key == Key.Enter && tag.Length > 0)
+        {
+            TagSelected([tag], []);
+        }
+
+        e.Handled = true;
+    }
+
+    private void OnTagLeft(object sender, KeyboardFocusChangedEventArgs e) => TagBox.Visibility = Visibility.Collapsed;
+
+    private void OnNewBin(object sender, RoutedEventArgs e)
+    {
+        NewBinBox.Text = "";
+        NewBinBox.Visibility = Visibility.Visible;
+        NewBinBox.Focus();
+    }
+
+    // Enter puts the selected media in the new bin, which is then the shelf shown.
+    private void OnNewBinKey(object sender, KeyEventArgs e)
+    {
+        if (e.Key is not (Key.Enter or Key.Escape))
+        {
+            return;
+        }
+
+        var name = NewBinBox.Text.Trim();
+        NewBinBox.Visibility = Visibility.Collapsed;
+        var ids = BrowserAssets().Select(a => a.Id).ToList();
+        if (e.Key == Key.Enter && name.Length > 0 && ids.Count > 0)
+        {
+            Apply(new TagAssetsOperation(ids, [name], []), then: (saved, _) =>
+            {
+                if (saved)
+                {
+                    _shelf = "tag:" + name;
+                    ShowBrowser();
+                }
+            });
+        }
+
+        e.Handled = true;
+    }
+
+    private void OnNewBinLeft(object sender, KeyboardFocusChangedEventArgs e) => NewBinBox.Visibility = Visibility.Collapsed;
+
+    private void OnBrowserRelink(object sender, RoutedEventArgs e)
+    {
+        if (_document is not null && MissingAssets() is { Count: > 0 } missing)
+        {
+            ShowRelink(missing, opening: false);
+        }
+    }
+
+    private void OnBrowserAdd(object sender, RoutedEventArgs e)
+    {
+        if (_document is not null && BrowserAssets() is [var asset] && ClipFor(asset, FrameMath.TimeOf(_document.View, _frame), null) is { } clip)
+        {
+            AddClip(clip);
+        }
+    }
+
+    private void OnBrowserSource(object sender, RoutedEventArgs e)
+    {
+        if (BrowserAssets() is [var asset])
+        {
+            OpenSource(asset.Id);
+        }
+    }
+
+    private void OnBrowserFolder(object sender, RoutedEventArgs e)
+    {
+        if (_document is not null && BrowserAssets() is [var asset] && ProjectStore.IsAssetFile(asset.File))
+        {
+            ShowInFolder(ProjectStore.AssetPath(_document.Session.Directory, asset));
+        }
+    }
+
+    // Double-clicking a video or a sound opens it in the source viewer.
+    private void OnBrowserOpened(object sender, MouseButtonEventArgs e)
+    {
+        if (e.OriginalSource is DependencyObject source && ItemsControl.ContainerFromElement(BrowserList, source) is ListBoxItem && BrowserSourceButton.IsEnabled)
+        {
+            OnBrowserSource(sender, e);
+        }
+    }
+
+    // The details column's actions, and Relink for a missing file.
+    private void OnBrowserMenu(object sender, MouseButtonEventArgs e)
+    {
+        if (BrowserAssets() is not [var asset])
+        {
+            return;
+        }
+
+        var menu = new ContextMenu { PlacementTarget = BrowserList };
+        foreach (var button in new[] { BrowserAddButton, BrowserSourceButton, BrowserFolderButton })
+        {
+            var item = new MenuItem { Header = button.Content, IsEnabled = button.IsEnabled };
+            item.Click += (_, _) => button.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+            menu.Items.Add(item);
+        }
+
+        if (MissingAssets().Contains(asset))
+        {
+            var relink = new MenuItem { Header = "Relink…" };
+            relink.Click += (_, _) => ShowRelink([asset], opening: false);
+            menu.Items.Add(relink);
+        }
+
+        menu.IsOpen = true;
+        e.Handled = true;
+    }
+
+    // Opens a video or a sound in the source viewer without marks, on the lane of the clip selected
+    // on the timeline when it can go there. The file open already stays as it is, marks and all.
+    private void OpenSource(string assetId)
+    {
+        if (_document is not { } document || document.View.FindAsset(assetId) is not { Type: AssetType.Video or AssetType.Audio } asset)
+        {
+            return;
+        }
+
+        Pause();
+        if (_source is null || _source.Asset.Id != asset.Id || _source.Asset.File != asset.File)
+        {
+            CloseSource();
+            _source = new SourceMonitor(asset, SourceViewer.Of(document.View, asset), document.Session.Directory, Ffmpeg, Dispatcher, _prefs.PlaybackScale);
+            _source.Changed += OnSourceChanged;
+            _sourceIn = _sourceOut = null;
+            _sourceSound = asset.HasAudio != false;
+            _sourceTarget = SourceViewer.Default(document.View, asset, _selectedLayer).Key;
+        }
+
+        if (SourceMode.IsChecked == true)
+        {
+            ShowSource();
+        }
+        else
+        {
+            SourceMode.IsChecked = true;
+        }
+    }
+
+    private void CloseSource()
+    {
+        if (_source is { } source)
+        {
+            source.Changed -= OnSourceChanged;
+            source.Dispose();
+            _source = null;
+            _sourceBitmap = null;
+            SourceImage.Source = null;
+        }
+    }
+
+    // The source viewer: the file and where it is, the part marked, the lane the clip goes on with
+    // the timeline around the playhead, and the program at the playhead. A file taken out of the
+    // project closes it; a file relinked opens again.
+    private void ShowSource()
+    {
+        if (_document is not { } document)
+        {
+            return;
+        }
+
+        if (_source is not { } source || document.View.FindAsset(source.Asset.Id) is not { Type: AssetType.Video or AssetType.Audio } asset)
+        {
+            var gone = _source?.Asset.Id;
+            CloseSource();
+            EditMode.IsChecked = true;
+            Message(gone is null ? "" : $"'{gone}' isn't in the project any more");
+            return;
+        }
+
+        if (asset.File != source.Asset.File)
+        {
+            OpenSource(asset.Id);
+            return;
+        }
+
+        var project = document.View;
+        var parts = MediaBrowser.Summary(asset).Split(" · ");
+        SourceName.Text = Path.GetFileName(asset.File);
+        SourceName.ToolTip = asset.Id;
+        SourceInfo.Text = string.Join(" · ", parts.Skip(1));
+        var range = SourceViewer.Range(source.Source, _sourceIn, _sourceOut);
+        var target = SourceViewer.Targets(project, asset).FirstOrDefault(t => t.Key == _sourceTarget) ?? SourceViewer.Default(project, asset, _selectedLayer);
+        _sourceTarget = target.Key;
+        SourceTargetButton.Content = target.Title;
+        SourceTracks.Visibility = asset.Type == AssetType.Video ? Visibility.Visible : Visibility.Collapsed;
+        SourceAudio.IsChecked = _sourceSound;
+        SourceAudio.IsEnabled = asset.HasAudio != false;
+        SourceAudio.ToolTip = asset.HasAudio == false ? "This footage has no sound" : "Use the footage's sound; off, the clip is added with its sound off";
+        var at = FrameMath.TimeOf(project, _frame);
+        var lane = TimelineLayout.Lanes(project).FirstOrDefault(l => l.Key == target.Key);
+        SourceStrip.Show(lane?.Clips ?? [], at, range.Length, $"{asset.Id} · {SourceViewer.Seconds(range.Length)}", project.Duration);
+        SourceNote.Text = SourceViewer.Note(range.Length);
+        var missing = Item(document.Session.Directory, asset).Missing;
+        SourceInsertButton.IsEnabled = SourceOverwriteButton.IsEnabled = range.Length > 0 && !missing;
+        ProgramName.Text = Path.GetFileName(document.Session.Directory);
+        ProgramTime.Text = Timecode.Of(_frame, project.Fps);
+        if (asset.Type == AssetType.Audio)
+        {
+            SourceWavePicture.Background = Picture(asset);
+            SourceWaveIcon.Visibility = SourceWavePicture.Background is null ? Visibility.Visible : Visibility.Collapsed;
+        }
+
+        ShowSourcePosition();
+    }
+
+    private void OnSourceChanged()
+    {
+        if (SourceMode.IsChecked == true)
+        {
+            ShowSourcePosition();
+        }
+    }
+
+    // The source playhead, the marks, the frame there and the play button.
+    private void ShowSourcePosition()
+    {
+        if (_source is not { } source)
+        {
+            return;
+        }
+
+        var range = SourceViewer.Range(source.Source, _sourceIn, _sourceOut);
+        SourceScrubber.Show(source.Frames, source.Frame, _sourceIn, _sourceOut);
+        var mark = source.Frame == _sourceIn ? "IN " : source.Frame == _sourceOut ? "OUT " : "";
+        SourceStamp.Text = mark + SourceViewer.Stamp(source.Time);
+        SourceEnd.Text = SourceViewer.Stamp(source.Source.Duration);
+        SourceMarks.Text = SourceViewer.Marks(range);
+        SourcePlayIcon.Data = (Geometry)FindResource(source.Playing ? "PauseShape" : "PlayShape");
+        SourcePlayButton.ToolTip = source.Playing ? "Pause (Space)" : "Play the file (Space)";
+        SourceMessage.Text = source.Error is { } error ? $"Playing stopped: {error}" : source.Picture?.Error ?? source.SoundState;
+        var video = source.Asset.Type == AssetType.Video;
+        SourceImage.Visibility = video ? Visibility.Visible : Visibility.Collapsed;
+        SourceWave.Visibility = video ? Visibility.Collapsed : Visibility.Visible;
+        SourceFrame.HorizontalAlignment = video ? HorizontalAlignment.Center : HorizontalAlignment.Stretch;
+        SourceFrame.VerticalAlignment = video ? VerticalAlignment.Center : VerticalAlignment.Stretch;
+        if (video && source.Picture is { Pixels: { } pixels } frame)
+        {
+            if (_sourceBitmap is null || _sourceBitmap.PixelWidth != frame.Width || _sourceBitmap.PixelHeight != frame.Height)
+            {
+                _sourceBitmap = new WriteableBitmap(frame.Width, frame.Height, 96, 96, PixelFormats.Pbgra32, null);
+                SourceImage.Source = _sourceBitmap;
+            }
+
+            _sourceBitmap.WritePixels(new Int32Rect(0, 0, frame.Width, frame.Height), pixels, frame.Width * 4, 0);
+        }
+    }
+
+    private void OnSourcePlay(object sender, RoutedEventArgs e) => _source?.Toggle();
+
+    private void OnSourceSeek(int frame) => _source?.Seek(frame);
+
+    private void StepSource(int frames)
+    {
+        if (_source is { } source)
+        {
+            source.Seek(source.Frame + frames);
+        }
+    }
+
+    private void OnMarkIn(object sender, RoutedEventArgs e) => MarkIn();
+
+    private void OnMarkOut(object sender, RoutedEventArgs e) => MarkOut();
+
+    private void MarkIn()
+    {
+        if (_source is { } source)
+        {
+            (_sourceIn, _sourceOut) = SourceViewer.MarkIn(source.Frame, _sourceOut);
+            ShowSource();
+        }
+    }
+
+    private void MarkOut()
+    {
+        if (_source is { } source)
+        {
+            (_sourceIn, _sourceOut) = SourceViewer.MarkOut(source.Frame, _sourceIn);
+            ShowSource();
+        }
+    }
+
+    private void ClearMarks()
+    {
+        _sourceIn = _sourceOut = null;
+        ShowSource();
+    }
+
+    private void OnSourceAudio(object sender, RoutedEventArgs e)
+    {
+        _sourceSound = SourceAudio.IsChecked == true;
+        ShowSource();
+    }
+
+    private void OnSourceTarget(object sender, RoutedEventArgs e)
+    {
+        if (_document is { } document && _source is { } source && document.View.FindAsset(source.Asset.Id) is { } asset)
+        {
+            ShowChoices(SourceTargetButton, SourceViewer.Targets(document.View, asset).Select(t => (t.Title, t.Key == _sourceTarget, (Action)(() =>
+            {
+                _sourceTarget = t.Key;
+                ShowSource();
+            }))));
+        }
+    }
+
+    private void OnSourceStripSeek(double time)
+    {
+        if (_document is { } document)
+        {
+            Seek(Math.Clamp(FrameMath.NearestFrame(document.View, time), 0, _frames - 1));
+        }
+    }
+
+    private void OnSourceInsert(object sender, RoutedEventArgs e) => PlaceSource(ClipEdit.Insert);
+
+    private void OnSourceOverwrite(object sender, RoutedEventArgs e) => PlaceSource(ClipEdit.Overwrite);
+
+    // Adds the part marked at the timeline's playhead on the target lane, inserted or overwritten as
+    // the add-layer tools' edit does it, selects it, and moves the playhead to its end for the next
+    // one. A clip put on a new track on top makes that track the lane for the next one.
+    private void PlaceSource(ClipEdit edit)
+    {
+        if (_document is not { } document || _source is not { } source || document.View.FindAsset(source.Asset.Id) is not { } asset || !SourceInsertButton.IsEnabled)
+        {
+            return;
+        }
+
+        var project = document.View;
+        var range = SourceViewer.Range(source.Source, _sourceIn, _sourceOut);
+        var target = SourceViewer.Targets(project, asset).FirstOrDefault(t => t.Key == _sourceTarget) ?? SourceViewer.Default(project, asset, _selectedLayer);
+        var at = FrameMath.TimeOf(project, _frame);
+        var before = project.Layers.Select(l => l.Id).ToHashSet(StringComparer.Ordinal);
+        source.Pause();
+        Apply(SourceViewer.Clip(asset, at, target, range, _sourceSound, edit), then: (saved, _) =>
+        {
+            if (!saved || _document is not { } now)
+            {
+                return;
+            }
+
+            var added = now.View.Layers.FirstOrDefault(l => !before.Contains(l.Id) && Math.Abs(l.Start - at) < 1e-6 && l switch
+            {
+                VideoLayer video => video.Asset == asset.Id,
+                AudioLayer audio => audio.Asset == asset.Id,
+                _ => false,
+            });
+            if (added is null)
+            {
+                return;
+            }
+
+            if (added is VisualLayer visual && target.Key == SourceViewer.OnTop)
+            {
+                _sourceTarget = $"z:{visual.ZIndex}";
+            }
+
+            SelectLayer(added.Id);
+            Seek(Math.Clamp(FrameMath.NearestFrame(now.View, at + range.Length), 0, _frames - 1));
+        });
+    }
+
     // Pressed again while the lanes are being packed, there's nothing more to pack.
     private void OnPackLanes(object sender, RoutedEventArgs e) => WhenSaved(() =>
     {
@@ -3149,12 +3817,19 @@ public partial class MainWindow : Window
         CaptionsPage.Visibility = CaptionsMode.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
         ActivityPage.Visibility = ActivityMode.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
         ExportPage.Visibility = ExportMode.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
+        MediaPage.Visibility = MediaMode.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
+        SourcePage.Visibility = SourceMode.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
+        if (SourceMode.IsChecked != true)
+        {
+            _source?.Pause();
+        }
+
         ShowHeader();
         UpdateEditButtons();
         ShowPage();
     }
 
-    // Brings the Audio, Animate, Captions, Activity or Export view up to date when it is the one showing.
+    // Brings the Audio, Animate, Captions, Activity, Export, Media or Source view up to date when it is the one showing.
     private void ShowPage()
     {
         if (_document is null)
@@ -3181,6 +3856,14 @@ public partial class MainWindow : Window
         else if (ExportMode.IsChecked == true)
         {
             ShowExportPage();
+        }
+        else if (MediaMode.IsChecked == true)
+        {
+            ShowBrowser();
+        }
+        else if (SourceMode.IsChecked == true)
+        {
+            ShowSource();
         }
     }
 

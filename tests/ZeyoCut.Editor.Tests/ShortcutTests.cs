@@ -19,7 +19,7 @@ public class ShortcutTests
         Assert.Empty(Shortcuts.For(Key.Q, ModifierKeys.None));
 
         // Every row of the table is listed once, in its group.
-        Assert.Equal(["Playback", "Editing", "Timeline", "Animate", "Workspaces"], Shortcuts.Groups(null).Select(g => g.Name));
+        Assert.Equal(["Playback", "Editing", "Timeline", "Source viewer", "Animate", "Workspaces"], Shortcuts.Groups(null).Select(g => g.Name));
         Assert.Equal(Shortcuts.All.Select(s => (s.Group, s.Action)).Distinct(), Shortcuts.Groups(null).SelectMany(g => g.Rows.Select(r => (g.Name, r.Action))));
     }
 
@@ -36,6 +36,10 @@ public class ShortcutTests
         Assert.Equal([["Del"], ["Backspace"]], Keys("Delete"));
         Assert.Equal([["+"], ["−"]], Keys("Zoom in / out"));
         Assert.Equal([["?"], ["F1"]], Keys("Keyboard shortcuts"));
+        Assert.Equal([["I"], ["O"]], Keys("Mark in / out"));
+        Assert.Equal([["Alt", "X"]], Keys("Clear in and out"));
+        Assert.Equal([[","]], Keys("Insert at playhead"));
+        Assert.Equal([["."]], Keys("Overwrite at playhead"));
 
         // The digit row's 1 and the keypad's are one key in the list.
         Assert.Equal([["Ctrl", "1"]], Keys("Edit"));

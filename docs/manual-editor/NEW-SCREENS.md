@@ -1,7 +1,7 @@
 # Editor new screens: plan
 
 - Written 2026-11-18 on `feature/manual-editor` at `88295e8`, after the redesign of the existing screens (REDESIGN.md, phases A–H) was done.
-- Status: S1–S22 decided as recommended (2026-11-18). Phases 1, 2, 3 and 4 done (2026-11-18); phase 5 waits for a go.
+- Status: S1–S22 decided as recommended (2026-11-18). Phases 1, 2, 3 and 4 done (2026-11-18), phase 5 (2026-11-19); phase 6 waits for a go.
 - Covers the 15 artboards of the design canvas "ZeyoCut Editor — modern redesign" that have no screen yet, in the order agreed on 2026-11-18. Each phase is one step of that order and ends with a report and a stop.
 - The rules in PLAN.md still hold: no control without real project data and real render output behind it; the UI has no editing logic of its own; a new project property is saved, rendered on export and reachable over MCP; tests pass at every commit; stop and report after each phase. Logic that lives in an MCP tool today moves into Core first, in a commit of its own with no change in behavior (as D9 did for the SRT writer).
 
@@ -122,7 +122,7 @@
 | Your bins | Tora rig, Backgrounds, SFX, New bin | S14 |
 | Missing | "1 file missing · Relink" | Do, opening Relink |
 | Grid | Thumbnail, kind, size or length, name, "used 2×" or "missing" | Do: "used" counts this project's clips |
-| Search, Sort | Name or tag; Recently added | Do; recently added is the order assets were imported |
+| Search, Sort | Name or tag; Recently added | Do; recently added is the order assets were imported. Sort also has oldest first and by name |
 | Details | Kind, size, file size, location, "Used in tora-jump, comic-panels", "Added Today 18:24 by Claude", tags | Do kind, size, file size, location and this project's uses. Other projects' uses and who added it left out |
 | Actions | Add at playhead, Open in source viewer, Show in folder | Do |
 
@@ -130,10 +130,10 @@
 
 | Area | Design | Plan |
 |---|---|---|
-| Source monitor | The file's own frames, play, timecode | Do: drawn as `view_source` draws them, with the file's sound |
+| Source monitor | The file's own frames, play, timecode | Do: the file alone as a one-clip project at its own size and frame rate, drawn by the renderer and played with its sound by a preview and mix of its own |
 | In and out | Mark in (I), Mark out (O), clear (Alt+X), length | Do; they become the clip's trim in and out |
-| Tracks to use | Video, Audio | Do for footage: Audio off makes the clip with its sound off |
-| Insert (,), Overwrite (.) | At the playhead, "Where it will go · Video 1" | S15 |
+| Tracks to use | Video, Audio | Do for footage: Audio off makes the clip with its sound off. The Video switch left out: a video's sound alone can't be a sound clip, so footage always brings its picture |
+| Insert (,), Overwrite (.) | At the playhead, "Where it will go · Video 1" | S15. Insert also splits the lane's clip under the playhead, so its second part moves on with the rest. The lane is named as the timeline names it ("Mixed" for a level of footage and pictures) and can be chosen |
 | Program monitor | The edit at the playhead | Do |
 
 ### 13 · Effects & transitions (phase 6)

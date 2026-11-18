@@ -91,6 +91,17 @@ when they open.
     line: pressing the line adds a `volume` keyframe, dragging a point changes its level to the half
     dB and its time by whole frames, Delete takes it away, and the stretches ducking lowers are
     shaded.
+  - **Media browser** (from the media panel): the project's media as cards with each file's kind,
+    size or length and how many layers use it, shelved by kind and in bins, which are the files'
+    tags (`tag_assets`), with a search by name or tag and three orders. The selected files' details
+    (kind, size, uses, file size, location) and tags, which it adds and takes off several files at
+    once as one step each; New bin; Relink for missing files; Add at playhead, Open in source viewer
+    and Show in folder.
+  - **Source viewer** (double-click a video or sound): the file alone, drawn by the renderer and
+    played with its sound, beside the program at the playhead. Mark in (I), Mark out (O) and Alt+X
+    to clear them choose the part, which becomes the clip's trim in and out; Audio adds footage with
+    its sound or without; Insert (,) and Overwrite (.) put it at the playhead on the lane chosen
+    under "Where it will go", as the add-layer tools' `edit` does, and move the playhead to its end.
   - **Animate view:** the animated layers and values in a list with their values at the playhead,
     their keyframes as a dope sheet (with image layers' drawing changes as a row) or as curves drawn
     from the interpolation exports use. Dragging keys retimes them by whole frames with their values

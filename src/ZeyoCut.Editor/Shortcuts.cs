@@ -31,6 +31,11 @@ public enum Command
     Fit,
     SelectTool,
     BladeTool,
+    MarkIn,
+    MarkOut,
+    ClearMarks,
+    Insert,
+    Overwrite,
     PreviousKeyframe,
     NextKeyframe,
     AddKeyframe,
@@ -79,6 +84,7 @@ public static class Shortcuts
     public const string Playback = "Playback";
     public const string Editing = "Editing";
     public const string Timeline = "Timeline";
+    public const string Source = "Source viewer";
     public const string Animate = "Animate";
     public const string Workspaces = "Workspaces";
 
@@ -113,6 +119,11 @@ public static class Shortcuts
         new(Timeline, "Fit timeline", Command.Fit, Key.Z, ModifierKeys.Shift),
         new(Timeline, "Select tool / blade", Command.SelectTool, Key.V),
         new(Timeline, "Select tool / blade", Command.BladeTool, Key.B),
+        new(Source, "Mark in / out", Command.MarkIn, Key.I),
+        new(Source, "Mark in / out", Command.MarkOut, Key.O),
+        new(Source, "Clear in and out", Command.ClearMarks, Key.X, ModifierKeys.Alt),
+        new(Source, "Insert at playhead", Command.Insert, Key.OemComma),
+        new(Source, "Overwrite at playhead", Command.Overwrite, Key.OemPeriod),
         new(Animate, "Add keyframe", Command.AddKeyframe, Key.K, ModifierKeys.Alt),
         new(Animate, "Previous / next keyframe", Command.PreviousKeyframe, Key.Left, ModifierKeys.Alt),
         new(Animate, "Previous / next keyframe", Command.NextKeyframe, Key.Right, ModifierKeys.Alt),
@@ -167,6 +178,8 @@ public static class Shortcuts
         Key.OemPlus or Key.Add => "+",
         Key.OemMinus or Key.Subtract => "−",
         Key.OemQuestion => "/",
+        Key.OemComma => ",",
+        Key.OemPeriod => ".",
         >= Key.D0 and <= Key.D9 => ((int)(key - Key.D0)).ToString(),
         >= Key.NumPad0 and <= Key.NumPad9 => ((int)(key - Key.NumPad0)).ToString(),
         _ => key.ToString(),

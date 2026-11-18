@@ -1087,7 +1087,7 @@
             <TextBlock Text="/" Foreground="{StaticResource SecondaryTextBrush}" FontSize="13" Margin="7,0" VerticalAlignment="Center" />
             <TextBlock x:Name="ProjectName" FontSize="13" FontWeight="SemiBold" MaxWidth="280" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
             <TextBlock x:Name="ExportCrumb" FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center" Visibility="Collapsed">
-              <Run Text=" / " Foreground="{StaticResource SecondaryTextBrush}" FontWeight="Normal" /><Run Text="Export" />
+              <Run Text=" / " Foreground="{StaticResource SecondaryTextBrush}" FontWeight="Normal" /><Run x:Name="CrumbName" Text="Export" />
             </TextBlock>
             <Border x:Name="SaveBadge" Style="{StaticResource Pill}" Margin="10,0,0,0">
               <StackPanel Orientation="Horizontal">
@@ -1111,6 +1111,8 @@
             <RadioButton x:Name="ActivityMode" GroupName="Mode" Style="{StaticResource TabSegment}" Content="Activity" Checked="OnMode"
                          ToolTip="What Claude and you saved last, and how to work with Claude (Ctrl+6)" />
             <RadioButton x:Name="ExportMode" GroupName="Mode" Visibility="Collapsed" Checked="OnMode" />
+            <RadioButton x:Name="MediaMode" GroupName="Mode" Visibility="Collapsed" Checked="OnMode" />
+            <RadioButton x:Name="SourceMode" GroupName="Mode" Visibility="Collapsed" Checked="OnMode" />
           </StackPanel>
         </Border>
 
@@ -1897,6 +1899,290 @@
       </Grid>
     </ScrollViewer>
 
+    <Grid x:Name="MediaPage" Grid.Row="1" Visibility="Collapsed">
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="240" />
+        <ColumnDefinition Width="*" MinWidth="320" />
+        <ColumnDefinition Width="300" />
+      </Grid.ColumnDefinitions>
+
+      <Border Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,0,1,0">
+        <ScrollViewer VerticalScrollBarVisibility="Auto" Focusable="False">
+          <StackPanel Margin="10,14">
+            <TextBlock Text="LIBRARY" Style="{StaticResource PanelTitle}" Margin="8,0,8,8" />
+            <StackPanel x:Name="LibraryShelves" />
+            <DockPanel Margin="8,14,0,6">
+              <Button x:Name="NewBinButton" DockPanel.Dock="Right" Style="{StaticResource IconButton}" Click="OnNewBin" AutomationProperties.Name="New bin">
+                <local:Icon Data="{StaticResource PlusShape}" Width="12" Height="12" Thickness="2.4" />
+              </Button>
+              <TextBlock Text="YOUR BINS" Style="{StaticResource PanelTitle}" />
+            </DockPanel>
+            <TextBox x:Name="NewBinBox" Margin="0,0,0,6" Padding="10,6" Visibility="Collapsed" KeyDown="OnNewBinKey" LostKeyboardFocus="OnNewBinLeft"
+                     AutomationProperties.Name="New bin's name" ToolTip="The new bin's name. Enter puts the selected media in it; Esc leaves it" />
+            <StackPanel x:Name="BinShelves" />
+            <TextBlock x:Name="BinsEmpty" Style="{StaticResource Secondary}" FontSize="12" TextWrapping="Wrap" TextTrimming="None" Margin="8,2,8,0"
+                       Text="A bin is a tag. Select media, then New bin or + tag." />
+            <Button x:Name="MissingCard" Margin="0,14,0,0" Click="OnBrowserRelink" Cursor="Hand" ToolTip="Find the missing files and point the project at them">
+              <Button.Template>
+                <ControlTemplate TargetType="Button">
+                  <Border x:Name="Bd" CornerRadius="8" Background="#2A1A1A" BorderBrush="#4A2626" BorderThickness="1" Padding="10">
+                    <DockPanel>
+                      <TextBlock DockPanel.Dock="Right" Text="Relink" FontWeight="SemiBold" Foreground="#FFB4A8" TextDecorations="Underline" />
+                      <TextBlock FontFamily="{StaticResource IconFont}" Text="&#xE7BA;" Foreground="#FFB4A8" FontSize="13" Margin="0,0,8,0" VerticalAlignment="Center" />
+                      <TextBlock x:Name="MissingText" Text="{TemplateBinding Content}" Foreground="#FFB4A8" />
+                    </DockPanel>
+                  </Border>
+                  <ControlTemplate.Triggers>
+                    <Trigger Property="IsMouseOver" Value="True">
+                      <Setter TargetName="Bd" Property="Background" Value="#341F1F" />
+                    </Trigger>
+                  </ControlTemplate.Triggers>
+                </ControlTemplate>
+              </Button.Template>
+            </Button>
+          </StackPanel>
+        </ScrollViewer>
+      </Border>
+
+      <DockPanel Grid.Column="1" Margin="22,18,22,0">
+        <DockPanel DockPanel.Dock="Top" Margin="0,0,0,16">
+          <Button DockPanel.Dock="Right" Style="{StaticResource AccentButton}" Height="34" Padding="14,0" Margin="10,0,0,0" Click="OnImport" Content="Import"
+                  ToolTip="Import images, audio, fonts or video (Ctrl+I)" />
+          <Button x:Name="BrowserSortButton" DockPanel.Dock="Right" Style="{StaticResource FieldButton}" Height="34" Padding="12,0" FontSize="12" Margin="10,0,0,0" Click="OnBrowserSort"
+                  ToolTip="The order of the media" />
+          <Grid DockPanel.Dock="Right" Width="220" Height="34" Margin="10,0,0,0">
+            <TextBox x:Name="BrowserSearch" Background="{StaticResource HeaderBrush}" Padding="30,7,8,0" FontSize="13" TextChanged="OnBrowserSearch"
+                     AutomationProperties.Name="Search media" ToolTip="Show the media with these words in its name, its file's name or its tags" />
+            <local:Icon Data="{StaticResource SearchShape}" Width="14" Height="14" Margin="10,0,0,0" HorizontalAlignment="Left" IsHitTestVisible="False"
+                        Foreground="{StaticResource SecondaryTextBrush}" />
+            <TextBlock x:Name="BrowserSearchHint" Text="Search name or tag" FontSize="13" Margin="31,0,0,0" VerticalAlignment="Center" IsHitTestVisible="False"
+                       Foreground="{StaticResource SecondaryTextBrush}" />
+          </Grid>
+          <TextBlock VerticalAlignment="Center" TextTrimming="CharacterEllipsis">
+            <Run x:Name="BrowserTitle" FontSize="20" FontWeight="SemiBold" /><Run x:Name="BrowserCount" FontSize="14" Foreground="{StaticResource SecondaryTextBrush}" />
+          </TextBlock>
+        </DockPanel>
+        <Grid>
+          <ListBox x:Name="BrowserList" SelectionMode="Extended" SelectionChanged="OnBrowserSelected" MouseDoubleClick="OnBrowserOpened" MouseRightButtonUp="OnBrowserMenu"
+                   SizeChanged="OnBrowserSized" ItemContainerStyle="{StaticResource MediaTile}" Padding="0,0,0,16" AutomationProperties.Name="Media">
+            <ListBox.ItemsPanel>
+              <ItemsPanelTemplate>
+                <UniformGrid Columns="{Binding Tag, RelativeSource={RelativeSource AncestorType=ListBox}}" VerticalAlignment="Top" />
+              </ItemsPanelTemplate>
+            </ListBox.ItemsPanel>
+            <ListBox.ItemTemplate>
+              <DataTemplate>
+                <StackPanel ToolTip="{Binding Tip}" Margin="2">
+                  <Grid Height="120">
+                    <Border x:Name="Frame" CornerRadius="7" Background="{StaticResource ControlBrush}" />
+                    <local:Icon x:Name="SoundIcon" Data="{StaticResource MusicShape}" Width="26" Height="26" Foreground="#A98BFF" Visibility="Collapsed" />
+                    <TextBlock x:Name="FontText" Text="Aa" FontSize="28" Foreground="{StaticResource IconTextBrush}" HorizontalAlignment="Center" VerticalAlignment="Center"
+                               Visibility="Collapsed" />
+                    <Border CornerRadius="7" Background="{Binding Picture}" />
+                    <Border CornerRadius="4" Background="#CC0A0C10" Padding="5,1" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="6">
+                      <TextBlock Text="{Binding Kind}" FontSize="10" FontWeight="SemiBold" Foreground="{Binding Badge}" />
+                    </Border>
+                    <Border x:Name="MetaBadge" CornerRadius="4" Background="#CC0A0C10" Padding="5,1" HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="6">
+                      <TextBlock Text="{Binding Meta}" FontFamily="Consolas" FontSize="10" Foreground="{StaticResource TextBrush}" />
+                    </Border>
+                    <TextBlock x:Name="MissingText" Text="Missing" FontWeight="SemiBold" Foreground="{StaticResource ErrorBrush}" HorizontalAlignment="Center" VerticalAlignment="Center"
+                               Visibility="Collapsed" />
+                  </Grid>
+                  <DockPanel Margin="2,7,2,2">
+                    <TextBlock x:Name="UseText" DockPanel.Dock="Right" Text="{Binding Use}" FontSize="11" Foreground="{StaticResource SecondaryTextBrush}" Margin="6,0,0,0"
+                               VerticalAlignment="Center" />
+                    <TextBlock Text="{Binding Id}" FontWeight="Medium" TextTrimming="CharacterEllipsis" />
+                  </DockPanel>
+                </StackPanel>
+                <DataTemplate.Triggers>
+                  <DataTrigger Binding="{Binding Kind}" Value="IMAGE">
+                    <Setter TargetName="Frame" Property="Background" Value="{StaticResource CheckerBrush}" />
+                  </DataTrigger>
+                  <DataTrigger Binding="{Binding Kind}" Value="AUDIO">
+                    <Setter TargetName="Frame" Property="Background" Value="{StaticResource SoundTileBrush}" />
+                  </DataTrigger>
+                  <MultiDataTrigger>
+                    <MultiDataTrigger.Conditions>
+                      <Condition Binding="{Binding Kind}" Value="AUDIO" />
+                      <Condition Binding="{Binding Picture}" Value="{x:Null}" />
+                    </MultiDataTrigger.Conditions>
+                    <Setter TargetName="SoundIcon" Property="Visibility" Value="Visible" />
+                  </MultiDataTrigger>
+                  <DataTrigger Binding="{Binding Kind}" Value="FONT">
+                    <Setter TargetName="FontText" Property="Visibility" Value="Visible" />
+                  </DataTrigger>
+                  <DataTrigger Binding="{Binding Meta}" Value="">
+                    <Setter TargetName="MetaBadge" Property="Visibility" Value="Collapsed" />
+                  </DataTrigger>
+                  <DataTrigger Binding="{Binding Missing}" Value="True">
+                    <Setter TargetName="Frame" Property="Background" Value="#2A1A1A" />
+                    <Setter TargetName="UseText" Property="Foreground" Value="#FFB4A8" />
+                    <Setter TargetName="MissingText" Property="Visibility" Value="Visible" />
+                    <Setter TargetName="SoundIcon" Property="Visibility" Value="Collapsed" />
+                    <Setter TargetName="FontText" Property="Visibility" Value="Collapsed" />
+                  </DataTrigger>
+                </DataTemplate.Triggers>
+              </DataTemplate>
+            </ListBox.ItemTemplate>
+          </ListBox>
+          <TextBlock x:Name="BrowserEmpty" Style="{StaticResource Secondary}" FontSize="13" TextWrapping="Wrap" TextTrimming="None" Margin="4,8" VerticalAlignment="Top"
+                     Visibility="Collapsed" />
+        </Grid>
+      </DockPanel>
+
+      <Border Grid.Column="2" Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource DividerBrush}" BorderThickness="1,0,0,0">
+        <Grid Margin="16">
+          <DockPanel x:Name="BrowserDetails">
+            <StackPanel DockPanel.Dock="Bottom" Margin="0,14,0,0">
+              <Button x:Name="BrowserAddButton" Style="{StaticResource AccentButton}" Height="36" Content="Add at playhead" Click="OnBrowserAdd" Margin="0,0,0,8" />
+              <Button x:Name="BrowserSourceButton" Height="36" Content="Open in source viewer" Click="OnBrowserSource" Margin="0,0,0,8" />
+              <Button x:Name="BrowserFolderButton" Height="36" Content="Show in folder" Click="OnBrowserFolder" />
+            </StackPanel>
+            <ScrollViewer VerticalScrollBarVisibility="Auto" Focusable="False">
+              <StackPanel>
+                <Grid Height="200">
+                  <Border x:Name="DetailFrame" CornerRadius="10" Background="{StaticResource ControlBrush}" />
+                  <TextBlock x:Name="DetailFont" Text="Aa" FontSize="44" Foreground="{StaticResource IconTextBrush}" HorizontalAlignment="Center" VerticalAlignment="Center"
+                             Visibility="Collapsed" />
+                  <Border x:Name="DetailPicture" CornerRadius="10" Margin="8" />
+                </Grid>
+                <TextBlock x:Name="DetailTitle" FontSize="15" FontWeight="SemiBold" Margin="0,14,0,0" TextTrimming="CharacterEllipsis" />
+                <TextBlock x:Name="DetailSummary" Style="{StaticResource Secondary}" FontSize="12" Margin="0,3,0,0" TextWrapping="Wrap" TextTrimming="None" />
+                <Grid x:Name="DetailRows" Margin="0,14,0,0">
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="80" />
+                    <ColumnDefinition Width="*" />
+                  </Grid.ColumnDefinitions>
+                  <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                  </Grid.RowDefinitions>
+                  <TextBlock Text="Used by" Style="{StaticResource Secondary}" FontSize="12" Margin="0,0,0,8" />
+                  <TextBlock x:Name="DetailUsedBy" Grid.Column="1" FontSize="12" TextWrapping="Wrap" Margin="0,0,0,8" />
+                  <TextBlock Grid.Row="1" Text="File size" Style="{StaticResource Secondary}" FontSize="12" Margin="0,0,0,8" />
+                  <TextBlock x:Name="DetailSize" Grid.Row="1" Grid.Column="1" FontSize="12" Margin="0,0,0,8" />
+                  <TextBlock Grid.Row="2" Text="Location" Style="{StaticResource Secondary}" FontSize="12" />
+                  <TextBlock x:Name="DetailLocation" Grid.Row="2" Grid.Column="1" FontFamily="Consolas" FontSize="12" TextWrapping="Wrap" />
+                </Grid>
+                <TextBlock Text="TAGS" Style="{StaticResource PanelTitle}" Margin="0,16,0,8" HorizontalAlignment="Left" />
+                <WrapPanel x:Name="DetailTags" />
+                <TextBox x:Name="TagBox" Margin="0,2,0,0" Padding="10,6" Visibility="Collapsed" KeyDown="OnTagKey" LostKeyboardFocus="OnTagLeft"
+                         AutomationProperties.Name="New tag" ToolTip="A tag for the selected media. Enter adds it; Esc leaves it" />
+              </StackPanel>
+            </ScrollViewer>
+          </DockPanel>
+          <TextBlock x:Name="BrowserNoSelection" Style="{StaticResource Secondary}" FontSize="12" TextWrapping="Wrap" TextTrimming="None" Visibility="Collapsed"
+                     Text="Select media to see its details. Ctrl and Shift select several, to tag them together." />
+        </Grid>
+      </Border>
+    </Grid>
+
+    <Grid x:Name="SourcePage" Grid.Row="1" Visibility="Collapsed" Background="{StaticResource DividerBrush}">
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="*" MinWidth="360" />
+        <ColumnDefinition Width="1" />
+        <ColumnDefinition Width="*" MinWidth="360" />
+      </Grid.ColumnDefinitions>
+
+      <DockPanel Background="{StaticResource PreviewBrush}">
+        <Border DockPanel.Dock="Top" Height="40" BorderBrush="{StaticResource ControlBrush}" BorderThickness="0,0,0,1" Padding="14,0">
+          <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+            <Border CornerRadius="4" Background="#3A2C14" Padding="7,2" VerticalAlignment="Center">
+              <TextBlock Text="SOURCE" FontSize="11" FontWeight="Bold" Foreground="#F5C27A" />
+            </Border>
+            <TextBlock x:Name="SourceName" FontWeight="SemiBold" Margin="10,0,0,0" VerticalAlignment="Center" MaxWidth="260" TextTrimming="CharacterEllipsis" />
+            <TextBlock x:Name="SourceInfo" Style="{StaticResource Secondary}" FontSize="12" Margin="10,0,0,0" VerticalAlignment="Center" />
+          </StackPanel>
+        </Border>
+        <StackPanel DockPanel.Dock="Bottom">
+          <local:SourceScrubber x:Name="SourceScrubber" Margin="20,0,20,6" Seeked="OnSourceSeek" ToolTip="Press or drag to move through the file" />
+          <DockPanel Margin="20,0">
+            <TextBlock x:Name="SourceEnd" DockPanel.Dock="Right" FontFamily="Consolas" FontSize="11" Foreground="{StaticResource SecondaryTextBrush}" />
+            <TextBlock DockPanel.Dock="Left" Text="00:00.00" FontFamily="Consolas" FontSize="11" Foreground="{StaticResource SecondaryTextBrush}" />
+            <TextBlock x:Name="SourceMarks" HorizontalAlignment="Center" FontFamily="Consolas" FontSize="11" Foreground="#F5C27A" />
+          </DockPanel>
+          <DockPanel Margin="20,12,20,16">
+            <Button x:Name="SourceInsertButton" DockPanel.Dock="Right" Style="{StaticResource AccentButton}" Height="34" Margin="8,0,0,0" Click="OnSourceInsert"
+                    ToolTip="Puts the part between the marks at the timeline's playhead and pushes what comes after it later (,)">
+              <StackPanel Orientation="Horizontal">
+                <TextBlock Text="Insert at playhead" />
+                <TextBlock Text="," FontFamily="Consolas" Margin="8,0,0,0" />
+              </StackPanel>
+            </Button>
+            <Button x:Name="SourceOverwriteButton" DockPanel.Dock="Right" Height="34" Padding="12,0" Click="OnSourceOverwrite"
+                    ToolTip="Puts the part between the marks at the timeline's playhead over what its lane has there (.)">
+              <StackPanel Orientation="Horizontal">
+                <TextBlock Text="Overwrite" />
+                <TextBlock Text="." FontFamily="Consolas" Foreground="{StaticResource SecondaryTextBrush}" Margin="8,0,0,0" />
+              </StackPanel>
+            </Button>
+            <StackPanel Orientation="Horizontal">
+              <Button Height="34" Padding="12,0" Click="OnMarkIn" ToolTip="The clip starts at this frame (I)">
+                <StackPanel Orientation="Horizontal">
+                  <TextBlock Text="Mark in" />
+                  <TextBlock Text="I" FontFamily="Consolas" Foreground="{StaticResource SecondaryTextBrush}" Margin="8,0,0,0" />
+                </StackPanel>
+              </Button>
+              <Button Height="34" Padding="12,0" Margin="8,0,0,0" Click="OnMarkOut" ToolTip="The clip ends with this frame (O); Alt+X clears both marks">
+                <StackPanel Orientation="Horizontal">
+                  <TextBlock Text="Mark out" />
+                  <TextBlock Text="O" FontFamily="Consolas" Foreground="{StaticResource SecondaryTextBrush}" Margin="8,0,0,0" />
+                </StackPanel>
+              </Button>
+              <Button x:Name="SourcePlayButton" Style="{StaticResource RoundPlay}" Width="40" Height="40" Margin="10,0" Click="OnSourcePlay" ToolTip="Play the file (Space)"
+                      AutomationProperties.Name="Play source">
+                <local:Icon x:Name="SourcePlayIcon" Data="{StaticResource PlayShape}" Filled="True" Width="16" Height="16" />
+              </Button>
+              <Border x:Name="SourceTracks" CornerRadius="7" Background="{StaticResource HeaderBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" Padding="2"
+                      VerticalAlignment="Center">
+                <ToggleButton x:Name="SourceAudio" Style="{StaticResource ToggleSegment}" Height="26" FontSize="11" FontWeight="SemiBold" Content="Audio" Click="OnSourceAudio"
+                              AutomationProperties.Name="Use the sound" />
+              </Border>
+            </StackPanel>
+          </DockPanel>
+        </StackPanel>
+        <Grid Margin="20">
+          <Grid x:Name="SourceFrame" HorizontalAlignment="Center" VerticalAlignment="Center">
+            <Image x:Name="SourceImage" Stretch="Uniform" RenderOptions.BitmapScalingMode="HighQuality" />
+            <Border x:Name="SourceWave" CornerRadius="10" Background="{StaticResource SoundTileBrush}" Visibility="Collapsed">
+              <Grid>
+                <local:Icon x:Name="SourceWaveIcon" Data="{StaticResource MusicShape}" Width="40" Height="40" Foreground="#A98BFF" />
+                <Border x:Name="SourceWavePicture" Margin="16" />
+              </Grid>
+            </Border>
+            <Border CornerRadius="5" Background="#CC0A0C10" Padding="8,3" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="10">
+              <TextBlock x:Name="SourceStamp" FontFamily="Consolas" FontSize="12" Foreground="{StaticResource TextBrush}" />
+            </Border>
+          </Grid>
+          <TextBlock x:Name="SourceMessage" Style="{StaticResource Secondary}" FontSize="12" HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="10" TextWrapping="Wrap"
+                     TextTrimming="None" />
+        </Grid>
+      </DockPanel>
+
+      <DockPanel Grid.Column="2" Background="{StaticResource PreviewBrush}">
+        <Border DockPanel.Dock="Top" Height="40" BorderBrush="{StaticResource ControlBrush}" BorderThickness="0,0,0,1" Padding="14,0">
+          <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+            <Border CornerRadius="4" Background="{StaticResource AccentSoftBrush}" Padding="7,2" VerticalAlignment="Center">
+              <TextBlock Text="PROGRAM" FontSize="11" FontWeight="Bold" Foreground="{StaticResource AccentSoftTextBrush}" />
+            </Border>
+            <TextBlock x:Name="ProgramName" FontWeight="SemiBold" Margin="10,0,0,0" VerticalAlignment="Center" MaxWidth="260" TextTrimming="CharacterEllipsis" />
+            <TextBlock x:Name="ProgramTime" Style="{StaticResource Secondary}" FontFamily="Consolas" FontSize="12" Margin="10,0,0,0" VerticalAlignment="Center" />
+          </StackPanel>
+        </Border>
+        <StackPanel DockPanel.Dock="Bottom" Margin="20,0,20,20">
+          <StackPanel Orientation="Horizontal">
+            <TextBlock Text="WHERE IT WILL GO · " Style="{StaticResource PanelTitle}" />
+            <Button x:Name="SourceTargetButton" Style="{StaticResource LinkButton}" FontSize="11" FontWeight="SemiBold" Click="OnSourceTarget"
+                    ToolTip="The lane the clip goes on: a draw level, or for a sound its role" />
+          </StackPanel>
+          <local:SourceStrip x:Name="SourceStrip" Margin="0,8,0,8" Seeked="OnSourceStripSeek" ToolTip="Press to move the timeline's playhead" />
+          <TextBlock x:Name="SourceNote" Style="{StaticResource Secondary}" FontSize="12" TextWrapping="Wrap" TextTrimming="None" />
+        </StackPanel>
+        <Image x:Name="ProgramImage" Margin="20" Stretch="Uniform" RenderOptions.BitmapScalingMode="HighQuality" Source="{Binding Source, ElementName=PreviewImage}" />
+      </DockPanel>
+    </Grid>
+
     <Grid x:Name="Workspace" Grid.Row="1" Visibility="Collapsed">
       <Grid.RowDefinitions>
         <RowDefinition Height="*" MinHeight="200" />
@@ -1913,7 +2199,13 @@
 
       <DockPanel Background="{StaticResource PanelBrush}">
         <Grid DockPanel.Dock="Top" Margin="12,12,12,0">
-          <TextBlock Text="Media" FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center" />
+          <StackPanel Orientation="Horizontal">
+            <TextBlock Text="Media" FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center" />
+            <Button x:Name="MediaBrowserButton" Style="{StaticResource IconButton}" Margin="6,0,0,0" VerticalAlignment="Center" Click="OnMediaBrowser"
+                    ToolTip="Open the media browser: bins, search, details and the source viewer" AutomationProperties.Name="Open the media browser">
+              <local:Icon Data="{StaticResource CardsShape}" Width="14" Height="14" />
+            </Button>
+          </StackPanel>
           <Button HorizontalAlignment="Right" VerticalAlignment="Center" Padding="10,5" Click="OnImport" ToolTip="Import images, audio, fonts or video (Ctrl+I)">
             <StackPanel Orientation="Horizontal">
               <local:Icon Data="{StaticResource PlusShape}" Width="12" Height="12" Thickness="2.4" VerticalAlignment="Center" Margin="0,0,6,0" />
@@ -1963,7 +2255,7 @@
         </ItemsControl>
         <Grid>
           <ListBox x:Name="MediaList" SelectionChanged="OnMediaSelected" Padding="8,0" PreviewMouseLeftButtonDown="OnMediaPressed" PreviewMouseMove="OnMediaDragged"
-                   MouseRightButtonUp="OnMediaMenu" ItemContainerStyle="{StaticResource MediaTile}">
+                   MouseRightButtonUp="OnMediaMenu" MouseDoubleClick="OnMediaOpened" ItemContainerStyle="{StaticResource MediaTile}">
             <ListBox.ItemsPanel>
               <ItemsPanelTemplate>
                 <UniformGrid Columns="2" VerticalAlignment="Top" />

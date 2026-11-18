@@ -1705,12 +1705,13 @@ public class WindowTests
         Assert.Equal(Visibility.Collapsed, Shown(window, "WelcomePage"));
         var directory = WithTitle(window, folder);
         var animateOnly = new[] { Command.AddKeyframe, Command.EaseInOut, Command.OnionSkin };
-        Assert.All(Shortcuts.All.Where(s => !animateOnly.Contains(s.Command)), s =>
+        var sourceOnly = new[] { Command.MarkIn, Command.MarkOut, Command.ClearMarks, Command.Insert, Command.Overwrite };
+        Assert.All(Shortcuts.All.Where(s => !animateOnly.Contains(s.Command) && !sourceOnly.Contains(s.Command)), s =>
         {
             Assert.True(window.CanRun(s.Command), $"{s.Command} can't run");
             Assert.Equal(s.Command, Shortcuts.For(s.Key, s.Modifiers).First(c => window.CanRun(c.Command)).Command);
         });
-        Assert.All(animateOnly, c => Assert.False(window.CanRun(c)));
+        Assert.All(animateOnly.Concat(sourceOnly), c => Assert.False(window.CanRun(c)));
         Assert.Equal(Command.Animate, window.RunKey(Key.D3, ModifierKeys.Control, inField: false));
         Assert.Equal(Visibility.Visible, Shown(window, "AnimatePage"));
         Assert.Equal(Visibility.Collapsed, Shown(window, "Workspace"));
@@ -1756,7 +1757,7 @@ public class WindowTests
         TestWindow.Pump();
         Assert.Equal(Visibility.Visible, Shown(window, "ShortcutsDialog"));
         var groups = (ItemsControl)window.FindName("ShortcutGroups");
-        Assert.Equal(["Playback", "Editing", "Timeline", "Animate", "Workspaces"], groups.Items.Cast<ShortcutGroup>().Select(g => g.Name));
+        Assert.Equal(["Playback", "Editing", "Timeline", "Source viewer", "Animate", "Workspaces"], groups.Items.Cast<ShortcutGroup>().Select(g => g.Name));
         ((TextBox)window.FindName("ShortcutSearch")).Text = "ctrl d";
         Assert.Equal("Duplicate", Assert.Single(Assert.Single(groups.Items.Cast<ShortcutGroup>()).Rows).Action);
         ((TextBox)window.FindName("ShortcutSearch")).Text = "ctrl q";
@@ -1771,7 +1772,7 @@ public class WindowTests
         Assert.Equal(Visibility.Collapsed, Shown(window, "DialogLayer"));
         Assert.Equal(Command.Shortcuts, window.RunKey(Key.F1, ModifierKeys.None, inField: false));
         Assert.Equal("", ((TextBox)window.FindName("ShortcutSearch")).Text);
-        Assert.Equal(5, groups.Items.Count);
+        Assert.Equal(6, groups.Items.Count);
         Assert.Equal(Command.Cancel, window.RunKey(Key.Escape, ModifierKeys.None, inField: true));
         Assert.Equal(Visibility.Collapsed, Shown(window, "ShortcutsDialog"));
     });
@@ -1891,6 +1892,214 @@ public class WindowTests
 
         Assert.Equal(Visibility.Collapsed, Shown(window, "PreviewMessage"));
         Assert.Empty(Relinking.Missing(ProjectStore.Load(directory), directory));
+    });
+
+    // The cards of the Media browser's grid, in order.
+    private static List<MediaItem> Cards(MainWindow window)
+    {
+        TestWindow.Pump();
+        return ((ListBox)window.FindName("BrowserList")).Items.Cast<MediaItem>().ToList();
+    }
+
+    private static void SelectCards(MainWindow window, params string[] ids)
+    {
+        var list = (ListBox)window.FindName("BrowserList");
+        list.SelectedItems.Clear();
+        foreach (var card in list.Items.Cast<MediaItem>().Where(c => ids.Contains(c.Id)))
+        {
+            list.SelectedItems.Add(card);
+        }
+
+        TestWindow.Pump();
+    }
+
+    // The Media browser lists the kinds and the bins, searches the grid, and shows the selected
+    // media's details. + tag and New bin save what tag_assets saves, the missing file's card opens
+    // Relink, Add at playhead adds the clip the media panel's menu adds, and Back to edit returns.
+    [Fact]
+    public void TheMediaBrowserShowsTheShelvesAndTagsTheMedia() => TestWindow.Run("window-media-browser", (window, folder) =>
+    {
+        var project = TestFiles.Sounds();
+        project.Assets.Add(new Asset { Id = "logo", Type = AssetType.Image, File = "assets/logo.png", Width = 8, Height = 8 });
+        project.Assets.Add(new Asset { Id = "gone", Type = AssetType.Image, File = "assets/gone.png", Width = 8, Height = 8 });
+        var directory = Path.Combine(folder, "browsed");
+        ProjectSession.Create(directory, project);
+        foreach (var (sound, frequency) in project.Assets.Where(a => a.Type == AssetType.Audio).Zip(new[] { 300.0, 1000, 2000 }))
+        {
+            TestFiles.Tone(Path.Combine(directory, sound.File), sound.Duration!.Value, frequency, 0.2);
+        }
+
+        TestFiles.Png(Path.Combine(directory, ProjectStore.AssetsFolder, "logo.png"), 8, 8);
+        TestFiles.Png(Path.Combine(directory, ProjectStore.AssetsFolder, "gone.png"), 8, 8);
+        window.OpenProject(directory);
+        File.Delete(Path.Combine(directory, ProjectStore.AssetsFolder, "gone.png"));
+
+        Click(window, "MediaBrowserButton");
+        TestWindow.Pump();
+        Assert.Equal(Visibility.Visible, Shown(window, "MediaPage"));
+        Assert.Equal(Visibility.Collapsed, Shown(window, "Workspace"));
+        Assert.Equal(Visibility.Collapsed, Shown(window, "ModeBar"));
+        Assert.Equal("Media", ((System.Windows.Documents.Run)window.FindName("CrumbName")).Text);
+        Assert.Equal(["All media", "Video", "Images", "Audio"], ((Panel)window.FindName("LibraryShelves")).Children.Cast<RadioButton>().Select(System.Windows.Automation.AutomationProperties.GetName));
+        Assert.Empty(((Panel)window.FindName("BinShelves")).Children);
+        Assert.Equal(Visibility.Visible, Shown(window, "BinsEmpty"));
+        Assert.Equal("1 file missing", ((Button)window.FindName("MissingCard")).Content);
+        Assert.Equal(["gone", "logo", "boing", "song", "talk"], Cards(window).Select(c => c.Id));
+        Assert.Equal(["missing", "not used", "used 1×"], Cards(window).Take(3).Select(c => c.Use));
+        Assert.True(window.CanRun(Command.Import));
+        Assert.False(window.CanRun(Command.Split));
+
+        ((TextBox)window.FindName("BrowserSearch")).Text = "SON";
+        Assert.Equal(["song"], Cards(window).Select(c => c.Id));
+        ((TextBox)window.FindName("BrowserSearch")).Text = "";
+        Assert.Equal(Visibility.Visible, Shown(window, "BrowserNoSelection"));
+
+        // + tag on two sounds saves tag_assets' change, and the tag is a bin.
+        var expected = ProjectStore.Load(directory);
+        SelectCards(window, "boing", "song");
+        Assert.Equal(("2 files", "2 sounds"), (Text(window, "DetailTitle"), Text(window, "DetailSummary")));
+        Descendants<Button>((Panel)window.FindName("DetailTags")).Single(b => Equals(b.Content, "+ tag")).RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+        var tagBox = (TextBox)window.FindName("TagBox");
+        Assert.Equal(Visibility.Visible, tagBox.Visibility);
+        tagBox.Text = "SFX";
+        TestWindow.Press(tagBox, Key.Enter);
+        WaitForSaves(window);
+        new TagAssetsOperation(["boing", "song"], ["SFX"], []).Apply(expected);
+        Assert.Equal(WithoutRevision(ZeyoCut.Core.Serialization.ProjectJson.Serialize(expected)), ProjectJson(directory));
+        Assert.Equal(["SFX"], ((Panel)window.FindName("BinShelves")).Children.Cast<RadioButton>().Select(System.Windows.Automation.AutomationProperties.GetName));
+        Assert.Equal(Visibility.Collapsed, Shown(window, "BinsEmpty"));
+        Assert.Equal(["boing", "song"], Cards(window).Where(c => ((ListBox)window.FindName("BrowserList")).SelectedItems.Contains(c)).Select(c => c.Id));
+
+        // New bin puts the selected picture in it, and shows it.
+        SelectCards(window, "logo");
+        Assert.Equal(("logo.png", "PNG image · 8×8", "No layer yet"), (Text(window, "DetailTitle"), Text(window, "DetailSummary"), Text(window, "DetailUsedBy")));
+        Click(window, "NewBinButton");
+        var binBox = (TextBox)window.FindName("NewBinBox");
+        binBox.Text = "Brand";
+        TestWindow.Press(binBox, Key.Enter);
+        WaitForSaves(window);
+        new TagAssetsOperation(["logo"], ["Brand"], []).Apply(expected);
+        Assert.Equal(WithoutRevision(ZeyoCut.Core.Serialization.ProjectJson.Serialize(expected)), ProjectJson(directory));
+        TestWindow.Pump();
+        Assert.Equal(["Brand", "SFX"], ((Panel)window.FindName("BinShelves")).Children.Cast<RadioButton>().Select(System.Windows.Automation.AutomationProperties.GetName));
+        Assert.Equal("Brand", ((System.Windows.Documents.Run)window.FindName("BrowserTitle")).Text);
+        Assert.Equal(["logo"], Cards(window).Select(c => c.Id));
+
+        // Add at playhead adds what the media panel's menu adds.
+        Click(window, "BrowserAddButton");
+        WaitForSaves(window);
+        new AddClipOperation(AssetType.Image, "logo", 0).Apply(expected);
+        Assert.Equal(WithoutRevision(ZeyoCut.Core.Serialization.ProjectJson.Serialize(expected)), ProjectJson(directory));
+        TestWindow.Pump();
+        Assert.Equal("used 1×", Assert.Single(Cards(window)).Use);
+
+        // The missing file's card opens Relink for it.
+        Click(window, "MissingCard");
+        Assert.Equal(Visibility.Visible, Shown(window, "RelinkDialog"));
+        Assert.Equal("gone", Assert.Single(((ItemsControl)window.FindName("RelinkList")).Items.Cast<MissingFile>()).Id);
+        TestWindow.Press(window, Key.Escape);
+        Assert.Equal(Visibility.Collapsed, Shown(window, "DialogLayer"));
+
+        Click(window, "BackToEdit");
+        TestWindow.Pump();
+        Assert.Equal(Visibility.Visible, Shown(window, "Workspace"));
+        Assert.Equal(Visibility.Collapsed, Shown(window, "MediaPage"));
+    });
+
+    // The source viewer plays a file alone. I and O mark the part to use, which , inserts and .
+    // overwrites at the timeline's playhead as the add-layer tools' edit does, on Video 1; Audio off
+    // adds the clip with its sound off, and Alt+X clears the marks. A sound goes in a role.
+    [Fact]
+    public void TheSourceViewerInsertsAndOverwritesThePartMarked() => TestWindow.Run("window-source", (window, folder) =>
+    {
+        var project = TestFiles.Project(duration: 4);
+        project.Assets.Add(new Asset { Id = "street", Type = AssetType.Video, File = "assets/street.mp4", Width = 160, Height = 120, FrameRate = "30", FrameCount = 90, Duration = 3, HasAudio = true, Codec = "h264" });
+        project.Assets.Add(new Asset { Id = "song", Type = AssetType.Audio, File = "assets/song.wav", Duration = 2 });
+        ProjectEditor.AddVideoLayer(project, new VideoLayerOptions { Asset = "street", Id = "intro", Start = 0, TrimOut = 1, ZIndex = 0 });
+        ProjectEditor.AddVideoLayer(project, new VideoLayerOptions { Asset = "street", Id = "main", Start = 1, TrimIn = 1, ZIndex = 0 });
+        ProjectEditor.AddTextLayer(project, new TextLayerOptions { Id = "title", Text = "Hello", Start = 0, End = 3, ZIndex = 1 });
+        var directory = Path.Combine(folder, "cut");
+        ProjectSession.Create(directory, project);
+        Directory.CreateDirectory(Path.Combine(directory, ProjectStore.AssetsFolder));
+        TestFiles.Video(Path.Combine(directory, ProjectStore.AssetsFolder, "street.mp4"), "testsrc2=s=160x120:r=30:d=3", "-f", "lavfi", "-i", "sine=frequency=440:duration=3", "-c:a", "aac");
+        TestFiles.Tone(Path.Combine(directory, ProjectStore.AssetsFolder, "song.wav"), 2, 440, 0.2);
+        window.OpenProject(directory);
+        var expected = ProjectStore.Load(directory);
+
+        // The playhead at 1 s, where 'main' starts; then the footage in the source viewer.
+        Assert.Equal(Command.NextEdit, window.RunKey(Key.Down, ModifierKeys.None, inField: false));
+        Assert.False(window.CanRun(Command.MarkIn));
+        Click(window, "MediaBrowserButton");
+        SelectCards(window, "street");
+        Click(window, "BrowserSourceButton");
+        TestWindow.Pump();
+        Assert.Equal(Visibility.Visible, Shown(window, "SourcePage"));
+        Assert.Equal(Visibility.Collapsed, Shown(window, "MediaPage"));
+        Assert.Equal("Source", ((System.Windows.Documents.Run)window.FindName("CrumbName")).Text);
+        Assert.Equal(("street.mp4", "160×120 · 30 fps · 0:03"), (Text(window, "SourceName"), Text(window, "SourceInfo")));
+        Assert.Equal("Video", ((Button)window.FindName("SourceTargetButton")).Content);
+        Assert.Equal(Visibility.Visible, Shown(window, "SourceTracks"));
+        Assert.Equal(("00:00.00", "3.00 s"), (Text(window, "SourceStamp"), Text(window, "SourceMarks")));
+        Assert.Equal(Timecode.Of(30, 30), Text(window, "ProgramTime"));
+        Assert.True(window.CanRun(Command.Play));
+        Assert.False(window.CanRun(Command.Split));
+
+        // In at 1 s, out on the frame before 2 s: the part from 1 to 2 s.
+        Assert.Equal(Command.ForwardSecond, window.RunKey(Key.Right, ModifierKeys.Shift, inField: false));
+        Assert.Equal(Command.MarkIn, window.RunKey(Key.I, ModifierKeys.None, inField: false));
+        Assert.Equal("IN 00:01.00", Text(window, "SourceStamp"));
+        Assert.Equal(Command.ForwardSecond, window.RunKey(Key.Right, ModifierKeys.Shift, inField: false));
+        Assert.Equal(Command.PreviousFrame, window.RunKey(Key.Left, ModifierKeys.None, inField: false));
+        Assert.Equal(Command.MarkOut, window.RunKey(Key.O, ModifierKeys.None, inField: false));
+        Assert.Equal("In 00:01.00 · Out 00:02.00 · 1.00 s", Text(window, "SourceMarks"));
+        var scrubber = (SourceScrubber)window.FindName("SourceScrubber");
+        Assert.Equal((90, 59, 30, 59), (scrubber.Frames, scrubber.Frame, scrubber.InFrame, scrubber.OutFrame));
+        Assert.Equal("Insert pushes everything from the playhead on 1.00 s to the right. Overwrite replaces what's there.", Text(window, "SourceNote"));
+
+        // , inserts it at the playhead, which moves to its end.
+        Assert.Equal(Command.Insert, window.RunKey(Key.OemComma, ModifierKeys.None, inField: false));
+        WaitForSaves(window);
+        new AddClipOperation(AssetType.Video, "street", 1, 0, null, 1, 2, false, ClipEdit.Insert).Apply(expected);
+        Assert.Equal(WithoutRevision(ZeyoCut.Core.Serialization.ProjectJson.Serialize(expected)), ProjectJson(directory));
+        var inserted = WithoutRevision(ZeyoCut.Core.Serialization.ProjectJson.Serialize(expected));
+        Assert.Equal(2, ProjectStore.Load(directory).FindLayer("main")!.Start);
+        Assert.StartsWith("inserted", Text(window, "MessageText"));
+        TestWindow.Pump();
+        Assert.Equal(Timecode.Of(60, 30), Text(window, "ProgramTime"));
+        Assert.Equal(Visibility.Visible, Shown(window, "SourcePage"));
+
+        // . overwrites the whole file there without its sound, once Alt+X has cleared the marks.
+        Assert.Equal(Command.ClearMarks, window.RunKey(Key.X, ModifierKeys.Alt, inField: false));
+        Assert.Equal("3.00 s", Text(window, "SourceMarks"));
+        var audio = (System.Windows.Controls.Primitives.ToggleButton)window.FindName("SourceAudio");
+        Assert.True(audio.IsChecked);
+        Toggle(audio, false);
+        Assert.Equal(Command.Overwrite, window.RunKey(Key.OemPeriod, ModifierKeys.None, inField: false));
+        WaitForSaves(window);
+        new AddClipOperation(AssetType.Video, "street", 2, 0, null, 0, 3, true, ClipEdit.Overwrite).Apply(expected);
+        Assert.Equal(WithoutRevision(ZeyoCut.Core.Serialization.ProjectJson.Serialize(expected)), ProjectJson(directory));
+        Assert.Equal(Timecode.Of(149, 30), Text(window, "ProgramTime"));
+
+        // Undo takes the overwrite back, from the source viewer.
+        Assert.Equal(Command.Undo, window.RunKey(Key.Z, ModifierKeys.Control, inField: false));
+        WaitForSaves(window);
+        Assert.Equal(inserted, ProjectJson(directory));
+
+        // A sound goes in a role, Music unless the selected clip is a sound's; it has no Audio switch.
+        Click(window, "BackToEdit");
+        Click(window, "MediaBrowserButton");
+        SelectCards(window, "song");
+        Click(window, "BrowserSourceButton");
+        TestWindow.Pump();
+        Assert.Equal(("song.wav", "Music"), (Text(window, "SourceName"), ((Button)window.FindName("SourceTargetButton")).Content));
+        Assert.Equal(Visibility.Collapsed, Shown(window, "SourceTracks"));
+        Assert.Equal(Visibility.Visible, Shown(window, "SourceWave"));
+        Assert.Equal("2.00 s", Text(window, "SourceMarks"));
+
+        Click(window, "BackToEdit");
+        TestWindow.Pump();
+        Assert.Equal(Visibility.Visible, Shown(window, "Workspace"));
+        Assert.False(window.CanRun(Command.Insert));
     });
 
     // The first time, the Welcome view shows the server's entry for Claude's config, turns green

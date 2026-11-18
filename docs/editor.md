@@ -4,7 +4,7 @@
 
 ![The editor with the Tora Jumps example open: the media on the left, the frame at 0.967 seconds in the middle, the inspector on the right with Tora's position and rotation animated, and the timeline below with the keyframes on Tora's clip](editor-edit.png)
 
-It imports media, plays the edit with its sound, moves, trims and splits clips on a timeline, places, crops and animates layers with keyframes, retimes and eases keyframes on a dope sheet or as curves, sets effects, color adjustments and face-blur settings, edits captions, changes volumes and a video's speed, mixes the sound roles with volume keyframes and ducking, and exports. Masks, motion paths and transitions stay with the model: ask it for those.
+It imports, browses and tags media, plays the edit with its sound, marks the part of a video or sound to use and inserts or overwrites it at the playhead, moves, trims and splits clips on a timeline, places, crops and animates layers with keyframes, retimes and eases keyframes on a dope sheet or as curves, sets effects, color adjustments and face-blur settings, edits captions, changes volumes and a video's speed, mixes the sound roles with volume keyframes and ducking, and exports. Masks, motion paths and transitions stay with the model: ask it for those.
 
 ## Open a project
 
@@ -25,7 +25,7 @@ When a project opens with files missing (moved or renamed), the **Relink** view 
 
 The first time the editor starts, when it has no settings file yet, the **Welcome** view shows the projects folder and how to connect Claude: the `zeyocut` entry for Claude Desktop's `claude_desktop_config.json`, with the path of the `ZeyoCut.Mcp.exe` next to the editor, to copy, or the bundle to install instead. Its Connect step turns green when a client lists the server's tools after the Welcome opened (the server notes the last one in `connected.json` in its log folder). The last step copies the sample `examples\tora-jump` into the projects folder, unless a project of that name is there already, and opens it. Skip setup, or I'll do this later, goes to Home, and the Welcome doesn't open again.
 
-The header across the top names the project and whether it's saved ("Saved · rev N"). The logo and **Projects** close the project and go back to Home. In the middle, **Edit**, **Animate**, **Captions** and **Activity** switch views; on the right are Undo and Redo, when Claude last saved the project, and **Export**, which opens the Export view (Ctrl+1, Ctrl+3, Ctrl+5, Ctrl+6 and Ctrl+E go to Edit, Animate, Captions, Activity and Export; ? or F1 lists every key). The status bar at the bottom names the selected clip, counts the layers and lanes, and says what the last change did.
+The header across the top names the project and whether it's saved ("Saved · rev N"). The logo and **Projects** close the project and go back to Home. In the middle, **Edit**, **Audio**, **Animate**, **Captions** and **Activity** switch views; on the right are Undo and Redo, when Claude last saved the project, and **Export**, which opens the Export view (Ctrl+1, Ctrl+2, Ctrl+3, Ctrl+5, Ctrl+6 and Ctrl+E go to Edit, Audio, Animate, Captions, Activity and Export; ? or F1 lists every key). The Media browser and the source viewer, like Export, have Back to edit in place of the views. The status bar at the bottom names the selected clip, counts the layers and lanes, and says what the last change did.
 
 ## Media
 
@@ -34,6 +34,31 @@ The media panel shows a tile for each asset: a picture made small, a video's fir
 - Import, above the media list (Ctrl+I), imports images, audio, fonts and video. Video that needs normalizing (variable frame rate, rotation, HDR) is converted first, as `import_video` does, with its progress in the media list. Files you pick yourself can come from any folder; the import folders limit only what the model can read.
 - Drag files from File Explorer onto the window to import them.
 - Drag media from the list onto a lane of the timeline, or right-click it → Add at the playhead. A video or picture dropped on a picture lane is drawn at that lane's level, and anywhere else on a level of its own on top. Sound takes the role of the sound lane it's dropped on, else music.
+- Double-click a video or a sound to open it in the [source viewer](#the-source-viewer), and the button beside the panel's title opens the [Media browser](#the-media-browser).
+
+### The Media browser
+
+![The Media browser with Tora Jumps open: the library and three bins on the left with a file missing, the media as cards with their sizes, lengths and uses, and the details of tora_body.png on the right with its Tora character tag](editor-media.png)
+
+The Media browser shows the project's media as cards: each file's picture, kind, pixel size or length, name, and how many layers use it ("used 2×", "not used") or "missing".
+
+- **Library** on the left shows every file or one kind (Video, Images, Audio, and Fonts when there's one), with how many each has. **Your bins** are the files' tags, the same tags `tag_assets` gives them and `list_assets` shows: a bin shows the files with its tag. + makes a bin of the selected files; right-click a bin → Remove bin takes its tag off its files, which stay in the project.
+- When files are missing, "N files missing · Relink" opens the [Relink](#open-a-project) view for them.
+- The search box keeps the files whose name, file name or tags have every word typed. **Sort** puts the newest imports first (Recently added), the oldest first, or by name. Import (Ctrl+I) imports as the media panel does.
+- Click a card to see the file's details on the right: its kind and size, the layers that use it, the file's size and where it is, and its tags, each with × to take it off and + tag to add one. Ctrl and Shift select several files, to tag them together. Each tag change is one undo step.
+- **Add at playhead** adds the file at the playhead as the media panel's menu does, **Open in source viewer** opens a video or sound in the source viewer (so does double-clicking its card), and **Show in folder** shows the file in File Explorer.
+
+### The source viewer
+
+![The source viewer with street.mp4 open beside the program: the part from 1.20 to 4.20 s marked in and out on the scrubber, and under the program the Mixed lane at the playhead with the 3-second clip that Insert would add](editor-source.png)
+
+The source viewer shows a video or a sound on its own (its frames drawn by the same renderer as exports, its sound as the file has it) on the left, and the edit at the timeline's playhead on the right.
+
+- Space plays the file and pauses it, ← and → step a frame (with Shift, a second), Home and End go to its first and last frame, and the scrubber under it moves through it.
+- **Mark in** (I) and **Mark out** (O) mark the part to use: the clip starts at the in frame and ends with the out frame, so the marks become its trim in and out. Alt+X clears them. Without marks, the clip is the whole file. The marks and the part's length are under the scrubber.
+- **Audio**, for footage, adds the clip with its sound or without it (its sound off, as `update_layer`'s `muted`).
+- **Where it will go** names the lane the clip goes on: the lane of the clip selected on the timeline, else the lowest one with video (Video 1), else the lowest one, else a new track on top; for a sound, its role, Music unless a sound's clip is selected. Click the name to choose another. Under it is the lane around the playhead with the new clip; click it to move the playhead.
+- **Insert at playhead** (,) puts the part there, as `add_video_layer` with `edit` `insert` does: the clip under the playhead on that lane is split, and everything from the playhead on moves later by the part's length, with markers and the camera's keys. **Overwrite** (.) puts it over what the lane has there, cutting it, as `edit` `overwrite` does. Either is one undo step, selects the new clip, and moves the playhead to its end for the next one.
 
 ## The preview
 
@@ -201,7 +226,7 @@ Under **Exports folder**, an export running here has its progress and Stop; expo
 
 | Key | What it does |
 |---|---|
-| Space | Play and pause |
+| Space | Play and pause; in the source viewer, the file |
 | F | The frame on the whole screen; Esc or F leaves |
 | ← / → | The previous and next frame; with Shift, a second |
 | Home / End | The first and last frame |
@@ -210,6 +235,9 @@ Under **Exports folder**, an export running here has its progress and Stop; expo
 | Alt+K | In Animate, a keyframe at the playhead for the value clicked last, or the selected layer's position |
 | F9 | In Animate, ease the selected keys in and out (Smooth) |
 | Alt+O | In Animate, the onion skin on and off |
+| I / O | In the source viewer, mark in and mark out |
+| Alt+X | In the source viewer, clear the marks |
+| , / . | In the source viewer, insert and overwrite the part marked at the playhead |
 | S or Ctrl+B | Split the selected clip at the playhead |
 | B / V | The Blade tool, which splits a clip where it's clicked, and the Select tool |
 | M | Add a chapter marker at the playhead |
@@ -223,7 +251,7 @@ Under **Exports folder**, an export running here has its progress and Stop; expo
 | Ctrl+1 / Ctrl+2 / Ctrl+3 / Ctrl+5 / Ctrl+6 / Ctrl+E | Edit, Audio, Animate, Captions, Activity and Export |
 | Ctrl+N | New project |
 | Ctrl+O | Open a project |
-| Ctrl+I | Import media |
+| Ctrl+I | Import media, in the Edit view and the Media browser |
 | ? or F1 | Keyboard shortcuts |
 
 ## Settings
