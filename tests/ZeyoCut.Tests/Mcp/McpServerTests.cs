@@ -2377,6 +2377,32 @@ public class McpServerTests
         Assert.Contains("こんにちは、世界。", File.ReadAllText(Path.Combine(projects, "tracks", "exports", "talk_ja.srt")));
     }
 
+    // The editor's Import .srt (ImportSrtOperation, measuring text as the editor does) makes the track import_srt makes.
+    [Fact]
+    public async Task TheEditorsSrtImportMakesTheTrackImportSrtMakes()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var root = TestPaths.NewDirectory("mcp-srt-editor");
+        var projects = Path.Combine(root, "projects");
+        var srt = Path.Combine(root, "talk.ja.srt");
+        File.WriteAllText(srt, "1\n00:00:00,500 --> 00:00:02,000\nこんにちは\n\n2\n00:00:02,500 --> 00:00:05,000\n元気\nですか\n");
+        await using var client = await StartServer(root, projects, Path.Combine(root, "logs"), ct);
+        await CallOk(client, "create_project", new() { ["name"] = "srt", ["width"] = 640, ["height"] = 360, ["fps"] = 10, ["duration"] = 4.0 }, ct);
+        var server = Path.Combine(projects, "srt");
+        var editor = Path.Combine(root, "editor");
+        Directory.CreateDirectory(editor);
+        File.Copy(Path.Combine(server, "project.json"), Path.Combine(editor, "project.json"));
+        Assert.StartsWith("imported talk.ja.srt (language ja from the file name", await CallOk(client, "import_srt", new() { ["path"] = srt }, ct));
+
+        var (cues, problems) = global::ZeyoCut.Core.Editing.CaptionTracks.ParseSrt(File.ReadAllText(srt));
+        var document = global::ZeyoCut.Core.Editing.EditorDocument.Open(editor);
+        using var renderer = new FrameRenderer(editor);
+        var font = global::ZeyoCut.Core.Editing.Languages.FontFor(global::ZeyoCut.Core.Editing.Languages.DefaultFonts, "ja");
+        Assert.True(document.Apply(new global::ZeyoCut.Core.Editing.ImportSrtOperation("talk.ja.srt", "ja", cues, problems, font, p => new global::ZeyoCut.Render.Text.TextMeasurer(renderer, p))), document.Status);
+        Assert.Equal("added the ja captions 'captions_ja': 2 caption(s) from talk.ja.srt; cue 2 (\"元気 / ですか\") runs past the project end (4s), so it ends there", document.Summary);
+        Assert.Equal(TestProjects.WithoutRevision(File.ReadAllText(Path.Combine(server, "project.json"))), TestProjects.WithoutRevision(File.ReadAllText(Path.Combine(editor, "project.json"))));
+    }
+
     [Fact]
     public async Task ServerExportsEachLanguageVersionWithItsOwnVoiceAndCaptions()
     {

@@ -330,6 +330,76 @@ public sealed record RelinkAssetOperation(string AssetId, PreparedAsset Asset) :
     public override string Apply(Project project) => AssetRelinker.Relink(project, AssetId, Asset).Summary;
 }
 
+// A caption added to a track at Start–End, styled like the caption before it (CaptionTracks.AddCue);
+// Empty gives a track without captions its look. Measurer measures text in the project it's applied to.
+public sealed record AddCaptionOperation(string GroupId, double Start, double End, string Text, CaptionOptions? Empty = null, Func<Project, ITextMeasurer>? Measurer = null) : EditOperation
+{
+    public override string Label => $"add_caption {GroupId}";
+
+    public override IReadOnlyList<string> Layers => [GroupId];
+
+    public override string Apply(Project project)
+    {
+        var cue = CaptionTracks.AddCue(project, GroupId, Start, End, Text, Empty ?? new CaptionOptions(), Measurer?.Invoke(project));
+        return $"added caption '{cue.Id}' to '{GroupId}' at {Num(cue.Start)}–{Num(cue.End ?? project.Duration)}s";
+    }
+}
+
+// A caption's text, its anchor kept at the same place in the text box (CaptionTracks.SetText).
+public sealed record CaptionTextOperation(string LayerId, string Text, Func<Project, ITextMeasurer>? Measurer = null) : EditOperation
+{
+    public override string Label => $"update_layer {LayerId}";
+
+    public override IReadOnlyList<string> Layers => [LayerId];
+
+    public override string Apply(Project project)
+    {
+        CaptionTracks.SetText(project, LayerId, Text, Measurer?.Invoke(project));
+        return $"updated the text of caption '{LayerId}'";
+    }
+}
+
+// The same caption in several languages given a new start, a new end or both, as trim_layer trims
+// each (CaptionTracks.Retime), as one step.
+public sealed record RetimeCaptionsOperation(IReadOnlyList<string> LayerIds, double? Start, double? End) : EditOperation
+{
+    public override string Label => $"trim_layer {string.Join(", ", LayerIds)}";
+
+    public override IReadOnlyList<string> Layers => LayerIds;
+
+    public override string Apply(Project project) => string.Join("; ", CaptionTracks.Retime(project, LayerIds, Start, End));
+}
+
+// The style of the captions of caption tracks, as one step (CaptionTracks.Restyle).
+public sealed record RestyleCaptionsOperation(IReadOnlyList<string> GroupIds, CaptionRestyle Change, Func<Project, ITextMeasurer>? Measurer = null) : EditOperation
+{
+    public override string Label => $"restyle_captions {string.Join(", ", GroupIds)}";
+
+    public override IReadOnlyList<string> Layers => GroupIds;
+
+    public override string Apply(Project project)
+    {
+        var count = CaptionTracks.Restyle(project, GroupIds, Change, Measurer?.Invoke(project));
+        return $"restyled {count} caption(s) in {string.Join(", ", GroupIds.Select(id => $"'{id}'"))}: {CaptionTracks.Describe(Change)}";
+    }
+}
+
+// An .srt file's captions as their language's caption track, replacing that language's track, as
+// import_srt imports them by default: the subtitle style in FontFamily (the language's font).
+public sealed record ImportSrtOperation(string FileName, string Language, IReadOnlyList<CueEntry> Cues, IReadOnlyList<string> Notes, string? FontFamily, Func<Project, ITextMeasurer>? Measurer = null) : EditOperation
+{
+    public override string Label => $"import_srt {FileName}";
+
+    public override IReadOnlyList<string> Layers => [CaptionTracks.GroupId(Language)];
+
+    public override string Apply(Project project)
+    {
+        var track = CaptionTracks.AddEntries(project, Language, Cues, new CaptionOptions { FontFamily = FontFamily }, Notes, Measurer?.Invoke(project));
+        return $"{(track.Created ? "added" : "replaced")} the {Language} captions '{track.GroupId}': {track.Cues.Count} caption(s) from {FileName}"
+            + string.Concat(track.Problems.Select(p => $"; {p}"));
+    }
+}
+
 // Several operations as one undo step, such as a drag to another lane (move and reorder). They run
 // in order; if one fails, none is kept.
 public sealed record BatchOperation(string Name, IReadOnlyList<EditOperation> Operations) : EditOperation
