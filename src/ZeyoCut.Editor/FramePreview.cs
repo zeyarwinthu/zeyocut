@@ -174,7 +174,7 @@ public sealed class FramePreview : IDisposable
         }
     }
 
-    private static byte[] Pixels(SKImage image)
+    internal static byte[] Pixels(SKImage image)
     {
         var info = new SKImageInfo(image.Width, image.Height, SKColorType.Bgra8888, SKAlphaType.Premul);
         var pixels = new byte[info.BytesSize];

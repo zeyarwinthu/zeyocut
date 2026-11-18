@@ -33,7 +33,11 @@ public enum Command
     BladeTool,
     PreviousKeyframe,
     NextKeyframe,
+    AddKeyframe,
+    EaseInOut,
+    OnionSkin,
     Edit,
+    Animate,
     Captions,
     Activity,
     Export,
@@ -74,6 +78,7 @@ public static class Shortcuts
     public const string Playback = "Playback";
     public const string Editing = "Editing";
     public const string Timeline = "Timeline";
+    public const string Animate = "Animate";
     public const string Workspaces = "Workspaces";
 
     public static readonly IReadOnlyList<Shortcut> All =
@@ -107,10 +112,15 @@ public static class Shortcuts
         new(Timeline, "Fit timeline", Command.Fit, Key.Z, ModifierKeys.Shift),
         new(Timeline, "Select tool / blade", Command.SelectTool, Key.V),
         new(Timeline, "Select tool / blade", Command.BladeTool, Key.B),
-        new(Timeline, "Previous / next keyframe", Command.PreviousKeyframe, Key.Left, ModifierKeys.Alt),
-        new(Timeline, "Previous / next keyframe", Command.NextKeyframe, Key.Right, ModifierKeys.Alt),
+        new(Animate, "Add keyframe", Command.AddKeyframe, Key.K, ModifierKeys.Alt),
+        new(Animate, "Previous / next keyframe", Command.PreviousKeyframe, Key.Left, ModifierKeys.Alt),
+        new(Animate, "Previous / next keyframe", Command.NextKeyframe, Key.Right, ModifierKeys.Alt),
+        new(Animate, "Ease in-out", Command.EaseInOut, Key.F9),
+        new(Animate, "Onion skin on / off", Command.OnionSkin, Key.O, ModifierKeys.Alt),
         new(Workspaces, "Edit", Command.Edit, Key.D1, ModifierKeys.Control),
         new(Workspaces, "Edit", Command.Edit, Key.NumPad1, ModifierKeys.Control),
+        new(Workspaces, "Animate", Command.Animate, Key.D3, ModifierKeys.Control),
+        new(Workspaces, "Animate", Command.Animate, Key.NumPad3, ModifierKeys.Control),
         new(Workspaces, "Captions", Command.Captions, Key.D5, ModifierKeys.Control),
         new(Workspaces, "Captions", Command.Captions, Key.NumPad5, ModifierKeys.Control),
         new(Workspaces, "Activity", Command.Activity, Key.D6, ModifierKeys.Control),

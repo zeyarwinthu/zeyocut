@@ -82,6 +82,15 @@ when they open.
     writes them), a preview in the chosen language, and a style for all captions: each track's font,
     and the size, position (top, middle or bottom inside the title-safe margin), background (box,
     outline or none) and line width of every track, each as one undo step.
+  - **Animate view:** the animated layers and values in a list with their values at the playhead,
+    their keyframes as a dope sheet (with image layers' drawing changes as a row) or as curves drawn
+    from the interpolation exports use. Dragging keys retimes them by whole frames with their values
+    and easings, and in the graph changes their values, each drag one undo step; a key can't land on
+    another. The eight easings as tiles, Linear / Smooth / Hold, and a custom cubic bezier as
+    `set_keyframes` takes it, for the selected keys. An onion skin (the selected layer at up to five
+    frames before and after the playhead, the ones after in green) and the layer's motion path over
+    the frame. Alt+K keys a value at the playhead, F9 eases in and out, Alt+O turns the onion skin
+    off and on, and Delete takes the selected keys away.
   - **Export view:** renders the project as `start_export` does, with preset cards, language
     versions, a quality (crf 18, 23 or 28), .srt files of the caption tracks as `export_srt` writes
     them, a summary card with a picture of the project, progress and stop, Claude's running exports

@@ -11,7 +11,7 @@ public sealed record WindowPlacement(double Left, double Top, double Width, doub
 // The editor's own settings, in %LOCALAPPDATA%\ZeyoCut\editor.json (or the file ZEYOCUT_EDITOR_SETTINGS
 // names) and never in a project: the recent projects, newest first, the panel sizes and window
 // placement as you left them, the playback size, whether playback loops, the preview's guides and
-// language, and whether the timeline snaps.
+// language, whether the timeline snaps, and the Animate view's onion skin and motion path.
 public sealed class EditorSettings
 {
     public const int MaxRecent = 10;
@@ -50,6 +50,16 @@ public sealed class EditorSettings
     // The language whose version the preview shows, as an export in it shows it: en, ja. Projects
     // without layers in it show English, else their first language.
     public string? PreviewLanguage { get; set; }
+
+    // The Animate view's onion skin: on or off, and how many frames it draws before and after the
+    // playhead (0 to 5); and whether the selected layer's motion path is drawn.
+    public bool OnionSkin { get; set; } = true;
+
+    public int OnionBefore { get; set; } = 3;
+
+    public int OnionAfter { get; set; } = 2;
+
+    public bool MotionPath { get; set; } = true;
 
     public WindowPlacement? Window { get; set; }
 

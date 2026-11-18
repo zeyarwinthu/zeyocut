@@ -70,6 +70,7 @@
   <StreamGeometry x:Key="CardsShape">M4,4 H10 V10 H4 Z M14,4 H20 V10 H14 Z M4,14 H10 V20 H4 Z M14,14 H20 V20 H14 Z</StreamGeometry>
   <StreamGeometry x:Key="ExportShape">M12,15 V3 M7,8 L12,3 L17,8 M5,15 V19 A2,2 0 0 0 7,21 H17 A2,2 0 0 0 19,19 V15</StreamGeometry>
   <StreamGeometry x:Key="RowsShape">M9,6 H20 M9,12 H20 M9,18 H20 M4,6 H5 M4,12 H5 M4,18 H5</StreamGeometry>
+  <StreamGeometry x:Key="OnionShape">M4,12 A5,5 0 1 0 14,12 A5,5 0 1 0 4,12 Z M10,12 A5,5 0 1 0 20,12 A5,5 0 1 0 10,12 Z</StreamGeometry>
 
   <Style TargetType="Button">
     <Setter Property="Foreground" Value="{StaticResource TextBrush}" />

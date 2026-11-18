@@ -9,6 +9,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using ZeyoCut.Core;
+using ZeyoCut.Core.Animation;
 using ZeyoCut.Core.Editing;
 using ZeyoCut.Core.Model;
 
@@ -250,6 +251,202 @@ public class WindowTests
         project = ProjectStore.Load(directory);
         Assert.Equal([3.4, 3.4, 3.4], row.Select(id => project.FindLayer(id)!.Start));
         Assert.Equal("00:03.40", CaptionTime(window, 2, "Start").Text);
+    });
+
+    // tora-jump open in the Animate view with the tora group selected, and its keyframe view.
+    private static (string Directory, KeyframeView Keys) Animate(MainWindow window, string folder)
+    {
+        var directory = TestFiles.Example("tora-jump", folder);
+        window.OpenProject(directory);
+        Assert.Equal(Command.Animate, window.RunKey(Key.D3, ModifierKeys.Control, inField: false));
+        window.SelectLayer("tora");
+        TestWindow.Pump();
+        return (directory, (KeyframeView)window.FindName("Keyframes"));
+    }
+
+    private static Keyframe YKey(Project project, string layer, double time) =>
+        ((VisualLayer)project.FindLayer(layer)!).Y.Keyframes.Single(k => Math.Abs(k.Time - time) < 1e-9);
+
+    // Dragging a key in the dope sheet retimes it by whole frames with its value and easing, as one
+    // step; in the graph, dragging it up changes its value and keeps its time.
+    [Fact]
+    public void RetimingAKeyframeKeepsItsValueAndEasingAndUndoesInOneStep() => TestWindow.Run("window-animate-retime", (window, folder) =>
+    {
+        var (directory, keys) = Animate(window, folder);
+        Assert.Equal(Visibility.Visible, Shown(window, "AnimatePage"));
+        Assert.Equal(["tora", "tora_body", "tora_head", "tora_tail"], keys.Layers.Select(l => l.LayerId).Where(id => id.StartsWith("tora", StringComparison.Ordinal)));
+        var row = keys.Layers.Single(l => l.LayerId == "tora").Rows.Single(r => r.Property == "y");
+        var (first, top) = (keys.PointOf(row.Keys[0])!.Value, keys.PointOf(row.Keys[1])!.Value);
+        var perSecond = (top.X - first.X) / 0.45;
+
+        // 1.35 s to 1.45 s: three frames later.
+        keys.Press(top, ModifierKeys.None);
+        keys.MoveTo(new Point(top.X + perSecond * 0.1 + 1, top.Y), pressed: true);
+        keys.Release();
+        WaitForSaves(window);
+        var project = ProjectStore.Load(directory);
+        Assert.Equal([0.9, 1.45, 1.8], ((VisualLayer)project.FindLayer("tora")!).Y.Keyframes.Select(k => k.Time));
+        Assert.Equal((360.0, Easing.EaseIn), (YKey(project, "tora", 1.45).Value, YKey(project, "tora", 1.45).Easing));
+        Assert.Equal("moved tora.y's keyframe from 1.35s to 1.45s", Text(window, "MessageText"));
+        Assert.Equal(new KeyframeRef("tora", "y", 1.45), Assert.Single(keys.Selection).Ref);
+        Assert.StartsWith("Key at 1.45 s · tora · Position Y = 360 px", Text(window, "KeyStatus"));
+
+        // One step back.
+        Click(window, "UndoButton");
+        WaitForSaves(window);
+        project = ProjectStore.Load(directory);
+        Assert.Equal([0.9, 1.35, 1.8], ((VisualLayer)project.FindLayer("tora")!).Y.Keyframes.Select(k => k.Time));
+        Assert.Equal((360.0, Easing.EaseIn), (YKey(project, "tora", 1.35).Value, YKey(project, "tora", 1.35).Easing));
+
+        // A key can't land on another: 1.8 s is 27 frames after 0.9 s. (1.35 s is between frames,
+        // and keys move by whole frames.)
+        keys.Select([new KeyframeRef("tora", "y", 1.8)]);
+        var last = keys.PointOf(keys.Selection[0])!.Value;
+        keys.Press(last, ModifierKeys.None);
+        keys.MoveTo(new Point(last.X - perSecond * 0.9, last.Y), pressed: true);
+        keys.Release();
+        WaitForSaves(window);
+        Assert.Equal([0.9, 1.35, 1.8], ((VisualLayer)ProjectStore.Load(directory).FindLayer("tora")!).Y.Keyframes.Select(k => k.Time));
+        Assert.Contains("a keyframe can't land on another", Text(window, "SaveStatus"));
+
+        // In the graph, dragging straight up (Shift) changes the value, not the time: Position Y is
+        // drawn the way the layer moves, so up is a smaller y. The selected layer's curves are
+        // drawn; clicking a value in the tree takes its curve away.
+        ((RadioButton)window.FindName("GraphMode")).IsChecked = true;
+        Assert.Equal(KeyframeMode.Graph, keys.Mode);
+        Assert.Equal(["x", "y", "rotation"], keys.ShownRows.Select(r => r.Property));
+        Assert.Equal(Visibility.Visible, Shown(window, "FitCurvesToggle"));
+        foreach (var property in new[] { "x", "rotation" })
+        {
+            var bounds = keys.RowBounds("tora", property)!.Value;
+            keys.Press(new Point(bounds.X + 100, bounds.Y + bounds.Height / 2), ModifierKeys.None);
+            keys.Release();
+        }
+
+        Assert.Equal(["y"], keys.ShownRows.Select(r => r.Property));
+        var key = keys.Layers.Single(l => l.LayerId == "tora").Rows.Single(r => r.Property == "y").Keys[1];
+        var at = keys.PointOf(key)!.Value;
+        keys.Press(at, ModifierKeys.None);
+        keys.MoveTo(new Point(at.X + 2, at.Y - 30), pressed: true, ModifierKeys.Shift);
+        keys.Release();
+        WaitForSaves(window);
+        var moved = YKey(ProjectStore.Load(directory), "tora", 1.35);
+        Assert.True(moved.Value < 360, $"{moved.Value}");
+        Assert.Equal(Math.Round(moved.Value, 1), moved.Value);
+        Assert.Equal(Easing.EaseIn, moved.Easing);
+    });
+
+    // The eight tiles give the selected keys Core's eight easings; the custom curve gives them the
+    // cubicBezier set_keyframes gives, whose values are the curve's.
+    [Fact]
+    public void TheEasingTilesSetCoresEightEasingsAndACustomBezierIsWhatSetKeyframesMakes() => TestWindow.Run("window-animate-easing", (window, folder) =>
+    {
+        var (directory, keys) = Animate(window, folder);
+        var original = ProjectStore.Load(directory);
+        KeyframeRef[] selected = [new("tora", "y", 0.9), new("tora", "y", 1.35)];
+        keys.Select(selected);
+        TestWindow.Pump();
+        Assert.Equal("2 keyframes selected", Text(window, "EasingSelectionText"));
+        var tiles = (ItemsControl)window.FindName("EasingTiles");
+        Assert.Equal(["Linear", "Ease in", "Ease out", "In-out", "Back", "Bounce", "Elastic", "Hold"], tiles.Items.Cast<EasingTile>().Select(t => t.Name));
+        Assert.DoesNotContain(tiles.Items.Cast<EasingTile>(), t => t.Chosen);
+
+        foreach (var (easing, name) in AnimateModel.Tiles)
+        {
+            TestWindow.Pump();
+            Descendants<Button>(tiles).Single(b => Equals(b.Tag, easing)).RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+            WaitForSaves(window);
+            var project = ProjectStore.Load(directory);
+            Assert.Equal([easing, easing], selected.Select(r => YKey(project, "tora", r.Time).Easing));
+            Assert.Equal(name, Assert.Single(tiles.Items.Cast<EasingTile>(), t => t.Chosen).Name);
+        }
+
+        Assert.Equal(true, ((System.Windows.Controls.Primitives.ToggleButton)window.FindName("HoldButton")).IsChecked);
+        Assert.Equal(Command.EaseInOut, window.RunKey(Key.F9, ModifierKeys.None, inField: false));
+        WaitForSaves(window);
+        Assert.Equal(Easing.EaseInOut, YKey(ProjectStore.Load(directory), "tora", 0.9).Easing);
+        Assert.Equal(true, ((System.Windows.Controls.Primitives.ToggleButton)window.FindName("SmoothButton")).IsChecked);
+
+        // The custom curve: as set_keyframes makes it from the project as it was.
+        Assert.Equal(["0.00", "0.00", "0.40", "1.00"], new[] { "BezierX1", "BezierY1", "BezierX2", "BezierY2" }.Select(n => ((TextBox)window.FindName(n)).Text));
+        Click(window, "BezierApply");
+        WaitForSaves(window);
+        KeyframeEditor.SetKeyframes(original,
+        [
+            new KeyframeEntry("tora", "y", 0.9, System.Text.Json.JsonSerializer.SerializeToElement(605), "cubicBezier", [0, 0, 0.4, 1]),
+            new KeyframeEntry("tora", "y", 1.35, System.Text.Json.JsonSerializer.SerializeToElement(360), "cubicBezier", [0, 0, 0.4, 1]),
+        ]);
+        var expected = JsonNode.Parse(ZeyoCut.Core.Serialization.ProjectJson.Serialize(original))!.AsObject();
+        expected.Remove("revision");
+        Assert.Equal(expected.ToJsonString(), ProjectJson(directory));
+        var y = ((VisualLayer)ProjectStore.Load(directory).FindLayer("tora")!).Y;
+        Assert.Equal(605 + (360 - 605) * 0.765988682530208, Interpolator.Evaluate(y, 0.9 + 0.225), 1e-9);
+        Assert.Equal(605 + (360 - 605) * 0.941991889400904, Interpolator.Evaluate(y, 0.9 + 0.3375), 1e-9);
+        Assert.DoesNotContain(tiles.Items.Cast<EasingTile>(), t => t.Chosen);
+
+        // Numbers it can't take are refused with Core's reason.
+        ((TextBox)window.FindName("BezierX1")).Text = "1.5";
+        Click(window, "BezierApply");
+        WaitForSaves(window);
+        Assert.Contains("x1 and x2 must be from 0 to 1", Text(window, "SaveStatus"));
+    });
+
+    // The onion skin draws the selected layer around the playhead, Alt+O turns it off and on, and the
+    // motion path is the layer's way across the frame; Alt+K keys its position at the playhead, and
+    // Delete takes the selected keys away.
+    [Fact]
+    public void TheAnimateViewDrawsTheSelectedLayersOnionSkinAndMotionPath() => TestWindow.Run("window-animate-onion", (window, folder) =>
+    {
+        var (directory, keys) = Animate(window, folder);
+        var preview = (AnimatePreview)window.FindName("AnimateFrame");
+        for (var i = 0; i < 30; i++)
+        {
+            window.RunKey(Key.Right, ModifierKeys.None, inField: false);
+        }
+
+        Assert.Equal("frame 30 of 89", Text(window, "AnimateFrameText"));
+        Assert.Equal("Onion skin · 3 before / 2 after", Text(window, "OnionText"));
+        for (var i = 0; i < 500 && preview.Ghosts is null; i++)
+        {
+            TestWindow.Pump(10);
+        }
+
+        var ghosts = Assert.IsAssignableFrom<BitmapSource>(preview.Ghosts);
+        Assert.Equal((1280, 720), (ghosts.PixelWidth, ghosts.PixelHeight));
+        Assert.Equal(90, preview.Path.Count);
+        Assert.Equal(30, keys.Playhead);
+
+        Assert.Equal(Command.OnionSkin, window.RunKey(Key.O, ModifierKeys.Alt, inField: false));
+        Assert.Null(preview.Ghosts);
+        Assert.Equal("Onion skin off", Text(window, "MessageText"));
+        Assert.Contains("\"onionSkin\": false", File.ReadAllText(Path.Combine(folder, "editor.json")));
+        window.RunKey(Key.O, ModifierKeys.Alt, inField: false);
+        for (var i = 0; i < 500 && preview.Ghosts is null; i++)
+        {
+            TestWindow.Pump(10);
+        }
+
+        Assert.NotNull(preview.Ghosts);
+
+        // Alt+K: the position at the playhead, 1 s, with the values it has there.
+        var before = (VisualLayer)ProjectStore.Load(directory).FindLayer("tora")!;
+        Assert.Equal(Command.AddKeyframe, window.RunKey(Key.K, ModifierKeys.Alt, inField: false));
+        WaitForSaves(window);
+        var tora = (VisualLayer)ProjectStore.Load(directory).FindLayer("tora")!;
+        Assert.Equal([0.9, 1, 1.8], tora.X.Keyframes.Select(k => k.Time));
+        Assert.Equal([0.9, 1, 1.35, 1.8], tora.Y.Keyframes.Select(k => k.Time));
+        Assert.Equal(Interpolator.Evaluate(before.X, 1), tora.X.Keyframes[1].Value, 1e-9);
+        Assert.Equal(Interpolator.Evaluate(before.Y, 1), tora.Y.Keyframes[1].Value, 1e-9);
+
+        // Delete: the keys selected, as one step.
+        keys.Select([new KeyframeRef("tora", "x", 1), new KeyframeRef("tora", "y", 1)]);
+        Assert.Equal(Command.Delete, window.RunKey(Key.Delete, ModifierKeys.None, inField: false));
+        WaitForSaves(window);
+        tora = (VisualLayer)ProjectStore.Load(directory).FindLayer("tora")!;
+        Assert.Equal([0.9, 1.8], tora.X.Keyframes.Select(k => k.Time));
+        Assert.Equal([0.9, 1.35, 1.8], tora.Y.Keyframes.Select(k => k.Time));
+        Assert.Empty(keys.Selection);
+        Assert.False(window.CanRun(Command.Delete));
     });
 
     [Fact]
@@ -1493,18 +1690,28 @@ public class WindowTests
         return json.ToJsonString();
     }
 
-    // The keys run from the shortcuts table: each key reaches its command, Ctrl+D duplicates, N turns
-    // snapping off, Ctrl+6, Ctrl+E and Ctrl+1 switch views, and ? and F1 open the list Esc closes.
+    // The keys run from the shortcuts table: each key reaches its command (the Animate view's own in
+    // that view), Ctrl+D duplicates, N turns snapping off, Ctrl+3, Ctrl+5, Ctrl+6, Ctrl+E and Ctrl+1
+    // switch views, and ? and F1 open the list Esc closes.
     [Fact]
     public void EveryKeyRunsItsCommandFromTheShortcutsTable() => TestWindow.Run("window-keys", (window, folder) =>
     {
         Assert.Equal(Visibility.Collapsed, Shown(window, "WelcomePage"));
         var directory = WithTitle(window, folder);
-        Assert.All(Shortcuts.All, s =>
+        var animateOnly = new[] { Command.AddKeyframe, Command.EaseInOut, Command.OnionSkin };
+        Assert.All(Shortcuts.All.Where(s => !animateOnly.Contains(s.Command)), s =>
         {
             Assert.True(window.CanRun(s.Command), $"{s.Command} can't run");
             Assert.Equal(s.Command, Shortcuts.For(s.Key, s.Modifiers).First(c => window.CanRun(c.Command)).Command);
         });
+        Assert.All(animateOnly, c => Assert.False(window.CanRun(c)));
+        Assert.Equal(Command.Animate, window.RunKey(Key.D3, ModifierKeys.Control, inField: false));
+        Assert.Equal(Visibility.Visible, Shown(window, "AnimatePage"));
+        Assert.Equal(Visibility.Collapsed, Shown(window, "Workspace"));
+        Assert.All(animateOnly, c => Assert.True(window.CanRun(c), $"{c} can't run"));
+        Assert.True(window.CanRun(Command.Play));
+        Assert.False(window.CanRun(Command.Split));
+        Assert.Equal(Command.Edit, window.RunKey(Key.D1, ModifierKeys.Control, inField: false));
 
         // Typing in a field, only Ctrl shortcuts are the window's, and undo isn't.
         Assert.Null(window.RunKey(Key.S, ModifierKeys.None, inField: true));
@@ -1538,7 +1745,7 @@ public class WindowTests
         TestWindow.Pump();
         Assert.Equal(Visibility.Visible, Shown(window, "ShortcutsDialog"));
         var groups = (ItemsControl)window.FindName("ShortcutGroups");
-        Assert.Equal(["Playback", "Editing", "Timeline", "Workspaces"], groups.Items.Cast<ShortcutGroup>().Select(g => g.Name));
+        Assert.Equal(["Playback", "Editing", "Timeline", "Animate", "Workspaces"], groups.Items.Cast<ShortcutGroup>().Select(g => g.Name));
         ((TextBox)window.FindName("ShortcutSearch")).Text = "ctrl d";
         Assert.Equal("Duplicate", Assert.Single(Assert.Single(groups.Items.Cast<ShortcutGroup>()).Rows).Action);
         ((TextBox)window.FindName("ShortcutSearch")).Text = "ctrl q";
@@ -1553,7 +1760,7 @@ public class WindowTests
         Assert.Equal(Visibility.Collapsed, Shown(window, "DialogLayer"));
         Assert.Equal(Command.Shortcuts, window.RunKey(Key.F1, ModifierKeys.None, inField: false));
         Assert.Equal("", ((TextBox)window.FindName("ShortcutSearch")).Text);
-        Assert.Equal(4, groups.Items.Count);
+        Assert.Equal(5, groups.Items.Count);
         Assert.Equal(Command.Cancel, window.RunKey(Key.Escape, ModifierKeys.None, inField: true));
         Assert.Equal(Visibility.Collapsed, Shown(window, "ShortcutsDialog"));
     });

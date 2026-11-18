@@ -985,6 +985,42 @@
       </DockPanel>
     </DataTemplate>
 
+    <DataTemplate x:Key="EasingTileTemplate">
+      <Button Tag="{Binding Easing}" Margin="0,0,8,8" IsEnabled="{Binding Enabled}" Click="OnEasingTile" ToolTip="{Binding Tip}" AutomationProperties.Name="{Binding Name}" FocusVisualStyle="{x:Null}">
+        <Button.Template>
+          <ControlTemplate TargetType="Button">
+            <Border x:Name="Bd" Background="{StaticResource HeaderBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="8" Padding="4,8,4,6">
+              <StackPanel>
+                <Grid Width="44" Height="32" HorizontalAlignment="Center">
+                  <Path Data="M4,28 L40,28" Stroke="{StaticResource BorderBrush}" StrokeThickness="1" />
+                  <Path x:Name="Curve" Data="{Binding Curve}" Stroke="{StaticResource SecondaryTextBrush}" StrokeThickness="2" StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
+                </Grid>
+                <TextBlock Text="{Binding Name}" Foreground="{StaticResource TextBrush}" FontSize="11" FontWeight="Medium" HorizontalAlignment="Center" Margin="0,4,0,0" />
+              </StackPanel>
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="Bd" Property="Background" Value="{StaticResource HoverBrush}" />
+              </Trigger>
+              <DataTrigger Binding="{Binding Chosen}" Value="True">
+                <Setter TargetName="Bd" Property="Background" Value="{StaticResource ChosenCardBrush}" />
+                <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource AccentBrush}" />
+                <Setter TargetName="Bd" Property="BorderThickness" Value="2" />
+                <Setter TargetName="Bd" Property="Padding" Value="3,7,3,5" />
+                <Setter TargetName="Curve" Property="Stroke" Value="{StaticResource AccentBrush}" />
+              </DataTrigger>
+              <Trigger Property="IsKeyboardFocused" Value="True">
+                <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource AccentHoverBrush}" />
+              </Trigger>
+              <Trigger Property="IsEnabled" Value="False">
+                <Setter TargetName="Bd" Property="Opacity" Value="0.45" />
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Button.Template>
+      </Button>
+    </DataTemplate>
+
     <DataTemplate x:Key="PreviewLanguageTemplate">
       <RadioButton Style="{StaticResource SegmentButton}" GroupName="CaptionPreviewLanguage" Content="{Binding Code}" IsChecked="{Binding Chosen, Mode=OneTime}" Tag="{Binding Language}"
                    FontSize="11" FontWeight="Medium" Checked="OnPreviewLanguage" ToolTip="{Binding Tip}" />
@@ -1030,6 +1066,8 @@
                 Margin="16,0" VerticalAlignment="Center" Visibility="Collapsed">
           <StackPanel Orientation="Horizontal">
             <RadioButton x:Name="EditMode" GroupName="Mode" Style="{StaticResource TabSegment}" Content="Edit" IsChecked="True" Checked="OnMode" ToolTip="The timeline, preview and inspector (Ctrl+1)" />
+            <RadioButton x:Name="AnimateMode" GroupName="Mode" Style="{StaticResource TabSegment}" Content="Animate" Checked="OnMode"
+                         ToolTip="Keyframes as a dope sheet or as curves, their easing, and the onion skin (Ctrl+3)" />
             <RadioButton x:Name="CaptionsMode" GroupName="Mode" Style="{StaticResource TabSegment}" Content="Captions" Checked="OnMode"
                          ToolTip="Every language's captions side by side, and their style (Ctrl+5)" />
             <RadioButton x:Name="ActivityMode" GroupName="Mode" Style="{StaticResource TabSegment}" Content="Activity" Checked="OnMode"
@@ -1174,6 +1212,130 @@
         </StackPanel>
       </StackPanel>
     </ScrollViewer>
+
+    <Grid x:Name="AnimatePage" Grid.Row="1" Visibility="Collapsed">
+      <Grid.RowDefinitions>
+        <RowDefinition Height="5*" MinHeight="220" />
+        <RowDefinition Height="4*" MinHeight="240" />
+      </Grid.RowDefinitions>
+      <Grid>
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="*" />
+          <ColumnDefinition Width="360" />
+        </Grid.ColumnDefinitions>
+        <DockPanel Background="{StaticResource PreviewBrush}">
+          <Border DockPanel.Dock="Top" Height="40" BorderBrush="{StaticResource MenuBrush}" BorderThickness="0,0,0,1" Padding="12,0">
+            <DockPanel TextElement.FontSize="12">
+              <ToggleButton x:Name="MotionPathToggle" DockPanel.Dock="Right" Style="{StaticResource ToggleSegment}" Height="28" FontWeight="Medium" Margin="6,0,0,0"
+                            Click="OnMotionPathToggle" ToolTip="The selected layer's path: where its anchor goes, with a dot at each keyframe">
+                <TextBlock Text="Motion path" Margin="2,0" />
+              </ToggleButton>
+              <Button x:Name="OnionCounts" DockPanel.Dock="Right" Style="{StaticResource IconButton}" Width="24" Height="28" Padding="0" Margin="2,0,0,0" Click="OnOnionCounts"
+                      ToolTip="How many frames the onion skin draws before and after the playhead" AutomationProperties.Name="Onion skin frames">
+                <local:Icon Data="{StaticResource ChevronDownShape}" Width="12" Height="12" Foreground="{StaticResource SecondaryTextBrush}" />
+              </Button>
+              <ToggleButton x:Name="OnionToggle" DockPanel.Dock="Right" Style="{StaticResource ToggleSegment}" Height="28" FontWeight="Medium" Click="OnOnionToggle"
+                            ToolTip="The selected layer at the frames around the playhead, fainter the further they are, the ones after in green (Alt+O)">
+                <StackPanel Orientation="Horizontal">
+                  <local:Icon Data="{StaticResource OnionShape}" Width="14" Height="14" Margin="0,0,6,0" />
+                  <TextBlock x:Name="OnionText" VerticalAlignment="Center" />
+                </StackPanel>
+              </ToggleButton>
+              <TextBlock Text="Program" Foreground="{StaticResource TextBrush}" FontWeight="Medium" VerticalAlignment="Center" />
+              <TextBlock x:Name="AnimateFrameText" Foreground="{StaticResource SecondaryTextBrush}" Margin="10,0,0,0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+            </DockPanel>
+          </Border>
+          <Grid>
+            <local:AnimatePreview x:Name="AnimateFrame" Frame="{Binding Source, ElementName=PreviewImage}" RenderOptions.BitmapScalingMode="HighQuality" />
+            <TextBlock Style="{StaticResource Secondary}" Text="{Binding Text, ElementName=PreviewMessage}" Visibility="{Binding Visibility, ElementName=PreviewMessage}"
+                       TextWrapping="Wrap" TextTrimming="None" Margin="24" MaxWidth="520" HorizontalAlignment="Center" VerticalAlignment="Center" />
+          </Grid>
+        </DockPanel>
+
+        <Border Grid.Column="1" Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource DividerBrush}" BorderThickness="1,0,0,0">
+          <DockPanel Margin="16">
+            <DockPanel DockPanel.Dock="Top" Margin="0,0,0,14">
+              <TextBlock x:Name="EasingSelectionText" DockPanel.Dock="Right" Style="{StaticResource Secondary}" FontSize="12" VerticalAlignment="Center" />
+              <TextBlock Text="Easing" FontWeight="SemiBold" VerticalAlignment="Center" />
+            </DockPanel>
+            <Button x:Name="BezierApply" DockPanel.Dock="Bottom" Style="{StaticResource AccentButton}" Content="Apply to selection" Height="34" Padding="12,0" Click="OnBezierApply"
+                    ToolTip="The custom curve above for the selected keyframes' segments, as set_keyframes takes it (easing cubicBezier)" />
+            <StackPanel DockPanel.Dock="Top">
+              <ItemsControl x:Name="EasingTiles" Focusable="False" ItemTemplate="{StaticResource EasingTileTemplate}" Margin="0,0,-8,0">
+                <ItemsControl.ItemsPanel>
+                  <ItemsPanelTemplate>
+                    <UniformGrid Columns="4" />
+                  </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+              </ItemsControl>
+              <TextBlock Text="CUSTOM BEZIER" Foreground="{StaticResource SecondaryTextBrush}" FontSize="11" FontWeight="SemiBold" Margin="0,6,0,8" />
+              <UniformGrid x:Name="BezierBoxes" Columns="4" Margin="0,0,-6,14">
+                <StackPanel Margin="0,0,6,0">
+                  <TextBlock Text="x1" Style="{StaticResource Secondary}" FontSize="11" Margin="0,0,0,4" />
+                  <TextBox x:Name="BezierX1" Height="30" Padding="8,0" VerticalContentAlignment="Center" FontFamily="Consolas" FontSize="12" AutomationProperties.Name="Bezier x1"
+                           ToolTip="The first handle's time, from 0 to 1" PreviewKeyDown="OnBezierKey" />
+                </StackPanel>
+                <StackPanel Margin="0,0,6,0">
+                  <TextBlock Text="y1" Style="{StaticResource Secondary}" FontSize="11" Margin="0,0,0,4" />
+                  <TextBox x:Name="BezierY1" Height="30" Padding="8,0" VerticalContentAlignment="Center" FontFamily="Consolas" FontSize="12" AutomationProperties.Name="Bezier y1"
+                           ToolTip="The first handle's value: below 0 or above 1 overshoots" PreviewKeyDown="OnBezierKey" />
+                </StackPanel>
+                <StackPanel Margin="0,0,6,0">
+                  <TextBlock Text="x2" Style="{StaticResource Secondary}" FontSize="11" Margin="0,0,0,4" />
+                  <TextBox x:Name="BezierX2" Height="30" Padding="8,0" VerticalContentAlignment="Center" FontFamily="Consolas" FontSize="12" AutomationProperties.Name="Bezier x2"
+                           ToolTip="The second handle's time, from 0 to 1" PreviewKeyDown="OnBezierKey" />
+                </StackPanel>
+                <StackPanel Margin="0,0,6,0">
+                  <TextBlock Text="y2" Style="{StaticResource Secondary}" FontSize="11" Margin="0,0,0,4" />
+                  <TextBox x:Name="BezierY2" Height="30" Padding="8,0" VerticalContentAlignment="Center" FontFamily="Consolas" FontSize="12" AutomationProperties.Name="Bezier y2"
+                           ToolTip="The second handle's value: below 0 or above 1 overshoots" PreviewKeyDown="OnBezierKey" />
+                </StackPanel>
+              </UniformGrid>
+            </StackPanel>
+            <TextBlock Style="{StaticResource Secondary}" FontSize="12" TextWrapping="Wrap" TextTrimming="None" LineHeight="18" VerticalAlignment="Top"
+                       Text="An easing shapes the segment from a keyframe to the next one. Select keyframes below, then pick a curve." />
+          </DockPanel>
+        </Border>
+      </Grid>
+
+      <Border Grid.Row="1" Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,1,0,0">
+        <DockPanel>
+          <Border DockPanel.Dock="Top" MinHeight="40" BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,0,0,1" Padding="12,0">
+            <DockPanel TextElement.FontSize="12">
+              <ToggleButton x:Name="FitCurvesToggle" DockPanel.Dock="Right" Style="{StaticResource ToggleSegment}" Height="28" FontWeight="Medium" Margin="10,0,0,0"
+                            Click="OnFitCurves" ToolTip="The graph's time ruler fitted to the shown curves' keyframes, rather than the whole project">
+                <TextBlock Text="Fit curves" Margin="2,0" />
+              </ToggleButton>
+              <TextBlock x:Name="KeyStatus" DockPanel.Dock="Right" FontFamily="Consolas" Foreground="{StaticResource SecondaryTextBrush}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+              <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                <Border Background="{StaticResource InputBrush}" CornerRadius="7" Padding="2">
+                  <StackPanel Orientation="Horizontal">
+                    <RadioButton x:Name="DopeSheetMode" GroupName="KeyframeMode" Style="{StaticResource SegmentButton}" Content="Dope sheet" IsChecked="True" Checked="OnKeyframeMode"
+                                 ToolTip="Each value's keyframes on its own row; drag them to retime" />
+                    <RadioButton x:Name="GraphMode" GroupName="KeyframeMode" Style="{StaticResource SegmentButton}" Content="Graph" Checked="OnKeyframeMode"
+                                 ToolTip="The values' curves; drag a keyframe to change its time and value" />
+                  </StackPanel>
+                </Border>
+                <Border Width="1" Height="20" Background="{StaticResource BorderBrush}" Margin="8,0" />
+                <ToggleButton x:Name="LinearButton" Style="{StaticResource ToggleSegment}" Height="28" Tag="Linear" Click="OnEasingButton" FontWeight="Medium"
+                              ToolTip="The selected keyframes' segments at an even speed">
+                  <TextBlock Text="Linear" Margin="2,0" />
+                </ToggleButton>
+                <ToggleButton x:Name="SmoothButton" Style="{StaticResource ToggleSegment}" Height="28" Tag="EaseInOut" Click="OnEasingButton" FontWeight="Medium" Margin="2,0,0,0"
+                              ToolTip="The selected keyframes' segments easing in and out (F9)">
+                  <TextBlock Text="Smooth" Margin="2,0" />
+                </ToggleButton>
+                <ToggleButton x:Name="HoldButton" Style="{StaticResource ToggleSegment}" Height="28" Tag="Hold" Click="OnEasingButton" FontWeight="Medium" Margin="2,0,0,0"
+                              ToolTip="The selected keyframes' values held until the next keyframe">
+                  <TextBlock Text="Hold" Margin="2,0" />
+                </ToggleButton>
+              </StackPanel>
+            </DockPanel>
+          </Border>
+          <local:KeyframeView x:Name="Keyframes" Seek="OnSeek" Edit="OnTimelineEdit" SelectionChanged="OnKeySelection" LayerChosen="OnKeyLayer" />
+        </DockPanel>
+      </Border>
+    </Grid>
 
     <Grid x:Name="CaptionsPage" Grid.Row="1" Visibility="Collapsed">
       <Grid.ColumnDefinitions>

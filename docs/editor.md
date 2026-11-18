@@ -4,7 +4,7 @@
 
 ![The editor with the Tora Jumps example open: the media on the left, the frame at 0.967 seconds in the middle, the inspector on the right with Tora's position and rotation animated, and the timeline below with the keyframes on Tora's clip](editor-edit.png)
 
-It imports media, plays the edit with its sound, moves, trims and splits clips on a timeline, places, crops and animates layers with keyframes, sets effects, color adjustments and face-blur settings, edits captions, changes volumes and a video's speed, and exports. Masks, motion paths and transitions stay with the model: ask it for those.
+It imports media, plays the edit with its sound, moves, trims and splits clips on a timeline, places, crops and animates layers with keyframes, retimes and eases keyframes on a dope sheet or as curves, sets effects, color adjustments and face-blur settings, edits captions, changes volumes and a video's speed, and exports. Masks, motion paths and transitions stay with the model: ask it for those.
 
 ## Open a project
 
@@ -25,7 +25,7 @@ When a project opens with files missing (moved or renamed), the **Relink** view 
 
 The first time the editor starts, when it has no settings file yet, the **Welcome** view shows the projects folder and how to connect Claude: the `zeyocut` entry for Claude Desktop's `claude_desktop_config.json`, with the path of the `ZeyoCut.Mcp.exe` next to the editor, to copy, or the bundle to install instead. Its Connect step turns green when a client lists the server's tools after the Welcome opened (the server notes the last one in `connected.json` in its log folder). The last step copies the sample `examples\tora-jump` into the projects folder, unless a project of that name is there already, and opens it. Skip setup, or I'll do this later, goes to Home, and the Welcome doesn't open again.
 
-The header across the top names the project and whether it's saved ("Saved · rev N"). The logo and **Projects** close the project and go back to Home. In the middle, **Edit**, **Captions** and **Activity** switch views; on the right are Undo and Redo, when Claude last saved the project, and **Export**, which opens the Export view (Ctrl+1, Ctrl+5, Ctrl+6 and Ctrl+E go to Edit, Captions, Activity and Export; ? or F1 lists every key). The status bar at the bottom names the selected clip, counts the layers and lanes, and says what the last change did.
+The header across the top names the project and whether it's saved ("Saved · rev N"). The logo and **Projects** close the project and go back to Home. In the middle, **Edit**, **Animate**, **Captions** and **Activity** switch views; on the right are Undo and Redo, when Claude last saved the project, and **Export**, which opens the Export view (Ctrl+1, Ctrl+3, Ctrl+5, Ctrl+6 and Ctrl+E go to Edit, Animate, Captions, Activity and Export; ? or F1 lists every key). The status bar at the bottom names the selected clip, counts the layers and lanes, and says what the last change did.
 
 ## Media
 
@@ -124,6 +124,21 @@ To blur seconds 2 to 4, say:
 3. At 3.5 s, press ◇.
 4. At 4 s, type 0.
 
+## Animate
+
+![The Animate view with Tora Jumps open: the frame with Tora's onion skin and the dashed path of the jump, the eight easing tiles and the custom curve on the right, and below the graph of Tora's Position X, Position Y and Rotation, the key at 1.35 s selected](editor-animate.png)
+
+**Animate** in the header (Ctrl+3) is for timing a move. The playback keys work here as in the Edit view.
+
+- **The list on the left** has every layer with keyframes, under the layers it's attached to, and the camera when it moves; the selected layer is there even before it has any. ▸ opens a layer to its animated values, each with its value at the playhead (794.8, 120%, 5°), and an image layer's drawing changes (a head's `normal` and `happy`) are a value of their own. A layer's name selects it, as clicking its clip does.
+- **Dope sheet** puts each value's keyframes on its row, and a layer's row has them all. Click a key to select it; Ctrl adds or takes one away, Shift adds, and clicking a value's name selects its keys. Drag keys to retime them: they move by whole frames and keep their values and easings, as one undo step. A key can't land on another's time. Clicking the ruler or an empty place moves the playhead.
+- **Graph** draws the selected layer's values as curves, each fitted to the height, from the interpolation exports use; click a value in the list to add or take away its curve (up to six). Position Y and other values that grow down the frame are drawn the way the layer moves, so a jump goes up. Drag a key to change its time and its value; Shift keeps to one of the two. **Fit curves** fits the ruler to the curves' keys rather than the whole video.
+- **Linear**, **Smooth** (ease in and out, F9) and **Hold** set the easing of the selected keys: how the value goes from each to the next key.
+- **Easing** on the right has the eight easings as tiles, the selected keys' one marked; a tile sets it at once. **Custom bezier** takes a curve as CSS's `cubic-bezier()` does (x1 and x2 from 0 to 1, y1 and y2 past 0 or 1 to overshoot), and **Apply to selection** gives it to the selected keys, as `set_keyframes` does with easing `cubicBezier`.
+- **Onion skin** draws the selected layer with the layers under it at the frames around the playhead: 3 before and 2 after, fainter the further they are, the ones after in green. The menu beside it sets how many, up to five each way, and Alt+O turns it off and on. It shows while paused and is never in an export.
+- **Motion path** draws the selected layer's path across the frame: where its anchor goes, with a dot at each keyframe. Moving the path is the model's.
+- **Alt+K** adds a keyframe at the playhead to the value clicked last in the list, or to the selected layer's position. **Delete** takes the selected keys away, and **Escape** clears them.
+
 ## Captions
 
 ![The Captions view with comic-panels open: its English, Japanese and Burmese captions side by side in three rows, the first being edited, with the preview and the style of all captions on the right](editor-captions.png)
@@ -177,18 +192,21 @@ Under **Exports folder**, an export running here has its progress and Stop; expo
 | ← / → | The previous and next frame; with Shift, a second |
 | Home / End | The first and last frame |
 | ↑ / ↓ | The previous and next clip edge |
-| Alt+← / Alt+→ | The selected clip's previous and next keyframe |
+| Alt+← / Alt+→ | The selected clip's previous and next keyframe; in Animate, of the selected layer and the layers under it, or of every layer listed when none is selected |
+| Alt+K | In Animate, a keyframe at the playhead for the value clicked last, or the selected layer's position |
+| F9 | In Animate, ease the selected keys in and out (Smooth) |
+| Alt+O | In Animate, the onion skin on and off |
 | S or Ctrl+B | Split the selected clip at the playhead |
 | B / V | The Blade tool, which splits a clip where it's clicked, and the Select tool |
 | M | Add a chapter marker at the playhead |
-| Delete or Backspace | Delete the selected clip with its child layers |
+| Delete or Backspace | Delete the selected clip with its child layers; in Animate, the selected keys |
 | Ctrl+D | Duplicate the selected clip with its child layers |
 | Escape | Close the view open over the window, else cancel a drag, else go back to the Select tool, else clear the selection; in a field, put it back |
 | − / + | Zoom the timeline out and in (also Ctrl+wheel) |
 | Shift+Z | Fit the whole video in the timeline |
 | N | Snapping on and off |
 | Ctrl+Z / Ctrl+Shift+Z or Ctrl+Y | Undo and redo; in a field, the typing there |
-| Ctrl+1 / Ctrl+5 / Ctrl+6 / Ctrl+E | Edit, Captions, Activity and Export |
+| Ctrl+1 / Ctrl+3 / Ctrl+5 / Ctrl+6 / Ctrl+E | Edit, Animate, Captions, Activity and Export |
 | Ctrl+N | New project |
 | Ctrl+O | Open a project |
 | Ctrl+I | Import media |
@@ -196,10 +214,11 @@ Under **Exports folder**, an export running here has its progress and Stop; expo
 
 ## Settings
 
-The editor reads `FfmpegPath`, `ProjectsRoot`, `LibraryPath` and `VideoEncoder` from the same `appsettings.json` and environment variables as the server (see [Configuration](https://github.com/zeyarwinthu/zeyocut#configuration)). It keeps its own settings (recent projects, cards or list on Home, panel sizes, window position, snapping, playback size, preview language) in `%LOCALAPPDATA%\ZeyoCut\editor.json`, or the file `ZEYOCUT_EDITOR_SETTINGS` names, never in the project. While there's no such file, the editor starts with the Welcome view.
+The editor reads `FfmpegPath`, `ProjectsRoot`, `LibraryPath` and `VideoEncoder` from the same `appsettings.json` and environment variables as the server (see [Configuration](https://github.com/zeyarwinthu/zeyocut#configuration)). It keeps its own settings (recent projects, cards or list on Home, panel sizes, window position, snapping, playback size, preview language, the onion skin's frames and whether it and the motion path show) in `%LOCALAPPDATA%\ZeyoCut\editor.json`, or the file `ZEYOCUT_EDITOR_SETTINGS` names, never in the project. While there's no such file, the editor starts with the Welcome view.
 
 ## What it leaves to the model
 
-- Masks, motion paths and transitions.
+- Masks, motion paths and transitions. The Animate view draws a motion path but doesn't move it.
+- Saving a custom easing as a preset, and a curve's bezier handles in the graph: type the curve's numbers instead.
 - Closing a gap: deleting a clip leaves one. The model's `remove_range` cuts a stretch of time out of every layer.
 - One clip is selected at a time.
