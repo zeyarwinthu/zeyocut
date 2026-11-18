@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 
+using ZeyoCut.Core;
 using ZeyoCut.Core.Editing;
 using ZeyoCut.Core.Model;
 
@@ -248,5 +249,130 @@ public class StartTests
         {
             Environment.SetEnvironmentVariable(EditorSettings.PathVariable, before);
         }
+    }
+
+    [Fact]
+    public void TheNewProjectViewNamesTheShapeAndThePresetItFits()
+    {
+        Assert.Equal("16:9 · 1920×1080 · 30 fps", NewProjectChoices.Shape(1920, 1080, 30));
+        Assert.Equal("9:16 · 1080×1920 · 60 fps", NewProjectChoices.Shape(1080, 1920, 60));
+        Assert.Equal("4:5 · 1080×1350 · 25 fps", NewProjectChoices.Shape(1080, 1350, 25));
+        Assert.Equal("1000×777 · 24 fps", NewProjectChoices.Shape(1000, 777, 24));
+        Assert.Equal("Fits YouTube and the youtube_1080p export preset.", NewProjectChoices.ExportNote(1920, 1080, 30));
+        Assert.Equal("Fits Shorts, Reels and TikTok and the shorts_1080p export preset.", NewProjectChoices.ExportNote(1080, 1920, 30));
+        Assert.Equal("The youtube_1080p export preset has this size at 30 fps; Export's Project settings keeps 60 fps.", NewProjectChoices.ExportNote(1920, 1080, 60));
+        Assert.Equal("No export preset has this size; Export's Project settings exports it as it is.", NewProjectChoices.ExportNote(1080, 1080, 30));
+        Assert.Equal("Square", NewProjectChoices.CanvasOf(1080, 1080).Name);
+        Assert.Equal(NewProjectChoices.Custom, NewProjectChoices.CanvasOf(1000, 777).Name);
+
+        // A name no project has yet.
+        var root = TestFiles.NewFolder("new-project-name");
+        Assert.Equal("New project", NewProjectChoices.FreeName(root));
+        Directory.CreateDirectory(Path.Combine(root, ProjectStore.FolderName("New project")));
+        Directory.CreateDirectory(Path.Combine(root, ProjectStore.FolderName("New project 2")));
+        Assert.Equal("New project 3", NewProjectChoices.FreeName(root));
+        Assert.Equal("New project", NewProjectChoices.FreeName(Path.Combine(root, "not there")));
+    }
+
+    [Fact]
+    public void TheWelcomeGivesTheServersEntryAndSaysWhetherClaudeConnected()
+    {
+        Assert.Equal("""
+            {
+              "mcpServers": {
+                "zeyocut": {
+                  "command": "C:\\Tools\\ZeyoCut\\ZeyoCut.Mcp.exe"
+                }
+              }
+            }
+            """.ReplaceLineEndings("\n"), Welcome.Config(@"C:\Tools\ZeyoCut\ZeyoCut.Mcp.exe"));
+        Assert.Contains("""
+            "command": "D:\\Café\\ZeyoCut.Mcp.exe"
+            """, Welcome.Config(@"D:\Café\ZeyoCut.Mcp.exe"));
+
+        var since = new DateTimeOffset(2026, 11, 18, 10, 0, 0, TimeSpan.Zero);
+        Assert.False(Welcome.Connected(null, since));
+        Assert.Equal("Waiting for Claude…", Welcome.Status(null, since));
+        Assert.Null(Welcome.Earlier(null, since));
+
+        // A client that connected before the Welcome opened isn't connected now.
+        var before = new ClientConnection("claude-ai", "0.14", since.AddDays(-1));
+        Assert.False(Welcome.Connected(before, since));
+        Assert.Equal("Waiting for Claude…", Welcome.Status(before, since));
+        Assert.StartsWith("Claude last connected on ", Welcome.Earlier(before, since));
+        Assert.EndsWith(" (claude-ai). Restart it to connect again.", Welcome.Earlier(before, since));
+
+        var after = before with { Time = since.AddSeconds(5) };
+        Assert.True(Welcome.Connected(after, since));
+        Assert.Equal("Connected: claude-ai", Welcome.Status(after, since));
+        Assert.Null(Welcome.Earlier(after, since));
+    }
+
+    [Fact]
+    public void TheSampleIsCopiedIntoTheProjectsFolderOnce()
+    {
+        var root = TestFiles.NewFolder("welcome-sample");
+        Assert.Null(Welcome.Sample(root));
+        var sample = Welcome.Sample(AppContext.BaseDirectory);
+        Assert.NotNull(sample);
+
+        var projects = Path.Combine(root, "projects");
+        var copy = Welcome.CopySample(sample, projects);
+        Assert.Equal(Path.Combine(projects, Welcome.SampleName), copy);
+        Assert.Equal(File.ReadAllText(Path.Combine(sample, ProjectStore.ProjectFileName)), File.ReadAllText(Path.Combine(copy, ProjectStore.ProjectFileName)));
+        Assert.Equal(
+            Directory.GetFiles(Path.Combine(sample, ProjectStore.AssetsFolder)).Select(Path.GetFileName),
+            Directory.GetFiles(Path.Combine(copy, ProjectStore.AssetsFolder)).Select(Path.GetFileName));
+
+        // The project there is the one opened after: nothing is copied over it.
+        File.WriteAllText(Path.Combine(copy, ProjectStore.ProjectFileName), "{}");
+        Assert.Equal(copy, Welcome.CopySample(sample, projects));
+        Assert.Equal("{}", File.ReadAllText(Path.Combine(copy, ProjectStore.ProjectFileName)));
+    }
+
+    [Fact]
+    public void RelinkingListsTheMissingFilesWhereItLooksAndWhatItFinds()
+    {
+        var root = TestFiles.NewFolder("relink-missing");
+        var project = TestFiles.Project();
+        project.Assets.Add(new Asset { Id = "logo", Type = AssetType.Image, File = "assets/logo.png", Width = 8, Height = 8 });
+        project.Assets.Add(new Asset { Id = "gone", Type = AssetType.Image, File = "assets/gone.png", Width = 8, Height = 8 });
+        var directory = Path.Combine(root, "project");
+        ProjectSession.Create(directory, project);
+        TestFiles.Png(Path.Combine(directory, ProjectStore.AssetsFolder, "logo.png"), 8, 8);
+
+        // A project.json from elsewhere can name a file outside the assets folder.
+        project.Assets.Add(new Asset { Id = "outside", Type = AssetType.Audio, File = "../song.wav", Duration = 2 });
+        Assert.Equal(["gone", "outside"], Relinking.Missing(project, directory).Select(a => a.Id));
+
+        // The project folder first, then the import folders, each once.
+        var media = Path.Combine(root, "media");
+        var settings = new Settings(null, root, Path.Combine(root, "logs"), ImportFolders: [media, directory]);
+        Assert.Equal([directory, media], Relinking.Folders(settings, directory));
+
+        Assert.StartsWith("Images|*.png;", Relinking.Filter(AssetType.Image));
+        Assert.EndsWith("|All files|*.*", Relinking.Filter(AssetType.Image));
+        Assert.DoesNotContain("*.wav", Relinking.Filter(AssetType.Image));
+        Assert.Contains("*.wav", Relinking.Filter(AssetType.Audio));
+        Assert.Contains("*.mp4", Relinking.Filter(AssetType.Video));
+
+        var file = new MissingFile(project.FindAsset("gone")!, 2);
+        Assert.Equal(("gone.png", $"Was at {Path.Combine("assets", "gone.png")}", "used by 2 clips"), (file.Name, file.WasAt, file.UsedBy));
+        Assert.Equal("Looking for it…", file.Status);
+        file.Searched("the project folder");
+        Assert.Equal("Nothing of that name and kind in the project folder", file.Status);
+
+        // What's found is chosen while nothing else is; a file you choose is chosen; a file offered
+        // again isn't offered twice.
+        var found = Path.Combine(media, "gone.png");
+        var chosen = Path.Combine(root, "elsewhere", "gone.png");
+        file.Offer(new RelinkCandidate(found, "same size 8x8 px", null), choose: false);
+        Assert.Equal((found, "Found a likely match", true), (file.Choice!.Path, file.Status, file.Found));
+        file.Offer(new RelinkCandidate(chosen, "Chosen", null), choose: true);
+        Assert.Equal((chosen, "Relinks to the file you chose"), (file.Choice!.Path, file.Status));
+        file.Offer(new RelinkCandidate(found.ToUpperInvariant(), "same size 8x8 px", null), choose: false);
+        Assert.Equal((chosen, 2), (file.Choice!.Path, file.Candidates.Count));
+        file.Choose(null);
+        Assert.Null(file.Choice);
     }
 }

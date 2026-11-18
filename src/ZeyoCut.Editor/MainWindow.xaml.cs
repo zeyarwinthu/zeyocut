@@ -56,6 +56,9 @@ public partial class MainWindow : Window
     private static readonly Brush AudioBadge = Frozen(0xA9, 0x8B, 0xFF);
     private static readonly Brush FontBadge = Frozen(0xF0, 0xA9, 0x4B);
 
+    // The Welcome's "Waiting for Claude…" pill.
+    private static readonly Brush WaitingBrush = Frozen(0x3A, 0x2C, 0x16);
+
     // The inspector header's badge, by kind: its background and its text.
     private static readonly Dictionary<string, (Brush Back, Brush Text)> KindBadges = new()
     {
@@ -197,10 +200,31 @@ public partial class MainWindow : Window
     // Whose steps the Activity view shows: yours (true), Claude's (false) or both (null).
     private bool? _activityFilter;
 
+    // What had the keyboard before a view opened over the window, to have it again after.
+    private IInputElement? _focusBefore;
+
+    // The New project view's canvas card, and whether its fields are being filled in, not typed in.
+    private CanvasChoice _newCanvas = NewProjectChoices.Canvases[0];
+    private IReadOnlyList<StartChoice> _newStarts = [];
+    private StartChoice? _newStart;
+    private bool _fillingNew;
+
+    // The Relink view's missing files, and its search for them, stopped when it closes.
+    private IReadOnlyList<MissingFile> _missing = [];
+    private CancellationTokenSource? _relinkSearch;
+
+    // The Welcome view: when it opened (a client that connects after turns its Connect step green),
+    // the step it shows (0 to 2), and what it showed last.
+    private DateTimeOffset _welcomeSince;
+    private int _welcomeStep = 1;
+    private DispatcherTimer? _welcomeTimer;
+    private object? _welcomeShown;
+
     public MainWindow(Settings settings, string settingsPath)
     {
         _settings = settings;
         _settingsPath = settingsPath;
+        var firstRun = !File.Exists(settingsPath);
         _prefs = EditorSettings.Load(settingsPath);
         VideoEncoder? encoder = null;
         try
@@ -250,6 +274,10 @@ public partial class MainWindow : Window
         }, Dispatcher);
         _ticker = new DispatcherTimer(TimeSpan.FromMilliseconds(250), DispatcherPriority.Background, (_, _) => Tick(), Dispatcher);
         ShowStartPage();
+        if (firstRun)
+        {
+            ShowWelcome();
+        }
     }
 
     // Opens a project folder (or the folder of a project.json) in place of the one open. A project
@@ -331,20 +359,24 @@ public partial class MainWindow : Window
         _prefs.AddRecent(directory);
         SavePrefs();
         UpdateCommands();
+        if (Relinking.Missing(document.View, directory) is { Count: > 0 } missing)
+        {
+            ShowRelink(missing, opening: true);
+        }
     }
 
     // The Edit view is showing, with a project open.
     private bool Editing => _document is not null && EditMode.IsChecked == true;
 
-    // Space plays and pauses wherever the focus is in the Edit view, before a focused button or list
-    // takes it.
+    // Play (Space) runs wherever the focus is in the Edit view, before a focused button or list takes
+    // its key.
     protected override void OnPreviewKeyDown(KeyEventArgs e)
     {
         base.OnPreviewKeyDown(e);
-        if (!e.Handled && e.Key == Key.Space && Keyboard.Modifiers == ModifierKeys.None && Editing && e.OriginalSource is not TextBox)
+        var key = e.Key == Key.System ? e.SystemKey : e.Key;
+        if (!e.Handled && Shortcuts.For(key, Keyboard.Modifiers).Any(s => s.Command == Command.Play))
         {
-            TogglePlay();
-            e.Handled = true;
+            e.Handled = RunKey(key, Keyboard.Modifiers, e.OriginalSource is TextBox) is not null;
         }
     }
 
@@ -358,126 +390,140 @@ public partial class MainWindow : Window
         }
     }
 
-    // Whether a key is the project's undo (true) or redo (false): Ctrl+Z, and Ctrl+Y or Ctrl+Shift+Z.
-    // Pressed in a text field they are neither: there they are for the typing, also once none of it
-    // is left to take back, so they never reach the project's last saved change from a field.
+    // Whether a key is the project's undo (true) or redo (false), as the shortcuts table has them:
+    // Ctrl+Z, and Ctrl+Shift+Z or Ctrl+Y. Pressed in a text field they are neither: there they are for
+    // the typing, also once none of it is left to take back, so they never reach the project's last
+    // saved change from a field.
     public static bool? HistoryKey(Key key, ModifierKeys modifiers, bool inField) =>
         inField ? null
-        : modifiers == ModifierKeys.Control && key == Key.Z ? true
-        : (modifiers == ModifierKeys.Control && key == Key.Y) || (modifiers == (ModifierKeys.Control | ModifierKeys.Shift) && key == Key.Z) ? false
+        : Shortcuts.For(key, modifiers).Any(s => s.Command == Command.Undo) ? true
+        : Shortcuts.For(key, modifiers).Any(s => s.Command == Command.Redo) ? false
         : null;
 
     protected override void OnKeyDown(KeyEventArgs e)
     {
         base.OnKeyDown(e);
+        if (!e.Handled)
+        {
+            e.Handled = RunKey(e.Key == Key.System ? e.SystemKey : e.Key, Keyboard.Modifiers, e.OriginalSource is TextBox) is not null;
+        }
+    }
 
-        // Typing in a field: only Ctrl shortcuts are the window's.
-        if (e.Handled || (e.OriginalSource is TextBox && (Keyboard.Modifiers & ModifierKeys.Control) == 0))
+    // Runs what a key does, as the shortcuts table has it: the first of the key's commands that can
+    // run now (Handler); null when none can. Typing in a field, only Ctrl shortcuts are the window's.
+    // While a view is open over the window, Esc closes it and the other keys are the view's own; the
+    // Welcome view's are all its own.
+    public Command? RunKey(Key key, ModifierKeys modifiers, bool inField)
+    {
+        if (WelcomePage.Visibility == Visibility.Visible)
         {
-            return;
+            return null;
         }
 
-        var modifiers = Keyboard.Modifiers;
-        var key = e.Key == Key.System ? e.SystemKey : e.Key;
-        var control = modifiers == ModifierKeys.Control;
-        var plain = modifiers == ModifierKeys.None;
-        var open = Editing;
-        if (control && key == Key.O)
+        if (DialogLayer.Visibility == Visibility.Visible)
         {
-            ChooseProject();
-        }
-        else if (control && _document is not null && key is Key.D1 or Key.D2 or Key.D3 or Key.NumPad1 or Key.NumPad2 or Key.NumPad3)
-        {
-            (key is Key.D1 or Key.NumPad1 ? ActivityMode : key is Key.D2 or Key.NumPad2 ? EditMode : ExportMode).IsChecked = true;
-        }
-        else if (control && key == Key.I && open)
-        {
-            ChooseMedia();
-        }
-        else if (_document is not null && HistoryKey(key, modifiers, e.OriginalSource is TextBox) is { } undo)
-        {
-            if (undo)
+            if (key != Key.Escape || modifiers != ModifierKeys.None)
             {
-                Undo();
+                return null;
             }
-            else
-            {
-                Redo();
-            }
-        }
-        else if (open && modifiers is ModifierKeys.None or ModifierKeys.Shift && key is Key.Left or Key.Right)
-        {
-            Pause();
-            var step = modifiers == ModifierKeys.Shift ? _document!.View.Fps : 1;
-            Seek(_frame + (key == Key.Left ? -step : step));
-        }
-        else if (open && plain && key is Key.Home or Key.End)
-        {
-            Seek(key == Key.Home ? 0 : _frames - 1);
-        }
-        else if (open && plain && key == Key.F)
-        {
-            ShowFullScreen();
-        }
-        else if (open && plain && key is Key.Up or Key.Down)
-        {
-            JumpToEdit(next: key == Key.Down);
-        }
-        else if (open && modifiers == ModifierKeys.Alt && key is Key.Left or Key.Right)
-        {
-            JumpToKeyframe(next: key == Key.Right);
-        }
-        else if (open && ((plain && key == Key.S) || (control && key == Key.B)))
-        {
-            SplitSelected();
-        }
-        else if (open && plain && key is Key.Delete or Key.Back)
-        {
-            DeleteSelected();
-        }
-        else if (open && plain && key is Key.B or Key.V)
-        {
-            (key == Key.B && BladeTool.IsChecked != true ? BladeTool : SelectTool).IsChecked = true;
-        }
-        else if (open && plain && key == Key.M)
-        {
-            AddMarker();
-        }
-        else if (open && plain && key is Key.OemMinus or Key.Subtract)
-        {
-            Timeline.ZoomBy(1 / 1.5);
-        }
-        else if (open && plain && key is Key.OemPlus or Key.Add)
-        {
-            Timeline.ZoomBy(1.5);
-        }
-        else if (open && modifiers == ModifierKeys.Shift && key == Key.Z)
-        {
-            Timeline.ZoomToFit();
-        }
-        else if (open && plain && key == Key.Escape && Timeline.Dragging)
-        {
-            Timeline.CancelDrag();
-        }
-        else if (open && plain && key == Key.Escape && _drag is not null)
-        {
-            CancelPreviewDrag();
-        }
-        else if (open && plain && key == Key.Escape && BladeTool.IsChecked == true)
-        {
-            SelectTool.IsChecked = true;
-        }
-        else if (open && plain && key == Key.Escape && (_selectedLayer is not null || MediaList.SelectedItem is not null))
-        {
-            MediaList.SelectedItem = null;
-            SelectLayer(null);
-        }
-        else
-        {
-            return;
+
+            CloseDialog();
+            return Command.Cancel;
         }
 
-        e.Handled = true;
+        if (inField && (modifiers & ModifierKeys.Control) == 0)
+        {
+            return null;
+        }
+
+        foreach (var shortcut in Shortcuts.For(key, modifiers))
+        {
+            if (Handler(shortcut.Command, inField) is { } run)
+            {
+                run();
+                return shortcut.Command;
+            }
+        }
+
+        return null;
+    }
+
+    // Whether a command can run now, as its key would run it.
+    public bool CanRun(Command command, bool inField = false) => Handler(command, inField) is not null;
+
+    // What a command does now, or null when it can't run: most need the Edit view showing, and undo
+    // and redo aren't the project's in a text field (HistoryKey).
+    private Action? Handler(Command command, bool inField)
+    {
+        var editing = Editing;
+        var open = _document is not null;
+        return command switch
+        {
+            Command.Play => editing ? TogglePlay : null,
+            Command.PreviousFrame => editing ? () => Step(-1) : null,
+            Command.NextFrame => editing ? () => Step(1) : null,
+            Command.BackSecond => editing ? () => Step(-_document!.View.Fps) : null,
+            Command.ForwardSecond => editing ? () => Step(_document!.View.Fps) : null,
+            Command.FirstFrame => editing ? () => Seek(0) : null,
+            Command.LastFrame => editing ? () => Seek(_frames - 1) : null,
+            Command.PreviousEdit => editing ? () => JumpToEdit(next: false) : null,
+            Command.NextEdit => editing ? () => JumpToEdit(next: true) : null,
+            Command.FullScreen => editing ? ShowFullScreen : null,
+            Command.Split => editing ? SplitSelected : null,
+            Command.Delete => editing ? DeleteSelected : null,
+            Command.Duplicate => editing ? DuplicateSelected : null,
+            Command.Undo => open && !inField ? Undo : null,
+            Command.Redo => open && !inField ? Redo : null,
+            Command.Import => editing ? ChooseMedia : null,
+            Command.Cancel => editing ? CancelHandler() : null,
+            Command.AddMarker => editing ? AddMarker : null,
+            Command.Snap => editing ? ToggleSnap : null,
+            Command.ZoomIn => editing ? () => Timeline.ZoomBy(1.5) : null,
+            Command.ZoomOut => editing ? () => Timeline.ZoomBy(1 / 1.5) : null,
+            Command.Fit => editing ? Timeline.ZoomToFit : null,
+            Command.SelectTool => editing ? () => TurnOn(SelectTool) : null,
+            Command.BladeTool => editing ? () => TurnOn(BladeTool.IsChecked == true ? SelectTool : BladeTool) : null,
+            Command.PreviousKeyframe => editing ? () => JumpToKeyframe(next: false) : null,
+            Command.NextKeyframe => editing ? () => JumpToKeyframe(next: true) : null,
+            Command.Edit => open ? () => TurnOn(EditMode) : null,
+            Command.Activity => open ? () => TurnOn(ActivityMode) : null,
+            Command.Export => open ? () => TurnOn(ExportMode) : null,
+            Command.NewProject => () => ShowNewProject(null),
+            Command.OpenProject => ChooseProject,
+            Command.Shortcuts => ShowShortcuts,
+            _ => throw new ArgumentOutOfRangeException(nameof(command), command, null),
+        };
+    }
+
+    // Esc lets go of a drag, leaves the blade or clears the selection, whichever there is.
+    private Action? CancelHandler() =>
+        Timeline.Dragging ? Timeline.CancelDrag
+        : _drag is not null ? CancelPreviewDrag
+        : BladeTool.IsChecked == true ? () => TurnOn(SelectTool)
+        : _selectedLayer is not null || MediaList.SelectedItem is not null ? ClearSelection
+        : null;
+
+    private static void TurnOn(ToggleButton button) => button.IsChecked = true;
+
+    private void ClearSelection()
+    {
+        MediaList.SelectedItem = null;
+        SelectLayer(null);
+    }
+
+    // Moves the playhead by frames, paused.
+    private void Step(int frames)
+    {
+        Pause();
+        Seek(_frame + frames);
+    }
+
+    // N: snapping on or off, as the toggle in the timeline's toolbar turns it.
+    private void ToggleSnap()
+    {
+        SnapToggle.IsChecked = SnapToggle.IsChecked != true;
+        OnSnap(SnapToggle, new RoutedEventArgs());
+        Message(Timeline.Snapping ? "Snapping on" : "Snapping off");
     }
 
     protected override void OnDpiChanged(DpiScale oldDpi, DpiScale newDpi)
@@ -504,6 +550,7 @@ public partial class MainWindow : Window
 
         SavePlacement();
         CloseProject();
+        _welcomeTimer?.Stop();
         _poll.Stop();
         _settle.Stop();
         _ticker.Stop();
@@ -581,6 +628,12 @@ public partial class MainWindow : Window
 
     private void ShowProject(EditorDocument document)
     {
+        CloseWelcome();
+        if (DialogLayer.Visibility == Visibility.Visible)
+        {
+            CloseDialog();
+        }
+
         _document = document;
         var directory = document.Session.Directory;
         _proxies = new ProxyJobs(_jobs, Ffmpeg);
@@ -2183,6 +2236,29 @@ public partial class MainWindow : Window
         }
     }
 
+    // Ctrl+D: copies the clip selected, with the layers attached to it, and selects the copy.
+    private void DuplicateSelected()
+    {
+        var layer = _selectedLayer;
+        WhenSaved(() =>
+        {
+            if (layer is null || _document!.View.FindLayer(layer) is not { } original)
+            {
+                Message("Select a clip in the timeline to duplicate it");
+                return;
+            }
+
+            var before = _document.View.Layers.Select(l => l.Id).ToHashSet(StringComparer.Ordinal);
+            Apply(new DuplicateLayerOperation(layer), then: (saved, _) =>
+            {
+                if (saved && _document?.View.Layers.FirstOrDefault(l => !before.Contains(l.Id) && l.ParentId == original.ParentId) is { } copy)
+                {
+                    SelectLayer(copy.Id);
+                }
+            });
+        });
+    }
+
     // Saves an edit and shows the project with it, or why it wasn't saved; 'then' gets whether it
     // was, and the layer another program changed first when that's why not. 'from' is the project the
     // edit was built from, when that isn't the one shown now: a field's rows, or where a drag began.
@@ -2418,8 +2494,11 @@ public partial class MainWindow : Window
             }
         }
 
-        StartError.Text = error ?? "";
-        StartError.Visibility = error is null ? Visibility.Collapsed : Visibility.Visible;
+        var shown = WelcomePage.Visibility == Visibility.Visible ? WelcomeError
+            : NewProjectDialog.Visibility == Visibility.Visible ? NewError
+            : StartError;
+        shown.Text = error ?? "";
+        shown.Visibility = error is null ? Visibility.Collapsed : Visibility.Visible;
     }
 
     private void ChooseProject()
@@ -2877,6 +2956,13 @@ public partial class MainWindow : Window
         add.IsEnabled = operation is not null;
         add.Click += (_, _) => AddClip(operation!);
         menu.Items.Add(add);
+        if (item.Missing)
+        {
+            var relink = new MenuItem { Header = "Relink…" };
+            relink.Click += (_, _) => ShowRelink([asset], opening: false);
+            menu.Items.Add(relink);
+        }
+
         menu.IsOpen = true;
         e.Handled = true;
     }
@@ -3492,6 +3578,593 @@ public partial class MainWindow : Window
     {
         _prefs.Snapping = Timeline.Snapping = SnapToggle.IsChecked == true;
         SavePrefs();
+    }
+
+    // Shows a view over the window (Keyboard shortcuts, New project, Relink) with the keyboard in it.
+    // Playback stops; while it's open, Esc is the window's only key (RunKey).
+    private void ShowDialog(Border dialog, IInputElement focus)
+    {
+        Pause();
+        if (DialogLayer.Visibility != Visibility.Visible)
+        {
+            _focusBefore = Keyboard.FocusedElement;
+        }
+
+        foreach (var view in new[] { ShortcutsDialog, NewProjectDialog, RelinkDialog })
+        {
+            view.Visibility = ReferenceEquals(view, dialog) ? Visibility.Visible : Visibility.Collapsed;
+        }
+
+        DialogLayer.Visibility = Visibility.Visible;
+        Dispatcher.BeginInvoke(DispatcherPriority.Loaded, () => Keyboard.Focus(focus));
+    }
+
+    private void CloseDialog()
+    {
+        _relinkSearch?.Cancel();
+        _relinkSearch = null;
+        DialogLayer.Visibility = ShortcutsDialog.Visibility = NewProjectDialog.Visibility = RelinkDialog.Visibility = Visibility.Collapsed;
+        if (_focusBefore is UIElement { IsVisible: true } before)
+        {
+            Keyboard.Focus(before);
+        }
+
+        _focusBefore = null;
+    }
+
+    private void OnCloseDialog(object sender, RoutedEventArgs e) => CloseDialog();
+
+    // The Keyboard shortcuts view: the table the keys run from, in its groups, searched as you type.
+    private void ShowShortcuts()
+    {
+        ShortcutSearch.Text = "";
+        ShowShortcutGroups();
+        ShowDialog(ShortcutsDialog, ShortcutSearch);
+    }
+
+    private void ShowShortcutGroups()
+    {
+        var search = ShortcutSearch.Text.Trim();
+        var groups = Shortcuts.Groups(search);
+        ShortcutGroups.ItemsSource = groups;
+        ShortcutSearchHint.Visibility = ShortcutSearch.Text.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
+        ShortcutsNone.Text = $"No action or key has “{search}” in it.";
+        ShortcutsNone.Visibility = groups.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private void OnShortcutSearch(object sender, TextChangedEventArgs e) => ShowShortcutGroups();
+
+    // The New project view, with a canvas card chosen (a Home card's, else YouTube), a name no project
+    // in the projects folder has yet, and the library's templates to start from.
+    private void ShowNewProject(string? canvas)
+    {
+        _fillingNew = true;
+        NewName.Text = NewProjectChoices.FreeName(_settings.ProjectsRoot);
+        _newStarts = NewProjectChoices.Starts(new Library(_settings.LibraryPath ?? Settings.DefaultLibraryPath));
+        ChooseStart(_newStarts[0]);
+        NewFps30.IsChecked = true;
+        NewBlack.IsChecked = true;
+        NewFolder.Text = ProjectList.Shorten(_settings.ProjectsRoot);
+        NewFolder.ToolTip = _settings.ProjectsRoot;
+        NewError.Visibility = Visibility.Collapsed;
+        _fillingNew = false;
+        ChooseCanvas(NewProjectChoices.Canvases.FirstOrDefault(c => c.Name == canvas) ?? NewProjectChoices.Canvases[0], fill: true);
+        NewName.SelectAll();
+        ShowDialog(NewProjectDialog, NewName);
+    }
+
+    private void OnNewProjectCard(object sender, RoutedEventArgs e) => ShowNewProject(((FrameworkElement)sender).Tag as string);
+
+    // A canvas card chosen: its size goes in the size fields (fill), Custom keeps what they have.
+    private void ChooseCanvas(CanvasChoice canvas, bool fill)
+    {
+        _newCanvas = canvas;
+        NewCanvases.ItemsSource = NewProjectChoices.Canvases.Select(c => c with { Selected = c.Name == canvas.Name }).ToList();
+        if (fill && canvas.Width is { } width && canvas.Height is { } height)
+        {
+            _fillingNew = true;
+            NewWidth.Text = width.ToString(CultureInfo.InvariantCulture);
+            NewHeight.Text = height.ToString(CultureInfo.InvariantCulture);
+            _fillingNew = false;
+        }
+
+        ShowNewPreview();
+    }
+
+    private void OnNewCanvas(object sender, RoutedEventArgs e)
+    {
+        var canvas = (CanvasChoice)((FrameworkElement)sender).Tag;
+        ChooseCanvas(canvas, fill: true);
+        if (canvas.Width is null)
+        {
+            Keyboard.Focus(NewWidth);
+            NewWidth.SelectAll();
+        }
+    }
+
+    // A size typed in: the card of that size is chosen, or Custom.
+    private void OnNewSize(object sender, TextChangedEventArgs e)
+    {
+        if (_fillingNew)
+        {
+            return;
+        }
+
+        var canvas = NewSize() is { } size ? NewProjectChoices.CanvasOf(size.Width, size.Height) : NewProjectChoices.Canvases[^1];
+        if (canvas.Name != _newCanvas.Name)
+        {
+            ChooseCanvas(canvas, fill: false);
+        }
+        else
+        {
+            ShowNewPreview();
+        }
+    }
+
+    private void OnNewChoice(object sender, RoutedEventArgs e)
+    {
+        if (!_fillingNew)
+        {
+            ShowNewPreview();
+        }
+    }
+
+    private void OnNewStartMenu(object sender, RoutedEventArgs e) =>
+        ShowChoices(NewStartButton, _newStarts.Select(s => (s.Label, s == _newStart, (Action)(() => ChooseStart(s)))));
+
+    // What the project starts from: a template has its own canvas, frame rate and background.
+    private void ChooseStart(StartChoice start)
+    {
+        _newStart = start;
+        NewStartText.Text = start.Label;
+        NewCanvases.IsEnabled = NewSizePanel.IsEnabled = NewFpsPanel.IsEnabled = NewBackgroundPanel.IsEnabled = start.Template is null;
+        if (!_fillingNew)
+        {
+            ShowNewPreview();
+        }
+    }
+
+    // The size typed in, in pixels; null when it isn't one.
+    private (int Width, int Height)? NewSize() =>
+        int.TryParse(NewWidth.Text.Trim(), NumberStyles.None, CultureInfo.InvariantCulture, out var width)
+        && int.TryParse(NewHeight.Text.Trim(), NumberStyles.None, CultureInfo.InvariantCulture, out var height)
+        && width > 0 && height > 0
+            ? (width, height)
+            : null;
+
+    private int NewFps() =>
+        new[] { NewFps24, NewFps25, NewFps30, NewFps60 }.FirstOrDefault(b => b.IsChecked == true) is { Tag: string fps }
+            ? int.Parse(fps, CultureInfo.InvariantCulture)
+            : 30;
+
+    private string NewBackground() =>
+        new[] { NewBlack, NewWhite, NewSky, NewTransparent }.FirstOrDefault(b => b.IsChecked == true)?.Tag as string ?? "#000000";
+
+    // The preview: the canvas's shape in its background, with the safe area check_project keeps text
+    // inside, its size and frame rate, and the export preset it fits.
+    private void ShowNewPreview()
+    {
+        var fps = NewFps();
+        if (_newStart?.Template is { } template)
+        {
+            NewPreviewCanvas.Visibility = Visibility.Hidden;
+            NewShape.Text = $"The template {template} has its own canvas, frame rate and background.";
+            NewExportNote.Text = "";
+            return;
+        }
+
+        if (NewSize() is not { } size)
+        {
+            NewPreviewCanvas.Visibility = Visibility.Hidden;
+            NewShape.Text = "Type the width and height in pixels.";
+            NewExportNote.Text = "";
+            return;
+        }
+
+        var (width, height) = size;
+        var scale = Math.Min(210.0 / width, 210.0 / height);
+        NewPreviewCanvas.Visibility = Visibility.Visible;
+        NewPreviewCanvas.Width = width * scale;
+        NewPreviewCanvas.Height = height * scale;
+        NewPreviewFill.Background = NewTransparent.IsChecked == true
+            ? (Brush)FindResource("CheckerBrush")
+            : new SolidColorBrush((Color)ColorConverter.ConvertFromString(NewBackground()));
+        var (left, top, right, bottom) = ProjectChecker.SafeArea(new Project { Name = "preview", Width = width, Height = height, Fps = fps, Duration = 1 });
+        NewPreviewSafe.Margin = new Thickness(left * scale, top * scale, (width - right) * scale, (height - bottom) * scale);
+        NewShape.Text = NewProjectChoices.Shape(width, height, fps);
+        NewExportNote.Text = NewProjectChoices.ExportNote(width, height, fps);
+    }
+
+    private void OnCreateProject(object sender, RoutedEventArgs e) => CreateProject();
+
+    private void OnNewProjectKey(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Enter)
+        {
+            CreateProject();
+            e.Handled = true;
+        }
+    }
+
+    // Makes the project the New project view describes, in the projects folder, and opens it; or says
+    // why it can't.
+    private void CreateProject()
+    {
+        var template = _newStart?.Template;
+        var size = NewSize();
+        if (template is null && size is null)
+        {
+            ShowNewError("Type the width and height as whole numbers of pixels.");
+            return;
+        }
+
+        var (width, height) = size ?? (0, 0);
+        string folder;
+        IReadOnlyList<string> warnings;
+        try
+        {
+            (folder, warnings) = NewProjectChoices.Create(_settings, new NewProjectRequest(NewName.Text, template, width, height, NewFps(), NewBackground()));
+        }
+        catch (Exception ex) when (ex is ZeyoCutException or IOException or UnauthorizedAccessException)
+        {
+            ShowNewError($"Couldn't create the project: {ex.Message}");
+            return;
+        }
+
+        CloseDialog();
+        OpenProject(folder);
+        if (warnings.Count > 0)
+        {
+            Message($"Created {Path.GetFileName(folder)}; {string.Join("; ", warnings)}");
+        }
+    }
+
+    private void ShowNewError(string text)
+    {
+        NewError.Text = text;
+        NewError.Visibility = Visibility.Visible;
+    }
+
+    // The Relink view for assets whose files are missing: when a project opens with some, or for one
+    // from its tile's menu. It looks for each in the project folder, then the import folders, and
+    // offers what it finds; Choose file and Search another folder offer more.
+    private void ShowRelink(IReadOnlyList<Asset> assets, bool opening)
+    {
+        var document = _document!;
+        var project = document.View;
+        var name = Path.GetFileName(document.Session.Directory);
+        _missing = assets.Select(a => new MissingFile(a, ProjectChecker.Users(project, a.Id).Count())).ToList();
+        foreach (var file in _missing)
+        {
+            file.PropertyChanged += (_, _) => ShowRelinkButton();
+        }
+
+        RelinkList.ItemsSource = _missing;
+        RelinkTitle.Text = _missing.Count == 1 ? $"1 file in {name} can’t be found" : $"{_missing.Count} files in {name} can’t be found";
+        RelinkSubtitle.Text = _missing.Count == 1
+            ? "It was moved or renamed, and what uses it can’t be drawn or exported until you relink it."
+            : "They were moved or renamed, and what uses them can’t be drawn or exported until you relink them.";
+        RelinkCancel.Content = opening ? "Open without relinking" : "Cancel";
+        RelinkButton.Content = opening ? "Relink and open" : "Relink";
+        ShowRelinkButton();
+        ShowDialog(RelinkDialog, RelinkCancel);
+        _relinkSearch?.Cancel();
+        _relinkSearch = new CancellationTokenSource();
+        _ = SearchMissing(Relinking.Folders(_settings, document.Session.Directory), null, _relinkSearch.Token);
+    }
+
+    // Looks in the folders, in order, for each missing file, and offers what each folder has as soon
+    // as it's searched. 'picked' names a folder you chose, for what a file it has nothing for says.
+    private async Task SearchMissing(IReadOnlyList<string> folders, string? picked, CancellationToken cancel)
+    {
+        var project = _document!.View;
+        var probe = VideoImport.AsIsProbe(Ffmpeg);
+        var files = _missing.ToList();
+        foreach (var folder in folders)
+        {
+            foreach (var file in files)
+            {
+                if (project.FindAsset(file.Id) is not { } asset)
+                {
+                    continue;
+                }
+
+                List<(RelinkMatch Match, ImageSource? Picture)> found;
+                try
+                {
+                    found = await Task.Run(() => AssetRelinker.Matches(project, asset, [folder], probe, cancel)
+                        .Select(m => (m, Relinking.Picture(m.Path, asset.Type))).ToList(), cancel);
+                }
+                catch (OperationCanceledException)
+                {
+                    return;
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ZeyoCutException)
+                {
+                    file.Show($"Couldn't search {folder}: {ex.Message}", failed: true);
+                    continue;
+                }
+
+                if (cancel.IsCancellationRequested)
+                {
+                    return;
+                }
+
+                foreach (var (match, picture) in found)
+                {
+                    file.Offer(new RelinkCandidate(match.Path, match.Reason, picture), choose: false);
+                }
+            }
+        }
+
+        foreach (var file in files)
+        {
+            file.Searched(picked ?? "the project folder or the import folders");
+        }
+    }
+
+    private void OnRelinkFolder(object sender, RoutedEventArgs e)
+    {
+        var dialog = new OpenFolderDialog { Title = "Search a folder for the missing files" };
+        if (dialog.ShowDialog(this) != true || _relinkSearch is not { } search)
+        {
+            return;
+        }
+
+        foreach (var file in _missing.Where(f => !f.Found))
+        {
+            file.Show("Looking for it…");
+        }
+
+        _ = SearchMissing([dialog.FolderName], dialog.FolderName, search.Token);
+    }
+
+    private void OnRelinkFile(object sender, RoutedEventArgs e)
+    {
+        var file = (MissingFile)((FrameworkElement)sender).Tag;
+        var dialog = new OpenFileDialog { Title = $"Choose the file for '{file.Id}'", Filter = Relinking.Filter(file.Type) };
+        if (dialog.ShowDialog(this) == true)
+        {
+            RelinkTo(file.Id, dialog.FileName);
+        }
+    }
+
+    // A file chosen for a missing one (Choose file): offered and chosen, or why it can't be used.
+    public void RelinkTo(string assetId, string path)
+    {
+        if (_missing.FirstOrDefault(f => f.Id == assetId) is not { } file || _document is null)
+        {
+            return;
+        }
+
+        try
+        {
+            AssetRelinker.Check(_document.View, assetId, path);
+        }
+        catch (ZeyoCutException ex)
+        {
+            file.Show(ex.Message, failed: true);
+            return;
+        }
+
+        file.Offer(new RelinkCandidate(path, "Chosen", Relinking.Picture(path, file.Type)), choose: true);
+    }
+
+    private void OnRelinkKeep(object sender, RoutedEventArgs e)
+    {
+        var file = (MissingFile)((FrameworkElement)sender).Tag;
+        file.Choose(null);
+        file.Show("Stays missing for now");
+    }
+
+    private void OnRelinkCandidate(object sender, RoutedEventArgs e)
+    {
+        var candidate = (RelinkCandidate)((FrameworkElement)sender).Tag;
+        _missing.FirstOrDefault(f => f.Candidates.Contains(candidate))?.Choose(candidate);
+    }
+
+    private void ShowRelinkButton() => RelinkButton.IsEnabled = _missing.Any(f => f.Choice is not null);
+
+    // Relinks each missing file to its choice: the files are copied into the project's assets folder
+    // off the window's thread, then the relinks are saved as one step. A file that can't be used says
+    // why, and the view stays open for it.
+    private async void OnRelink(object sender, RoutedEventArgs e)
+    {
+        var document = _document;
+        var chosen = _missing.Where(f => f.Choice is not null).Select(f => (File: f, Path: f.Choice!.Path)).ToList();
+        if (document is null || chosen.Count == 0)
+        {
+            return;
+        }
+
+        RelinkButton.IsEnabled = false;
+        var directory = document.Session.Directory;
+        var probe = VideoImport.AsIsProbe(Ffmpeg);
+        var prepared = await Task.Run(() => chosen.Select(c =>
+        {
+            try
+            {
+                return (c.File, Asset: AssetImporter.Prepare(directory, c.Path, probe, c.File.Type), Error: (string?)null);
+            }
+            catch (Exception ex) when (ex is ZeyoCutException or IOException or UnauthorizedAccessException)
+            {
+                return (c.File, Asset: (PreparedAsset?)null, Error: ex.Message);
+            }
+        }).ToList());
+        if (!ReferenceEquals(document, _document) || RelinkDialog.Visibility != Visibility.Visible)
+        {
+            return;
+        }
+
+        foreach (var failed in prepared.Where(p => p.Error is not null))
+        {
+            failed.File.Show(failed.Error!, failed: true);
+        }
+
+        var ready = prepared.Where(p => p.Asset is not null).ToList();
+        if (ready.Count == 0)
+        {
+            ShowRelinkButton();
+            return;
+        }
+
+        EditOperation operation = ready.Count == 1
+            ? new RelinkAssetOperation(ready[0].File.Id, ready[0].Asset!)
+            : new BatchOperation($"relink_asset {string.Join(", ", ready.Select(r => r.File.Id))}",
+                ready.Select(r => (EditOperation)new RelinkAssetOperation(r.File.Id, r.Asset!)).ToList());
+        Apply(operation, then: (saved, _) =>
+        {
+            if (saved)
+            {
+                _missing = _missing.Where(f => !ready.Any(r => ReferenceEquals(r.File, f))).ToList();
+                RelinkList.ItemsSource = _missing;
+                if (_missing.All(f => !f.Failed))
+                {
+                    CloseDialog();
+                    return;
+                }
+            }
+
+            ShowRelinkButton();
+        });
+    }
+
+    // The Welcome view, the first time the editor starts: the projects folder, connecting Claude and
+    // the sample project, from the Connect step.
+    private void ShowWelcome()
+    {
+        _welcomeSince = DateTimeOffset.Now;
+        _welcomeStep = 1;
+        _welcomeShown = null;
+        var server = Welcome.ServerPath(AppContext.BaseDirectory);
+        WelcomeFolder.Text = _settings.ProjectsRoot;
+        WelcomeConfig.Text = Welcome.Config(server);
+        WelcomeServerNote.Visibility = File.Exists(server) ? Visibility.Collapsed : Visibility.Visible;
+        WelcomePage.Visibility = Visibility.Visible;
+        _welcomeTimer = new DispatcherTimer(TimeSpan.FromSeconds(1), DispatcherPriority.Background, (_, _) => ShowWelcomeStep(), Dispatcher);
+        ShowWelcomeStep();
+    }
+
+    // The Welcome's steps and the card of the one shown. The Connect step turns green once a client
+    // lists the server's tools after the view opened (the server notes it: ClientConnection).
+    private void ShowWelcomeStep()
+    {
+        var last = ClientConnection.Read(_settings.LogDirectory);
+        var connected = Welcome.Connected(last, _welcomeSince);
+        var status = Welcome.Status(last, _welcomeSince);
+        var earlier = Welcome.Earlier(last, _welcomeSince);
+        var shown = (_welcomeStep, status, earlier);
+        if (Equals(_welcomeShown, shown))
+        {
+            return;
+        }
+
+        _welcomeShown = shown;
+        var sample = Welcome.Sample(AppContext.BaseDirectory);
+        WelcomeSteps.ItemsSource = new List<WelcomeStep>
+        {
+            new(1, "Choose a projects folder", ProjectList.Shorten(_settings.ProjectsRoot), _welcomeStep == 0, true),
+            new(2, "Connect Claude", connected ? status : "One line in Claude’s settings", _welcomeStep == 1, connected),
+            new(3, "Open a sample project", sample is null ? "It isn't next to the editor" : $"{Welcome.SampleName}, ready to tweak", _welcomeStep == 2, false),
+        };
+        WelcomeStepText.Text = $"STEP {_welcomeStep + 1} OF 3";
+        WelcomeHeading.Text = _welcomeStep switch
+        {
+            0 => "Your projects folder",
+            1 => "Connect Claude",
+            _ => "Open a sample project",
+        };
+        WelcomeFolderStep.Visibility = _welcomeStep == 0 ? Visibility.Visible : Visibility.Collapsed;
+        WelcomeConnectStep.Visibility = _welcomeStep == 1 ? Visibility.Visible : Visibility.Collapsed;
+        WelcomeSampleStep.Visibility = _welcomeStep == 2 ? Visibility.Visible : Visibility.Collapsed;
+        WelcomeStatus.Visibility = _welcomeStep == 1 ? Visibility.Visible : Visibility.Collapsed;
+        WelcomeStatus.Background = connected ? (Brush)FindResource("YouBrush") : WaitingBrush;
+        WelcomeStatusDot.Fill = (Brush)FindResource(connected ? "SuccessBrush" : "WarningBrush");
+        WelcomeStatusText.Text = status;
+        WelcomeStatusText.Foreground = (Brush)FindResource(connected ? "YouTextBrush" : "WarningBrush");
+        WelcomeEarlier.Text = earlier ?? "";
+        WelcomeEarlier.Visibility = earlier is null ? Visibility.Collapsed : Visibility.Visible;
+        WelcomeSampleText.Text = sample is null
+            ? $"The sample project isn't next to the editor. It comes with the release zip and the bundle, in examples\\{Welcome.SampleName}."
+            : $"{Welcome.SampleName} is a cutout character rig: squash and stretch, easing, a drawing swap, a lagging head and a wagging tail, sound effects and a Japanese subtitle. "
+                + "It's copied into your projects folder and opened, so the one next to the editor stays as it is. Look around, then ask Claude to change it.";
+        WelcomeError.Visibility = Visibility.Collapsed;
+        WelcomeBack.IsEnabled = _welcomeStep > 0;
+        WelcomeNext.Content = _welcomeStep < 2 ? "Continue" : sample is null ? "Go to my projects" : $"Open {Welcome.SampleName}";
+    }
+
+    // Leaving the Welcome view: the editor's settings are saved, so it doesn't open again.
+    private void CloseWelcome()
+    {
+        if (WelcomePage.Visibility != Visibility.Visible)
+        {
+            return;
+        }
+
+        _welcomeTimer?.Stop();
+        _welcomeTimer = null;
+        WelcomePage.Visibility = Visibility.Collapsed;
+        SavePrefs();
+    }
+
+    private void OnSkipWelcome(object sender, RoutedEventArgs e) => CloseWelcome();
+
+    private void OnWelcomeStep(object sender, RoutedEventArgs e)
+    {
+        _welcomeStep = ((WelcomeStep)((FrameworkElement)sender).Tag).Number - 1;
+        ShowWelcomeStep();
+    }
+
+    private void OnWelcomeBack(object sender, RoutedEventArgs e)
+    {
+        _welcomeStep = Math.Max(0, _welcomeStep - 1);
+        ShowWelcomeStep();
+    }
+
+    // Continue; on the last step, the sample is copied into the projects folder and opened.
+    private void OnWelcomeNext(object sender, RoutedEventArgs e)
+    {
+        if (_welcomeStep < 2)
+        {
+            _welcomeStep++;
+            ShowWelcomeStep();
+            return;
+        }
+
+        if (Welcome.Sample(AppContext.BaseDirectory) is not { } sample)
+        {
+            CloseWelcome();
+            return;
+        }
+
+        string copy;
+        try
+        {
+            copy = Welcome.CopySample(sample, _settings.ProjectsRoot);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            WelcomeError.Text = $"Couldn't copy the sample into {_settings.ProjectsRoot}: {ex.Message}";
+            WelcomeError.Visibility = Visibility.Visible;
+            return;
+        }
+
+        CloseWelcome();
+        OpenProject(copy);
+    }
+
+    private void OnCopyConfig(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            Clipboard.SetText(WelcomeConfig.Text);
+            WelcomeCopy.Content = "Copied";
+        }
+        catch (System.Runtime.InteropServices.ExternalException ex)
+        {
+            WelcomeError.Text = $"Couldn't copy it: {ex.Message}";
+            WelcomeError.Visibility = Visibility.Visible;
+        }
     }
 
     private void OnPlay(object sender, RoutedEventArgs e) => TogglePlay();

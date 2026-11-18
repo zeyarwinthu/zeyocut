@@ -8,6 +8,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using ZeyoCut.Core;
 using ZeyoCut.Core.Editing;
 using ZeyoCut.Core.Model;
 
@@ -1331,4 +1332,226 @@ public class WindowTests
             TestWindow.Pump();
         }
     });
+
+    // A project.json as saved, without its revision.
+    private static string ProjectJson(string directory)
+    {
+        var json = JsonNode.Parse(File.ReadAllText(Path.Combine(directory, ProjectStore.ProjectFileName)))!.AsObject();
+        json.Remove("revision");
+        return json.ToJsonString();
+    }
+
+    // The keys run from the shortcuts table: each key reaches its command, Ctrl+D duplicates, N turns
+    // snapping off, Ctrl+6, Ctrl+E and Ctrl+1 switch views, and ? and F1 open the list Esc closes.
+    [Fact]
+    public void EveryKeyRunsItsCommandFromTheShortcutsTable() => TestWindow.Run("window-keys", (window, folder) =>
+    {
+        Assert.Equal(Visibility.Collapsed, Shown(window, "WelcomePage"));
+        var directory = WithTitle(window, folder);
+        Assert.All(Shortcuts.All, s =>
+        {
+            Assert.True(window.CanRun(s.Command), $"{s.Command} can't run");
+            Assert.Equal(s.Command, Shortcuts.For(s.Key, s.Modifiers).First(c => window.CanRun(c.Command)).Command);
+        });
+
+        // Typing in a field, only Ctrl shortcuts are the window's, and undo isn't.
+        Assert.Null(window.RunKey(Key.S, ModifierKeys.None, inField: true));
+        Assert.Null(window.RunKey(Key.Z, ModifierKeys.Control, inField: true));
+        Assert.False(window.CanRun(Command.Undo, inField: true));
+
+        Assert.Equal(Command.Duplicate, window.RunKey(Key.D, ModifierKeys.Control, inField: false));
+        WaitForSaves(window);
+        Assert.Equal(["title", "title_2"], ProjectStore.Load(directory).Layers.Select(l => l.Id).Order());
+        Assert.Equal("title_2 selected", Text(window, "SelectionText"));
+        Assert.Equal("copied 'title' -> 'title_2'", Text(window, "MessageText"));
+
+        var snap = (System.Windows.Controls.Primitives.ToggleButton)window.FindName("SnapToggle");
+        Assert.True(snap.IsChecked);
+        Assert.Equal(Command.Snap, window.RunKey(Key.N, ModifierKeys.None, inField: false));
+        Assert.False(snap.IsChecked);
+        Assert.False(((TimelineView)window.FindName("Timeline")).Snapping);
+        Assert.Contains("\"snapping\": false", File.ReadAllText(Path.Combine(folder, "editor.json")));
+
+        Assert.Equal(Command.Activity, window.RunKey(Key.D6, ModifierKeys.Control, inField: false));
+        Assert.Equal(Visibility.Visible, Shown(window, "ActivityPage"));
+        Assert.Equal(Command.Export, window.RunKey(Key.E, ModifierKeys.Control, inField: false));
+        Assert.Equal(Visibility.Visible, Shown(window, "ExportPage"));
+        Assert.Equal(Command.Edit, window.RunKey(Key.NumPad1, ModifierKeys.Control, inField: false));
+        Assert.Equal(Visibility.Visible, Shown(window, "Workspace"));
+
+        Assert.Equal(Command.Shortcuts, window.RunKey(Key.OemQuestion, ModifierKeys.Shift, inField: false));
+        TestWindow.Pump();
+        Assert.Equal(Visibility.Visible, Shown(window, "ShortcutsDialog"));
+        var groups = (ItemsControl)window.FindName("ShortcutGroups");
+        Assert.Equal(["Playback", "Editing", "Timeline", "Workspaces"], groups.Items.Cast<ShortcutGroup>().Select(g => g.Name));
+        ((TextBox)window.FindName("ShortcutSearch")).Text = "ctrl d";
+        Assert.Equal("Duplicate", Assert.Single(Assert.Single(groups.Items.Cast<ShortcutGroup>()).Rows).Action);
+        ((TextBox)window.FindName("ShortcutSearch")).Text = "ctrl q";
+        Assert.Empty(groups.Items);
+        Assert.Equal(Visibility.Visible, Shown(window, "ShortcutsNone"));
+
+        // While it's open, Esc is the window's only key.
+        Assert.Null(window.RunKey(Key.Z, ModifierKeys.Control, inField: false));
+        Assert.Null(window.RunKey(Key.N, ModifierKeys.Control, inField: false));
+        Assert.Equal(2, ProjectStore.Load(directory).Layers.Count);
+        TestWindow.Press(window, Key.Escape);
+        Assert.Equal(Visibility.Collapsed, Shown(window, "DialogLayer"));
+        Assert.Equal(Command.Shortcuts, window.RunKey(Key.F1, ModifierKeys.None, inField: false));
+        Assert.Equal("", ((TextBox)window.FindName("ShortcutSearch")).Text);
+        Assert.Equal(4, groups.Items.Count);
+        Assert.Equal(Command.Cancel, window.RunKey(Key.Escape, ModifierKeys.None, inField: true));
+        Assert.Equal(Visibility.Collapsed, Shown(window, "ShortcutsDialog"));
+    });
+
+    // New project makes the project.json create_project makes from the same values, and opens it.
+    [Fact]
+    public void NewProjectMakesTheProjectCreateProjectMakesAndOpensIt() => TestWindow.Run("window-new-project", (window, folder) =>
+    {
+        var canvases = (ItemsControl)window.FindName("NewCanvases");
+        string Canvas() => canvases.Items.Cast<CanvasChoice>().Single(c => c.Selected).Name;
+
+        // Home's Square card opens it with the Square canvas.
+        var square = ((Panel)window.FindName("StartCards")).Children.OfType<Button>().Single(b => b.Tag as string == "Square");
+        square.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+        Assert.Equal(Visibility.Visible, Shown(window, "NewProjectDialog"));
+        Assert.Equal("Square", Canvas());
+        Assert.Equal("1:1 · 1080×1080 · 30 fps", Text(window, "NewShape"));
+        TestWindow.Press(window, Key.Escape);
+        Assert.Equal(Visibility.Collapsed, Shown(window, "DialogLayer"));
+
+        Assert.Equal(Command.NewProject, window.RunKey(Key.N, ModifierKeys.Control, inField: false));
+        var name = (TextBox)window.FindName("NewName");
+        Assert.Equal("New project", name.Text);
+        Assert.Equal("YouTube", Canvas());
+        Assert.Equal("16:9 · 1920×1080 · 30 fps", Text(window, "NewShape"));
+        Assert.Equal("Fits YouTube and the youtube_1080p export preset.", Text(window, "NewExportNote"));
+
+        // A size typed in chooses the card of that size.
+        ((TextBox)window.FindName("NewWidth")).Text = "1080";
+        Assert.Equal("Square", Canvas());
+        ((TextBox)window.FindName("NewHeight")).Text = "1920";
+        Assert.Equal("Shorts", Canvas());
+        ((RadioButton)window.FindName("NewFps25")).IsChecked = true;
+        ((RadioButton)window.FindName("NewSky")).IsChecked = true;
+        Assert.Equal("9:16 · 1080×1920 · 25 fps", Text(window, "NewShape"));
+        Assert.Equal("The shorts_1080p export preset has this size at 30 fps; Export's Project settings keeps 25 fps.", Text(window, "NewExportNote"));
+        name.Text = "short-01";
+        Click(window, "NewCreate");
+        var directory = Path.Combine(folder, "projects", ProjectStore.FolderName("short-01"));
+        Assert.Equal(Visibility.Collapsed, Shown(window, "DialogLayer"));
+        Assert.Equal($"Opened {Path.GetFileName(directory)}", Text(window, "MessageText"));
+
+        var expected = Path.Combine(folder, "expected");
+        ProjectSession.Create(expected, ProjectEditor.NewProject(new NewProjectOptions { Name = "short-01", Width = 1080, Height = 1920, Fps = 25, BackgroundColor = "#BFE3F7" }));
+        Assert.Equal(ProjectJson(expected), ProjectJson(directory));
+
+        // Again: the name is taken, and a size that isn't one can't be made.
+        Assert.Equal(Command.NewProject, window.RunKey(Key.N, ModifierKeys.Control, inField: false));
+        name.Text = "short-01";
+        Click(window, "NewCreate");
+        Assert.StartsWith("Couldn't create the project: ", Text(window, "NewError"));
+        ((TextBox)window.FindName("NewWidth")).Text = "wide";
+        Assert.Equal(NewProjectChoices.Custom, Canvas());
+        Assert.Equal("Type the width and height in pixels.", Text(window, "NewShape"));
+        Click(window, "NewCreate");
+        Assert.Equal("Type the width and height as whole numbers of pixels.", Text(window, "NewError"));
+        TestWindow.Press(window, Key.Escape);
+        Assert.Equal(Visibility.Collapsed, Shown(window, "DialogLayer"));
+        Assert.Equal(["short-01"], Directory.GetDirectories(Path.Combine(folder, "projects")).Select(d => ProjectStore.Load(d).Name));
+    });
+
+    // A project whose picture is gone opens with the Relink view, which finds the picture in the
+    // import folder and refuses a file of another kind. Relinked as relink_asset relinks it, the
+    // picture is drawn again.
+    [Fact]
+    public void RelinkingFindsAMissingPictureAndItIsDrawnAgain() => TestWindow.Run("window-relink", (window, folder) =>
+    {
+        var project = TestFiles.Project();
+        project.Assets.Add(new Asset { Id = "logo", Type = AssetType.Image, File = "assets/logo.png", Width = 8, Height = 8 });
+        ProjectEditor.AddImageLayer(project, new ImageLayerOptions { Id = "logo", Drawings = new Dictionary<string, string> { ["normal"] = "logo" } });
+        var directory = Path.Combine(folder, "gone");
+        ProjectSession.Create(directory, project);
+        var media = Directory.CreateDirectory(Path.Combine(folder, "media", "pictures")).FullName;
+        TestFiles.Png(Path.Combine(media, "logo.png"), 8, 8);
+        File.WriteAllBytes(Path.Combine(media, "logo.wav"), [0]);
+        window.OpenProject(directory);
+
+        Assert.Equal(Visibility.Visible, Shown(window, "RelinkDialog"));
+        Assert.Equal("1 file in gone can’t be found", Text(window, "RelinkTitle"));
+        Assert.Equal("Relink and open", ((Button)window.FindName("RelinkButton")).Content);
+        var file = Assert.Single(((ItemsControl)window.FindName("RelinkList")).Items.Cast<MissingFile>());
+        Assert.Equal("used by 1 clip", file.UsedBy);
+        for (var i = 0; i < 500 && file.Choice is null; i++)
+        {
+            TestWindow.Pump(10);
+        }
+
+        Assert.Equal((Path.Combine(media, "logo.png"), "same size 8x8 px"), (file.Choice!.Path, file.Choice.Reason));
+        Assert.True(((Button)window.FindName("RelinkButton")).IsEnabled);
+        for (var i = 0; i < 500 && Shown(window, "PreviewMessage") != Visibility.Visible; i++)
+        {
+            TestWindow.Pump(10);
+        }
+
+        Assert.StartsWith("Frame 0 can't be drawn", Text(window, "PreviewMessage"));
+
+        window.RelinkTo("logo", Path.Combine(media, "logo.wav"));
+        Assert.Equal(("'logo.wav' is an audio file, and asset 'logo' needs an image", true), (file.Status, file.Failed));
+        Assert.Equal(Path.Combine(media, "logo.png"), file.Choice!.Path);
+
+        Click(window, "RelinkButton");
+        for (var i = 0; i < 500 && Shown(window, "DialogLayer") == Visibility.Visible; i++)
+        {
+            TestWindow.Pump(10);
+        }
+
+        WaitForSaves(window);
+        Assert.Equal(Visibility.Collapsed, Shown(window, "DialogLayer"));
+        Assert.Equal("relinked 'logo' to assets/logo.png", Text(window, "MessageText"));
+        var asset = ProjectStore.Load(directory).FindAsset("logo")!;
+        Assert.Equal(("assets/logo.png", 8, 8), (asset.File, asset.Width, asset.Height));
+        Assert.True(File.Exists(Path.Combine(directory, ProjectStore.AssetsFolder, "logo.png")));
+        for (var i = 0; i < 500 && Shown(window, "PreviewMessage") == Visibility.Visible; i++)
+        {
+            TestWindow.Pump(10);
+        }
+
+        Assert.Equal(Visibility.Collapsed, Shown(window, "PreviewMessage"));
+        Assert.Empty(Relinking.Missing(ProjectStore.Load(directory), directory));
+    });
+
+    // The first time, the Welcome view shows the server's entry for Claude's config, turns green
+    // when a client connects, and opens a copy of the sample.
+    [Fact]
+    public void TheWelcomeTurnsGreenWhenClaudeConnectsAndOpensTheSample() => TestWindow.Run("window-welcome", (window, folder) =>
+    {
+        Assert.Equal(Visibility.Visible, Shown(window, "WelcomePage"));
+        Assert.Null(window.RunKey(Key.N, ModifierKeys.Control, inField: false));
+        Assert.Equal("STEP 2 OF 3", Text(window, "WelcomeStepText"));
+        Assert.Equal(Welcome.Config(Path.Combine(AppContext.BaseDirectory, Welcome.ServerFile)), ((TextBox)window.FindName("WelcomeConfig")).Text);
+        Assert.Equal(Visibility.Visible, Shown(window, "WelcomeServerNote"));
+        Assert.Equal("Waiting for Claude…", Text(window, "WelcomeStatusText"));
+        List<WelcomeStep> Steps() => ((ItemsControl)window.FindName("WelcomeSteps")).Items.Cast<WelcomeStep>().ToList();
+        Assert.Equal([true, false, false], Steps().Select(s => s.Done));
+        Assert.Equal([false, true, false], Steps().Select(s => s.Current));
+
+        Assert.True(ClientConnection.Write(Path.Combine(folder, "logs"), new ClientConnection("claude-ai", "0.14", DateTimeOffset.Now)));
+        for (var i = 0; i < 300 && Text(window, "WelcomeStatusText") != "Connected: claude-ai"; i++)
+        {
+            TestWindow.Pump(10);
+        }
+
+        Assert.Equal("Connected: claude-ai", Text(window, "WelcomeStatusText"));
+        Assert.Equal([true, true, false], Steps().Select(s => s.Done));
+
+        Click(window, "WelcomeNext");
+        Assert.Equal("STEP 3 OF 3", Text(window, "WelcomeStepText"));
+        Assert.Equal($"Open {Welcome.SampleName}", ((Button)window.FindName("WelcomeNext")).Content);
+        Click(window, "WelcomeNext");
+        var copy = Path.Combine(folder, "projects", Welcome.SampleName);
+        Assert.True(File.Exists(Path.Combine(copy, ProjectStore.ProjectFileName)));
+        Assert.Equal(Visibility.Collapsed, Shown(window, "WelcomePage"));
+        Assert.Equal($"Opened {Welcome.SampleName}", Text(window, "MessageText"));
+        Assert.True(File.Exists(Path.Combine(folder, "editor.json")));
+    }, firstRun: true);
 }

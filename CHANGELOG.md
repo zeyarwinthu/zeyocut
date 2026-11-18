@@ -17,6 +17,21 @@ when they open.
     or a folder on the command line, opens any project. A project is open in one editor window at a
     time. The header names the project, whether it's saved and when Claude last saved, with undo,
     redo, the Edit and Activity views and the way to Export.
+  - **New project** (Ctrl+N, or Home's Landscape, Shorts / Reels and Square cards) makes a project
+    in the projects folder from a name, a canvas, a frame rate and a background, or from a library
+    template, as `create_project` and `new_project_from_template` do, with a preview of the canvas
+    and its safe area and the export preset it fits.
+  - **Relink:** a project that opens with files missing lists them and finds likely matches in the
+    project folder and the import folders (the same name and kind, and the same size, length or
+    font family). Search another folder…, Choose file… or Leave it missing, then Relink and open
+    relinks them as `relink_asset` does, as one undoable step; a missing tile's menu has Relink….
+  - **Welcome:** the first start shows the projects folder, the server's entry for Claude Desktop's
+    config to copy, and the sample to open, copied into the projects folder; it turns green when
+    Claude connects. The release zip and the bundle carry `examples\tora-jump` next to the editor.
+  - **Keyboard shortcuts** (? or F1): every key in groups, with a search by action or key, from the
+    same table the keys run from. Ctrl+1, Ctrl+6 and Ctrl+E go to Edit, Activity and Export, Ctrl+D
+    duplicates the selected clip with its child layers, N turns snapping on and off, and
+    Ctrl+Shift+Z redoes as Ctrl+Y does.
   - **Media:** tiles with thumbnails and sound waveforms (kept in the project's `cache\thumbnails`
     and `cache\waveforms`) and chips for each kind. It imports images, audio, fonts and video (from
     the file picker or dropped on the window, normalizing video as `import_video` does, with

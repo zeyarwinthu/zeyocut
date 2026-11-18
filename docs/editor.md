@@ -13,6 +13,7 @@ It imports media, plays the edit with its sound, moves, trims and splits clips o
 - **Home**, the start page, shows your recent projects and then the rest of your projects folder. Each card has a picture of the project (its frame a second in, kept in the project's `cache\thumbnails` folder and drawn again once it's saved), its length, how many languages it's in, and "Claude edited 2 min ago" when Claude saved it last that day. The full folder is in its tooltip.
 - The search box keeps the projects whose names have what you type, and the buttons on the right show them as cards or as a list. Show folder, at the bottom, opens the projects folder.
 - Open folder… (Ctrl+O) opens any project folder, and so does dropping one on Home.
+- **New project…** (Ctrl+N), or the Landscape, Shorts / Reels and Square cards under Start something new (each opens it with its canvas chosen), makes a project in the projects folder. It takes a name and a blank canvas (YouTube 1920×1080, HD 720p, Shorts 1080×1920, Square, Portrait 4:5 or any size typed in), a frame rate (24, 25, 30 or 60) and a background (black, white, sky blue or transparent). It can also start from a template in the library, which brings its own canvas, frame rate and background. The preview shows the canvas's shape with its safe area and says which export preset fits it. It makes the same `project.json` as `create_project` (or `new_project_from_template`) with those values, then opens it.
 - From the command line: `ZeyoCut.Editor.exe C:\Users\you\ZeyoCut\projects\my-video`.
 - Or ask the model to open the project in the editor ([`open_in_editor`](GUIDE.md#open_in_editor)).
 
@@ -20,7 +21,11 @@ A project is open in one window at a time: opening it again brings that window t
 
 A `project.json` with problems still opens, such as one edited by hand whose asset names a file outside `assets\`. The status bar names the problems and the media list marks those files; changes and exports are refused until they're fixed.
 
-The header across the top names the project and whether it's saved ("Saved · rev N"). The logo and **Projects** close the project and go back to Home. In the middle, **Edit** and **Activity** switch views; on the right are Undo and Redo, when Claude last saved the project, and **Export**, which opens the Export view (Ctrl+1, Ctrl+2 and Ctrl+3 go to Activity, Edit and Export). The status bar at the bottom names the selected clip, counts the layers and lanes, and says what the last change did.
+When a project opens with files missing (moved or renamed), the **Relink** view lists each one, where it was and how many clips use it. It looks for each in the project folder and the import folders, up to four folders down, for a file of the same name and kind with the same pixel size, the same length (within a frame) or the same font family, and offers what it finds. Search another folder… looks in a folder you pick, Choose file… takes any file of the same kind, and Leave it missing skips one. Relink and open copies the chosen files into `assets\` and points the assets at them, as `relink_asset` does, as one step Ctrl+Z undoes. Open without relinking leaves them missing; a missing tile's right-click menu has Relink… for later. Footage that needs normalizing (variable frame rate, rotation, HDR) is refused: import it instead and use the new asset.
+
+The first time the editor starts, when it has no settings file yet, the **Welcome** view shows the projects folder and how to connect Claude: the `zeyocut` entry for Claude Desktop's `claude_desktop_config.json`, with the path of the `ZeyoCut.Mcp.exe` next to the editor, to copy, or the bundle to install instead. Its Connect step turns green when a client lists the server's tools after the Welcome opened (the server notes the last one in `connected.json` in its log folder). The last step copies the sample `examples\tora-jump` into the projects folder, unless a project of that name is there already, and opens it. Skip setup, or I'll do this later, goes to Home, and the Welcome doesn't open again.
+
+The header across the top names the project and whether it's saved ("Saved · rev N"). The logo and **Projects** close the project and go back to Home. In the middle, **Edit** and **Activity** switch views; on the right are Undo and Redo, when Claude last saved the project, and **Export**, which opens the Export view (Ctrl+1, Ctrl+6 and Ctrl+E go to Edit, Activity and Export; ? or F1 lists every key). The status bar at the bottom names the selected clip, counts the layers and lanes, and says what the last change did.
 
 ## Media
 
@@ -62,8 +67,8 @@ Clips are drawn in their kind's color, a video's or picture's with its thumbnail
 - Add marker (M) puts a chapter marker at the playhead, as `add_markers` does, named Marker 1, Marker 2 and so on. Ask Claude to rename or remove markers.
 - Drag a clip sideways to move it, or drag its edges to trim it; a video can show more as far as its source goes. Drag a video, picture or text clip up or down onto another lane to change what it's drawn over, or between two lanes to give it a level of its own. Escape cancels the drag.
 - Held at the left or right edge of the lanes, a drag scrolls them, faster the further in, so a clip can go anywhere in a long video. Scrubbing in the ruler does the same.
-- Clips snap to clip edges, the playhead and markers. The Snap button turns it off.
-- S (or Ctrl+B) splits the selected clip at the playhead, and Delete removes it with its child layers (a child layer selected in the preview is removed with its own children). Right-click a clip for these, for Hide and Show (Mute and Unmute for sound), and to turn a video's own sound off or on.
+- Clips snap to clip edges, the playhead and markers. The Snap button (N) turns it off.
+- S (or Ctrl+B) splits the selected clip at the playhead, and Delete removes it with its child layers (a child layer selected in the preview is removed with its own children). Right-click a clip for these, for Hide and Show (Mute and Unmute for sound), and to turn a video's own sound off or on. Ctrl+D duplicates the selected clip with its child layers, as `duplicate_layer` does, and selects the copy.
 - Click or drag in the ruler to move the playhead. ↑ and ↓ jump to the previous and next clip edge.
 - The ruler and the lanes are shaded past the project's end: the export stops there, so what runs past it is cut. The project's Duration in the inspector moves the end.
 - The selected clip shows its layer's keyframes as white diamonds along its bottom edge. Click one to move the playhead there; Alt+← and Alt+→ jump to the previous and next.
@@ -123,7 +128,7 @@ To blur seconds 2 to 4, say:
 
 ![The Export view exporting the Japanese version of comic-panels at 1920×1080, at 24%, with the earlier exports listed in the exports folder](editor-export.png)
 
-Export in the header (Ctrl+3) opens the Export view, and Back to edit returns to the timeline. It renders the project as it's saved to an MP4 in its `exports` folder, as the model's `start_export` does, in the editor's own process. Edits made while it runs aren't in it.
+Export in the header (Ctrl+E) opens the Export view, and Back to edit returns to the timeline. It renders the project as it's saved to an MP4 in its `exports` folder, as the model's `start_export` does, in the editor's own process. Edits made while it runs aren't in it.
 
 - **File name**, and **Save to**: the project's `exports` folder, which Show folder opens. Exports always go there.
 - **Preset** cards: the project's settings or a preset, each with the size and frame rate it exports at (a preset keeps the project's frame rate). A preset of another shape than the canvas says what it needs ("Needs a 9:16 project"); ask Claude to change the canvas first.
@@ -142,11 +147,13 @@ Under **Exports folder**, an export running here has its progress and Stop; expo
 - Ctrl+Z can't take back your change to a layer the server changed after it: that would throw the server's change away, and the status bar says so. The next Ctrl+Z steps over that change, which stays as it is, undoes the one before it and names the one it stepped over. Ctrl+Y does the same with a change it can't put back.
 - A change you began before the server's isn't saved over it. If the server changes a layer while you're typing in one of its fields or dragging it, your change isn't saved and the status bar says "Your change wasn't saved: another program changed '…' first". What you typed stays in the field: Enter saves it over the server's change, Escape drops it.
 - The header says when Claude last saved the project ("Claude saved 3 min ago"); hover over it for what it changed.
-- The **Activity** view (Ctrl+1) lists the saves the `backups` folder keeps, yours and Claude's, newest first under their days. Saves in a row by the same side, each under 5 minutes after the one before, are one step, named after its first edit ("trim_layer title, then 2 more"), with when it was made, the revision it saved and its edits; a restore is a step of its own. **All**, **You** and **Claude** choose whose steps show.
+- The **Activity** view (Ctrl+6) lists the saves the `backups` folder keeps, yours and Claude's, newest first under their days. Saves in a row by the same side, each under 5 minutes after the one before, are one step, named after its first edit ("trim_layer title, then 2 more"), with when it was made, the revision it saved and its edits; a restore is a step of its own. **All**, **You** and **Claude** choose whose steps show.
 - **Restore** on a step saves the project as that step left it as the next revision, the way `restore_backup` does, and Ctrl+Z takes it back; the server's next reply names it. The newest step is the project as it is, so it has no Restore, and neither has a step whose next save isn't kept ("Saves in between aren't kept"). If the server saved a change you haven't seen yet, nothing is restored and you see its version first.
 - A card beside the steps suggests things to ask Claude in your chat: the editor has no AI built in.
 
 ## Keys
+
+? or F1, outside a text field, opens **Keyboard shortcuts**: these keys in their groups, with a search box that finds an action by its name or its keys ("snap", "ctrl d"). The list and the keys come from one table, so they can't disagree.
 
 | Key | What it does |
 |---|---|
@@ -159,18 +166,22 @@ Under **Exports folder**, an export running here has its progress and Stop; expo
 | S or Ctrl+B | Split the selected clip at the playhead |
 | B / V | The Blade tool, which splits a clip where it's clicked, and the Select tool |
 | M | Add a chapter marker at the playhead |
-| Delete | Delete the selected clip with its child layers |
-| Escape | Cancel a drag, else go back to the Select tool, else clear the selection; in a field, put it back |
+| Delete or Backspace | Delete the selected clip with its child layers |
+| Ctrl+D | Duplicate the selected clip with its child layers |
+| Escape | Close the view open over the window, else cancel a drag, else go back to the Select tool, else clear the selection; in a field, put it back |
 | − / + | Zoom the timeline out and in (also Ctrl+wheel) |
 | Shift+Z | Fit the whole video in the timeline |
-| Ctrl+Z / Ctrl+Y | Undo and redo; in a field, the typing there |
-| Ctrl+1 / Ctrl+2 / Ctrl+3 | Activity, Edit and Export |
+| N | Snapping on and off |
+| Ctrl+Z / Ctrl+Shift+Z or Ctrl+Y | Undo and redo; in a field, the typing there |
+| Ctrl+1 / Ctrl+6 / Ctrl+E | Edit, Activity and Export |
+| Ctrl+N | New project |
 | Ctrl+O | Open a project |
 | Ctrl+I | Import media |
+| ? or F1 | Keyboard shortcuts |
 
 ## Settings
 
-The editor reads `FfmpegPath`, `ProjectsRoot`, `LibraryPath` and `VideoEncoder` from the same `appsettings.json` and environment variables as the server (see [Configuration](https://github.com/zeyarwinthu/zeyocut#configuration)). It keeps its own settings (recent projects, cards or list on Home, panel sizes, window position, snapping, playback size) in `%LOCALAPPDATA%\ZeyoCut\editor.json`, or the file `ZEYOCUT_EDITOR_SETTINGS` names, never in the project.
+The editor reads `FfmpegPath`, `ProjectsRoot`, `LibraryPath` and `VideoEncoder` from the same `appsettings.json` and environment variables as the server (see [Configuration](https://github.com/zeyarwinthu/zeyocut#configuration)). It keeps its own settings (recent projects, cards or list on Home, panel sizes, window position, snapping, playback size) in `%LOCALAPPDATA%\ZeyoCut\editor.json`, or the file `ZEYOCUT_EDITOR_SETTINGS` names, never in the project. While there's no such file, the editor starts with the Welcome view.
 
 ## What it leaves to the model
 
