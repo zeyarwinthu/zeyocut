@@ -871,10 +871,7 @@ public static partial class TimelineEditor
         }
 
         piece.Start = KeyframeWindow.Round(start);
-        if (piece is VisualLayer visual)
-        {
-            RestrictTracks(visual, keepsStart ? double.NegativeInfinity : start, keepsEnd ? double.PositiveInfinity : end);
-        }
+        RestrictTracks(piece, keepsStart ? double.NegativeInfinity : start, keepsEnd ? double.PositiveInfinity : end);
 
         return piece;
     }
@@ -981,17 +978,14 @@ public static partial class TimelineEditor
             layer.End = KeyframeWindow.Round(end + delta);
         }
 
-        if (layer is VisualLayer visual)
+        foreach (var (_, value) in AnimatableProperties.Keyed(layer))
         {
-            foreach (var (_, value) in AnimatableProperties.Numeric(visual))
-            {
-                KeyframeWindow.Shift(value, delta);
-            }
+            KeyframeWindow.Shift(value, delta);
+        }
 
-            if (visual is ImageLayer image)
-            {
-                KeyframeWindow.Shift(image.Drawing, delta);
-            }
+        if (layer is ImageLayer image)
+        {
+            KeyframeWindow.Shift(image.Drawing, delta);
         }
     }
 
@@ -1013,9 +1007,9 @@ public static partial class TimelineEditor
         }
     }
 
-    private static void RestrictTracks(VisualLayer layer, double from, double to)
+    private static void RestrictTracks(Layer layer, double from, double to)
     {
-        foreach (var (_, value) in AnimatableProperties.Numeric(layer))
+        foreach (var (_, value) in AnimatableProperties.Keyed(layer))
         {
             KeyframeWindow.Restrict(value, from, to);
         }

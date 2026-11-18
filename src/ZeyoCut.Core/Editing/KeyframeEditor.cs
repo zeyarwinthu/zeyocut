@@ -132,6 +132,14 @@ public static class KeyframeEditor
             return RedactionEditor.ClearBoxes(redaction, property);
         }
 
+        if (project.FindLayer(layerId) is AudioLayer audio)
+        {
+            var volume = AudioVolume(audio, property ?? AnimatableProperties.Volume);
+            var cleared = volume.Keyframes.Count;
+            volume.Keyframes.Clear();
+            return cleared;
+        }
+
         var layer = ProjectEditor.GetVisualLayer(project, layerId);
         var count = 0;
         var properties = property is null
@@ -394,6 +402,19 @@ public static class KeyframeEditor
             return Upsert(box.Keyframes, entry.Time, k => k.Time, new Keyframe { Time = entry.Time, Value = value, Easing = boxEasing, Bezier = boxBezier });
         }
 
+        if (project.FindLayer(entry.LayerId) is AudioLayer audio)
+        {
+            var volume = AudioVolume(audio, entry.Property);
+            if (!double.IsFinite(entry.Time) || entry.Time < 0)
+            {
+                throw new ZeyoCutException($"time must be >= 0 (got {entry.Time})");
+            }
+
+            var (soundEasing, soundBezier) = EasingOf(entry);
+            var key = new Keyframe { Time = entry.Time, Value = ReadNumber(entry.Value, AnimatableProperties.Volume), Easing = soundEasing, Bezier = soundBezier };
+            return Upsert(volume.Keyframes, entry.Time, k => k.Time, key);
+        }
+
         var layer = ProjectEditor.GetVisualLayer(project, entry.LayerId);
         var property = CanonicalProperty(entry.Property);
         if (!double.IsFinite(entry.Time) || entry.Time < 0)
@@ -483,6 +504,12 @@ public static class KeyframeEditor
             return;
         }
 
+        if (project.FindLayer(target.LayerId) is AudioLayer audio)
+        {
+            RemoveAt(AudioVolume(audio, target.Property).Keyframes, target.Time, k => k.Time, $"{audio.Id}.{AnimatableProperties.Volume}");
+            return;
+        }
+
         var layer = ProjectEditor.GetVisualLayer(project, target.LayerId);
         var property = CanonicalProperty(target.Property);
         if (property == AnimatableProperties.Drawing)
@@ -529,6 +556,11 @@ public static class KeyframeEditor
             throw new ZeyoCutException($"'{redaction.Id}' is a redaction, whose boxes are in its footage's own seconds; set_keyframes changes them");
         }
 
+        if (project.FindLayer(layerId) is AudioLayer audio)
+        {
+            return (AudioVolume(audio, property).Keyframes, null, $"{audio.Id}.{AnimatableProperties.Volume}");
+        }
+
         var layer = ProjectEditor.GetVisualLayer(project, layerId);
         var name = CanonicalProperty(property);
         if (name == AnimatableProperties.Drawing)
@@ -572,6 +604,11 @@ public static class KeyframeEditor
     // A cutout's only animated setting is its opacity; the rest follows its sources.
     private static AnimatedValue CutoutOpacity(CutoutLayer cutout, string? property) =>
         string.Equals(property, "opacity", StringComparison.OrdinalIgnoreCase) ? cutout.Opacity : throw SubjectEditor.Follows(cutout);
+
+    private static AnimatedValue AudioVolume(AudioLayer audio, string? property) =>
+        string.Equals(property?.Trim(), AnimatableProperties.Volume, StringComparison.OrdinalIgnoreCase)
+            ? audio.Volume
+            : throw new ZeyoCutException($"'{audio.Id}' is an audio layer, whose only animatable property is volume (got '{property}')");
 
     private static ZeyoCutException PathByHand() =>
         new("'path' keyframes come from set_motion_path (each point's time and easing); call it again to change the timing, or with remove=true to take the path off");

@@ -190,9 +190,10 @@ public sealed class FrameKeys
 
     private static JsonSerializerOptions CreateAtTime()
     {
+        // Ahead of the project's own converters, which write a value with its keyframes.
         var options = new JsonSerializerOptions(ProjectJson.Options) { WriteIndented = false };
-        options.Converters.Add(new ValueAtTime());
-        options.Converters.Add(new DrawingAtTime());
+        options.Converters.Insert(0, new ValueAtTime());
+        options.Converters.Insert(1, new DrawingAtTime());
         return options;
     }
 

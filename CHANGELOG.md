@@ -138,6 +138,12 @@ when they open.
 - **Cubic bezier easing (project format 8):** a keyframe's easing can be `cubicBezier`, with its
   curve as four numbers in `bezier` (`[x1, y1, x2, y2]`, as CSS's `cubic-bezier()`); `set_keyframes`
   takes `bezier`. Older projects update as they open.
+- **Mixer settings and volume keyframes (project format 9):** each sound role (voice, music,
+  effects) has a gain in dB, a pan and a mute in `audio.voice`, `audio.music` and `audio.effects`,
+  set with `update_project` (`role` with `gain`, `pan`, `muted`). Ducking has a level and fades
+  (`duckLevel`, `duckFadeIn`, `duckFadeOut`). A sound's `volume`, and a video's, is an animated
+  value, keyframed with `set_keyframes` property `volume`; a number there still reads. Older
+  projects update as they open.
 
 ### Changed
 

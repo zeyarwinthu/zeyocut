@@ -44,10 +44,14 @@ public static class ProjectEditor
     {
         if (options.Name is null && options.Width is null && options.Height is null && options.Fps is null
             && options.Duration is null && options.BackgroundColor is null
-            && options.Preset is null && options.LoudnessTarget is null && options.Ducking is null)
+            && options.Preset is null && options.LoudnessTarget is null && options.Ducking is null
+            && options.DuckLevel is null && options.DuckFadeIn is null && options.DuckFadeOut is null
+            && options.Role is null && options.Gain is null && options.Pan is null && options.Muted is null)
         {
-            throw new ZeyoCutException("nothing to change; pass at least one of name, width, height, fps, duration, backgroundColor, preset, loudnessTarget, ducking");
+            throw new ZeyoCutException("nothing to change; pass at least one of name, width, height, fps, duration, backgroundColor, preset, loudnessTarget, ducking, duckLevel, duckFadeIn, duckFadeOut, or role with gain, pan or muted");
         }
+
+        CheckMix(options);
 
         if (options.Preset is { } presetName)
         {
@@ -131,6 +135,48 @@ public static class ProjectEditor
         {
             changes.Add($"music ducking {(ducking ? "on" : "off")}");
             project.Audio.Ducking = ducking;
+        }
+
+        var audio = project.Audio;
+        if (options.DuckLevel is { } level && level != audio.DuckLevel)
+        {
+            changes.Add($"duck level {Decibels(audio.DuckLevel)} → {Decibels(level)}");
+            audio.DuckLevel = level;
+        }
+
+        if (options.DuckFadeIn is { } fadeIn && fadeIn != audio.DuckFadeIn)
+        {
+            changes.Add($"duck fade in {Num(audio.DuckFadeIn)}s → {Num(fadeIn)}s");
+            audio.DuckFadeIn = fadeIn;
+        }
+
+        if (options.DuckFadeOut is { } fadeOut && fadeOut != audio.DuckFadeOut)
+        {
+            changes.Add($"duck fade out {Num(audio.DuckFadeOut)}s → {Num(fadeOut)}s");
+            audio.DuckFadeOut = fadeOut;
+        }
+
+        if (options.Role is { } role)
+        {
+            var mix = audio.For(role);
+            var roleName = EnumNames.ToName(role);
+            if (options.Gain is { } gain && gain != mix.Gain)
+            {
+                changes.Add($"{roleName} gain {Decibels(mix.Gain)} → {Decibels(gain)}");
+                mix.Gain = gain;
+            }
+
+            if (options.Pan is { } pan && pan != mix.Pan)
+            {
+                changes.Add($"{roleName} pan {PanText(mix.Pan)} → {PanText(pan)}");
+                mix.Pan = pan;
+            }
+
+            if (options.Muted is { } muted && muted != mix.Muted)
+            {
+                changes.Add($"{roleName} {(muted ? "muted" : "unmuted")}");
+                mix.Muted = muted;
+            }
         }
 
         if (changes.Count == 0)
@@ -381,7 +427,7 @@ public static class ProjectEditor
             End = options.End,
             TrimIn = options.TrimIn ?? 0,
             TrimOut = options.TrimOut,
-            Volume = options.Volume ?? 1,
+            Volume = new AnimatedValue(options.Volume ?? 1),
             Role = options.Role is null ? AudioRole.Music : EnumNames.Parse<AudioRole>(options.Role, "role"),
             FadeIn = options.FadeIn ?? 0,
             FadeOut = options.FadeOut ?? 0,
@@ -420,7 +466,7 @@ public static class ProjectEditor
             TrimIn = trimIn,
             TrimOut = Math.Min(trimOut, duration),
             Speed = speed,
-            Volume = options.Volume ?? 1,
+            Volume = new AnimatedValue(options.Volume ?? 1),
             Muted = options.Muted ?? false,
             Role = options.Role is null ? AudioRole.Voice : EnumNames.Parse<AudioRole>(options.Role, "role"),
             FadeIn = options.FadeIn ?? 0,
@@ -451,6 +497,50 @@ public static class ProjectEditor
         project.Duration = rounded;
         return true;
     }
+
+    // gain, pan and muted go with a role, and their ranges.
+    private static void CheckMix(ProjectOptions options)
+    {
+        if (options.Role is null && (options.Gain is not null || options.Pan is not null || options.Muted is not null))
+        {
+            throw new ZeyoCutException("gain, pan and muted set a role's mix; pass role too (voice, music or effects)");
+        }
+
+        if (options.Role is not null && options.Gain is null && options.Pan is null && options.Muted is null)
+        {
+            throw new ZeyoCutException("role picks whose gain, pan and muted change; pass at least one of them");
+        }
+
+        if (options.Gain is { } gain && (!double.IsFinite(gain) || gain < RoleMix.MinGain || gain > RoleMix.MaxGain))
+        {
+            throw new ZeyoCutException($"gain must be between {Num(RoleMix.MinGain)} and {Num(RoleMix.MaxGain)} dB (got {Num(gain)})");
+        }
+
+        if (options.Pan is { } pan && (!double.IsFinite(pan) || pan < -1 || pan > 1))
+        {
+            throw new ZeyoCutException($"pan must be between -1 (left) and 1 (right) (got {Num(pan)})");
+        }
+
+        if (options.DuckLevel is { } level && (!double.IsFinite(level) || level < AudioSettings.MinDuckLevel || level > 0))
+        {
+            throw new ZeyoCutException($"duckLevel must be between {Num(AudioSettings.MinDuckLevel)} and 0 dB (got {Num(level)})");
+        }
+
+        foreach (var (name, fade) in new[] { ("duckFadeIn", options.DuckFadeIn), ("duckFadeOut", options.DuckFadeOut) })
+        {
+            if (fade is { } seconds && (!double.IsFinite(seconds) || seconds < 0 || seconds > AudioSettings.MaxDuckFade))
+            {
+                throw new ZeyoCutException($"{name} must be between 0 and {Num(AudioSettings.MaxDuckFade)} seconds (got {Num(seconds)})");
+            }
+        }
+    }
+
+    // 0 dB, -6 dB, +3 dB.
+    public static string Decibels(double value) => value.ToString("+0.#;-0.#;0", CultureInfo.InvariantCulture) + " dB";
+
+    // center, 50% left, 100% right.
+    public static string PanText(double pan) =>
+        Math.Abs(pan) < 0.005 ? "center" : $"{Math.Round(Math.Abs(pan) * 100).ToString(CultureInfo.InvariantCulture)}% {(pan < 0 ? "left" : "right")}";
 
     public static IReadOnlyList<string> UpdateLayer(Project project, string layerId, JsonObject changes)
     {

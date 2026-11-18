@@ -52,7 +52,7 @@ public static class ProjectTools
     });
 
     [McpServerTool(Name = "update_project")]
-    [Description("Change the open project's settings. Only the parameters you pass change. Keyframe times are in seconds, so changing fps keeps the timing; changing the canvas size does not move layers (for landscape footage on a new vertical canvas use reframe_to_vertical). Extend the duration when a voiceover or music runs past the end; the result warns about audio that would be cut and keyframes or layers past a shorter end. Audio: loudnessTarget (LUFS, two-pass loudnorm at export; 0 = off) and ducking (music under voice).")]
+    [Description("Change the open project's settings. Only the parameters you pass change. Keyframe times are in seconds, so changing fps keeps the timing; changing the canvas size does not move layers (for landscape footage on a new vertical canvas use reframe_to_vertical). Extend the duration when a voiceover or music runs past the end; the result warns about audio that would be cut and keyframes or layers past a shorter end. Audio: loudnessTarget (LUFS, two-pass loudnorm at export; 0 = off); ducking (music under voice) with duckLevel, duckFadeIn and duckFadeOut; and a role's mixer strip: role with gain, pan and muted (every clip of that role, in the export and the editor's preview).")]
     public static string UpdateProject(
         EditorState state,
         [Description("New display name (the folder is not renamed).")] string? name = null,
@@ -63,7 +63,14 @@ public static class ProjectTools
         [Description("Background color #RRGGBB or #RRGGBBAA.")] string? backgroundColor = null,
         [Description("youtube_1080p (1920x1080) or shorts_1080p (1080x1920): sets width, height, fps and loudness.")] string? preset = null,
         [Description("Export loudness in LUFS, -40..-5 (-14 for YouTube and most platforms); 0 turns normalization off.")] double? loudnessTarget = null,
-        [Description("Duck music (role music) under voice (role voice) in the export.")] bool? ducking = null) => Guard(() =>
+        [Description("Duck music (role music) under voice (role voice) in the export.")] bool? ducking = null,
+        [Description("How far ducking lowers the music where voice clips play, in dB: 0 to -40 (default -12).")] double? duckLevel = null,
+        [Description("Seconds the music takes to go down before a voice clip starts, 0-5 (default 0.5).")] double? duckFadeIn = null,
+        [Description("Seconds the music takes to come back up after a voice clip ends, 0-5 (default 1.5).")] double? duckFadeOut = null,
+        [Description("voice, music or effects: the role whose gain, pan and muted change. Voice holds videos' own sound and narration.")] string? role = null,
+        [Description("The role's gain in dB, -60 to +6 (0 = as the clips are).")] double? gain = null,
+        [Description("The role's balance, -1 (left only) through 0 (center) to 1 (right only).")] double? pan = null,
+        [Description("Silence every clip of the role (true) or bring it back (false).")] bool? muted = null) => Guard(() =>
     {
         var session = state.Session;
         var update = session.Mutate("update_project", p => ProjectEditor.UpdateProject(p, new ProjectOptions
@@ -77,6 +84,13 @@ public static class ProjectTools
             Preset = preset,
             LoudnessTarget = loudnessTarget,
             Ducking = ducking,
+            DuckLevel = duckLevel,
+            DuckFadeIn = duckFadeIn,
+            DuckFadeOut = duckFadeOut,
+            Role = string.IsNullOrWhiteSpace(role) ? null : EnumNames.Parse<AudioRole>(role, "role"),
+            Gain = gain,
+            Pan = pan,
+            Muted = muted,
         }));
         var project = session.Snapshot();
         return WithWarnings($"updated project '{project.Name}': {string.Join("; ", update.Changes)}\n{Summary(project)}", update.Warnings);

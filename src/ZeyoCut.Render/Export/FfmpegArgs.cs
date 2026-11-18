@@ -71,7 +71,7 @@ public static class FfmpegArgs
                 continue;
             }
 
-            clips.Add(new AudioClip(layer.Id, path, layer.Start, layer.TrimIn, length, layer.Volume, layer.FadeIn, layer.FadeOut, Role: layer.Role));
+            clips.Add(new AudioClip(layer.Id, path, layer.Start, layer.TrimIn, length, layer.Volume.Value, layer.FadeIn, layer.FadeOut, Role: layer.Role));
         }
 
         return clips;
@@ -103,7 +103,7 @@ public static class FfmpegArgs
             layer.Start,
             layer.TrimIn,
             length,
-            layer.Volume,
+            layer.Volume.Value,
             layer.FadeIn,
             layer.FadeOut,
             layer.Speed,

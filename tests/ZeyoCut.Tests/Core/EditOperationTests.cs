@@ -157,7 +157,7 @@ public class EditOperationTests
         // The same operation applies again (its changes are copied each time).
         var again = TestProjects.Footage();
         cases[5].Operation.Apply(again);
-        Assert.Equal(0.3, Layer<AudioLayer>(again, "music").Volume);
+        Assert.Equal(0.3, Layer<AudioLayer>(again, "music").Volume.Value);
     }
 
     [Fact]
@@ -374,7 +374,7 @@ public class EditOperationTests
         var louder = new UpdateLayerOperation("music", new JsonObject { ["volume"] = 0.25, ["fadeIn"] = 1.5 });
         Assert.Equal(("update_layer music", "updated layer 'music'"), (louder.Label, louder.Apply(project)));
         var music = Layer<AudioLayer>(project, "music");
-        Assert.Equal((0.25, 1.5, 1.0), (music.Volume, music.FadeIn, music.FadeOut));
+        Assert.Equal((0.25, 1.5, 1.0), (music.Volume.Value, music.FadeIn, music.FadeOut));
 
         // An audio layer is muted by hiding it.
         new UpdateLayerOperation("music", new JsonObject { ["visible"] = false }).Apply(project);
@@ -484,7 +484,7 @@ public class EditOperationTests
         Assert.Equal("tora_head.y has a keyframe at 1s already, and a keyframe can't land on another", Refused(new KeyframeMove("tora_head", "y", 0, 1)));
         Assert.Equal("""
             2 problems, so nothing was changed:
-            - entry 1 (tora_head.wobble @ 0s): unknown property 'wobble'; animatable properties: x, y, rotation, scaleX, scaleY, opacity; brightness, contrast, saturation (image and video layers); cropX, cropY (video layers); drawing (image layers); shadow.x, shadow.y, shadow.blur, shadow.opacity, outline.width, blur.x, blur.y, tint.amount (layers with that effect, see set_effect); mask.x, mask.y, mask.width, mask.height, mask.feather (layers with a mask, see set_mask)
+            - entry 1 (tora_head.wobble @ 0s): unknown property 'wobble'; animatable properties: x, y, rotation, scaleX, scaleY, opacity; brightness, contrast, saturation (image and video layers); cropX, cropY (video layers); drawing (image layers); volume (audio layers and video layers' own sound, 1 as recorded, 0 silent, up to 10); shadow.x, shadow.y, shadow.blur, shadow.opacity, outline.width, blur.x, blur.y, tint.amount (layers with that effect, see set_effect); mask.x, mask.y, mask.width, mask.height, mask.feather (layers with a mask, see set_mask)
             - entry 2 (tora_head.y @ 0s): the keyframe at 0s on tora_head.y is moved twice
             """, Refused(new KeyframeMove("tora_head", "y", 0, 0.5), new KeyframeMove("tora_head", "wobble", 0, 1), new KeyframeMove("tora_head", "y", 0, 0.7)));
         Assert.Equal([0.0, 1.0], ((ImageLayer)project.FindLayer("tora_head")!).Y.Keyframes.Select(k => k.Time));

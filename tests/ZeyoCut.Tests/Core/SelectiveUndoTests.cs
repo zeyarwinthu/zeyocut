@@ -69,7 +69,7 @@ public class SelectiveUndoTests
         server.Mutate("add_caption_track en", TestProjects.AddCaptions);
 
         Assert.Equal("update_layer music", editor.Undo());
-        Assert.Equal(0.8, Saved<AudioLayer>(directory, "music").Volume);
+        Assert.Equal(0.8, Saved<AudioLayer>(directory, "music").Volume.Value);
         Assert.Equal("trim_layer clip_2", editor.Undo());
         var undone = ProjectStore.Load(directory);
         Assert.Equal(8, Assert.IsType<VideoLayer>(undone.FindLayer("clip_2")).TrimOut);
@@ -82,7 +82,7 @@ public class SelectiveUndoTests
         Assert.Equal("update_layer music", editor.Redo());
         var redone = ProjectStore.Load(directory);
         Assert.Equal(7, Assert.IsType<VideoLayer>(redone.FindLayer("clip_2")).TrimOut);
-        Assert.Equal(0.3, Assert.IsType<AudioLayer>(redone.FindLayer("music")).Volume);
+        Assert.Equal(0.3, Assert.IsType<AudioLayer>(redone.FindLayer("music")).Volume.Value);
         Assert.NotNull(redone.FindLayer("captions_en"));
         Assert.Equal(8, redone.Revision);
 
@@ -123,7 +123,7 @@ public class SelectiveUndoTests
         var error = Assert.Throws<ZeyoCutException>(() => server.Undo());
         Assert.Equal($"can't undo 'trim_layer clip_2': another program changed layer 'clip_2' since that edit (saved: editor update_layer clip_2), and undoing it would throw that change away. {Backups}", error.Message);
         var kept = Saved<VideoLayer>(directory, "clip_2");
-        Assert.Equal((7.0, 0.5), (kept.TrimOut, kept.Volume));
+        Assert.Equal((7.0, 0.5), (kept.TrimOut, kept.Volume.Value));
         Assert.Equal(revision, ProjectStore.Load(directory).Revision);
         Assert.Equal(1, server.UndoCount);
 
@@ -156,7 +156,7 @@ public class SelectiveUndoTests
         Assert.Equal("move_layer title", editor.Undo(out var over));
         Assert.Equal(["update_layer music"], over);
         var music = Saved<AudioLayer>(directory, "music");
-        Assert.Equal((0.0, 0.3, 1.0), (Saved<TextLayer>(directory, "title").Start, music.Volume, music.FadeIn));
+        Assert.Equal((0.0, 0.3, 1.0), (Saved<TextLayer>(directory, "title").Start, music.Volume.Value, music.FadeIn));
         Assert.Equal((1, 1), (editor.UndoCount, editor.RedoCount));
         Assert.Equal("editor undo move_layer title", ProjectBackups.List(directory)[0].Before);
         var revision = ProjectStore.Load(directory).Revision;
@@ -173,7 +173,7 @@ public class SelectiveUndoTests
         Assert.Empty(over);
         Assert.Equal("update_layer music", editor.Undo(out over));
         Assert.Empty(over);
-        Assert.Equal((0.0, 0.8), (Saved<TextLayer>(directory, "title").Start, Saved<AudioLayer>(directory, "music").Volume));
+        Assert.Equal((0.0, 0.8), (Saved<TextLayer>(directory, "title").Start, Saved<AudioLayer>(directory, "music").Volume.Value));
         Assert.Equal(0, editor.UndoCount);
     }
 
@@ -205,7 +205,7 @@ public class SelectiveUndoTests
         editor.Mutate("update_layer music", p => ProjectEditor.UpdateLayer(p, "music", new JsonObject { ["volume"] = 0.3 }));
         Assert.Equal("update_layer music", editor.Undo(out var over));
         Assert.Empty(over);
-        Assert.Equal(0.8, Saved<AudioLayer>(directory, "music").Volume);
+        Assert.Equal(0.8, Saved<AudioLayer>(directory, "music").Volume.Value);
     }
 
     [Fact]
@@ -229,7 +229,7 @@ public class SelectiveUndoTests
         Assert.Equal("move_layer title", editor.Redo(out var over));
         Assert.Equal(["update_layer music"], over);
         var music = Saved<AudioLayer>(directory, "music");
-        Assert.Equal((1.0, 0.8, 1.0), (Saved<TextLayer>(directory, "title").Start, music.Volume, music.FadeIn));
+        Assert.Equal((1.0, 0.8, 1.0), (Saved<TextLayer>(directory, "title").Start, music.Volume.Value, music.FadeIn));
         Assert.Equal((1, 1), (editor.UndoCount, editor.RedoCount));
         Assert.Equal("editor redo move_layer title", ProjectBackups.List(directory)[0].Before);
         var revision = ProjectStore.Load(directory).Revision;
@@ -246,7 +246,7 @@ public class SelectiveUndoTests
         Assert.Equal("update_layer music", server.Undo());
         Assert.Equal("update_layer music", editor.Redo(out over));
         Assert.Empty(over);
-        Assert.Equal((1.0, 0.3), (Saved<TextLayer>(directory, "title").Start, Saved<AudioLayer>(directory, "music").Volume));
+        Assert.Equal((1.0, 0.3), (Saved<TextLayer>(directory, "title").Start, Saved<AudioLayer>(directory, "music").Volume.Value));
         Assert.Equal((2, 0), (editor.UndoCount, editor.RedoCount));
     }
 
@@ -323,7 +323,7 @@ public class SelectiveUndoTests
 
         Assert.Equal("set_keyframes title", server.Undo());
         Assert.Empty(Saved<TextLayer>(directory, "title").Opacity.Keyframes);
-        Assert.Equal(0.3, Saved<AudioLayer>(directory, "music").Volume);
+        Assert.Equal(0.3, Saved<AudioLayer>(directory, "music").Volume.Value);
     }
 
     [Fact]

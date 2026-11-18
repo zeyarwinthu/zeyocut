@@ -95,7 +95,7 @@ public class InspectorTests
         Commit(project, "clip", "Fade out", "1 s");
         Commit(project, "clip", "Role", "music");
         var video = (VideoLayer)project.FindLayer("clip")!;
-        Assert.Equal((true, 0.5, 1.0, AudioRole.Music), (video.Muted, video.Volume, video.FadeOut, video.Role));
+        Assert.Equal((true, 0.5, 1.0, AudioRole.Music), (video.Muted, video.Volume.Value, video.FadeOut, video.Role));
         Commit(project, "clip", "Shown", "false");
         Assert.False(project.FindLayer("clip")!.Visible);
     }

@@ -11,9 +11,12 @@ public static class AnimatableProperties
     // A motion path's progress (0 at its first point): set by set_motion_path, never by hand.
     public const string Path = "path";
 
+    // The level of a sound or of a video's own sound, 1 as recorded.
+    public const string Volume = "volume";
+
     public static readonly IReadOnlyList<string> NumericNames =
     [
-        "x", "y", "rotation", "scaleX", "scaleY", "opacity", "brightness", "contrast", "saturation", "cropX", "cropY",
+        "x", "y", "rotation", "scaleX", "scaleY", "opacity", "brightness", "contrast", "saturation", "cropX", "cropY", Volume,
         "shadow.x", "shadow.y", "shadow.blur", "shadow.opacity", "outline.width", "blur.x", "blur.y", "tint.amount",
         "mask.x", "mask.y", "mask.width", "mask.height", "mask.feather", Path,
     ];
@@ -25,6 +28,7 @@ public static class AnimatableProperties
 
     public static string Describe() =>
         "x, y, rotation, scaleX, scaleY, opacity; brightness, contrast, saturation (image and video layers); cropX, cropY (video layers); drawing (image layers); "
+        + "volume (audio layers and video layers' own sound, 1 as recorded, 0 silent, up to 10); "
         + "shadow.x, shadow.y, shadow.blur, shadow.opacity, outline.width, blur.x, blur.y, tint.amount (layers with that effect, see set_effect); "
         + "mask.x, mask.y, mask.width, mask.height, mask.feather (layers with a mask, see set_mask)";
 
@@ -66,6 +70,7 @@ public static class AnimatableProperties
         {
             yield return ("cropX", video.CropX);
             yield return ("cropY", video.CropY);
+            yield return (Volume, video.Volume);
         }
 
         if (layer.Shadow is { } shadow)
@@ -107,6 +112,19 @@ public static class AnimatableProperties
         }
     }
 
+    public static IEnumerable<(string Name, AnimatedValue Value)> Numeric(AudioLayer layer)
+    {
+        yield return (Volume, layer.Volume);
+    }
+
+    // Every keyframed number of a layer: a visual layer's, or a sound's volume.
+    public static IEnumerable<(string Name, AnimatedValue Value)> Keyed(Layer layer) => layer switch
+    {
+        VisualLayer visual => Numeric(visual),
+        AudioLayer audio => Numeric(audio),
+        _ => [],
+    };
+
     public static string? Canonical(string? name)
     {
         if (string.IsNullOrWhiteSpace(name))
@@ -140,6 +158,11 @@ public static class AnimatableProperties
         if (CropNames.Contains(canonicalName))
         {
             throw new ZeyoCutException($"'{canonicalName}' is only on video layers; '{layer.Id}' is a {layer.TypeName} layer");
+        }
+
+        if (canonicalName == Volume)
+        {
+            throw new ZeyoCutException($"'{Volume}' is only on audio and video layers; '{layer.Id}' is a {layer.TypeName} layer");
         }
 
         if (canonicalName == Path)

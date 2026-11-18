@@ -252,7 +252,7 @@ public class VideoTests
         var project = TestProjects.Empty(duration: 10);
         project.Assets.Add(new Asset { Id = "talk", Type = AssetType.Video, File = "assets/talk.mp4", Width = 64, Height = 48, FrameRate = "30", FrameCount = 300, Duration = 10, HasAudio = true });
         project.Assets.Add(new Asset { Id = "silent", Type = AssetType.Video, File = "assets/silent.mp4", Width = 64, Height = 48, FrameRate = "30", FrameCount = 300, Duration = 10, HasAudio = false });
-        project.Layers.Add(new VideoLayer { Id = "fast", Asset = "talk", Start = 1, TrimIn = 2, TrimOut = 6, Speed = 2, Volume = 0.5, FadeOut = 0.25 });
+        project.Layers.Add(new VideoLayer { Id = "fast", Asset = "talk", Start = 1, TrimIn = 2, TrimOut = 6, Speed = 2, Volume = new AnimatedValue(0.5), FadeOut = 0.25 });
         project.Layers.Add(new VideoLayer { Id = "slow", Asset = "talk", Start = 0, TrimIn = 0, TrimOut = 1, Speed = 0.25 });
         project.Layers.Add(new VideoLayer { Id = "muted", Asset = "talk", TrimOut = 5, Muted = true });
         project.Layers.Add(new VideoLayer { Id = "no_sound", Asset = "silent", TrimOut = 5 });

@@ -68,13 +68,13 @@ public class EditorDocumentTests
         Assert.True(editor.Restore(backup));
         Assert.Equal("Saved · revision 4", editor.Status);
         Assert.Equal(4, ProjectStore.Load(directory).Revision);
-        Assert.Equal((7.0, 0.8), (Saved<VideoLayer>(directory, "clip_2").TrimOut, Saved<AudioLayer>(directory, "music").Volume));
-        Assert.Equal(0.8, Assert.IsType<AudioLayer>(editor.View.FindLayer("music")).Volume);
+        Assert.Equal((7.0, 0.8), (Saved<VideoLayer>(directory, "clip_2").TrimOut, Saved<AudioLayer>(directory, "music").Volume.Value));
+        Assert.Equal(0.8, Assert.IsType<AudioLayer>(editor.View.FindLayer("music")).Volume.Value);
         Assert.Equal("editor " + ProjectBackups.RestoreLabel(backup), ProjectBackups.List(directory)[0].Before);
 
         // Undo puts back what it replaced.
         Assert.True(editor.Undo());
-        Assert.Equal((7.0, 0.3), (Saved<VideoLayer>(directory, "clip_2").TrimOut, Saved<AudioLayer>(directory, "music").Volume));
+        Assert.Equal((7.0, 0.3), (Saved<VideoLayer>(directory, "clip_2").TrimOut, Saved<AudioLayer>(directory, "music").Volume.Value));
     }
 
     // Like an edit, a restore isn't saved over a version you haven't seen: what it would replace
@@ -90,11 +90,11 @@ public class EditorDocumentTests
         Assert.False(editor.Restore(backup));
         Assert.Equal("Nothing was restored: another program saved first (update_layer music). You see its version now.", editor.Status);
         Assert.Equal(3, ProjectStore.Load(directory).Revision);
-        Assert.Equal(0.3, Assert.IsType<AudioLayer>(editor.View.FindLayer("music")).Volume);
+        Assert.Equal(0.3, Assert.IsType<AudioLayer>(editor.View.FindLayer("music")).Volume.Value);
 
         // Trying again on that version works.
         Assert.True(editor.Restore(backup));
-        Assert.Equal((8.0, 0.8), (Saved<VideoLayer>(directory, "clip_2").TrimOut, Saved<AudioLayer>(directory, "music").Volume));
+        Assert.Equal((8.0, 0.8), (Saved<VideoLayer>(directory, "clip_2").TrimOut, Saved<AudioLayer>(directory, "music").Volume.Value));
 
         // A backup that's gone changes nothing and says why.
         var gone = ProjectBackups.List(directory)[0];
@@ -172,7 +172,7 @@ public class EditorDocumentTests
         Assert.True(editor.Apply(new MoveLayerOperation("title", 1)));
         Assert.Equal("Saved · revision 3", editor.Status);
         var saved = ProjectStore.Load(directory);
-        Assert.Equal((0.3, 1.0), (Assert.IsType<AudioLayer>(saved.FindLayer("music")).Volume, saved.FindLayer("title")!.Start));
+        Assert.Equal((0.3, 1.0), (Assert.IsType<AudioLayer>(saved.FindLayer("music")).Volume.Value, saved.FindLayer("title")!.Start));
         Assert.Equal(["update_layer music"], editor.TakeOutsideChanges()!.Edits);
 
         // Claude changed the clip the editor trims: the trim is dropped and the editor shows Claude's version.
@@ -180,12 +180,12 @@ public class EditorDocumentTests
         Assert.False(editor.Apply(new TrimLayerOperation("clip_2", null, 7)));
         Assert.Equal("Your change wasn't saved: another program changed 'clip_2' first (update_layer clip_2). You see its version now.", editor.Status);
         Assert.Equal(4, ProjectStore.Load(directory).Revision);
-        Assert.Equal(0.5, Assert.IsType<VideoLayer>(editor.View.FindLayer("clip_2")).Volume);
+        Assert.Equal(0.5, Assert.IsType<VideoLayer>(editor.View.FindLayer("clip_2")).Volume.Value);
 
         // Trying again on that version works.
         Assert.True(editor.Apply(new TrimLayerOperation("clip_2", null, 7)));
         var both = Saved<VideoLayer>(directory, "clip_2");
-        Assert.Equal((7.0, 0.5), (both.TrimOut, both.Volume));
+        Assert.Equal((7.0, 0.5), (both.TrimOut, both.Volume.Value));
 
         server.Mutate("remove_layer title", p => ProjectEditor.RemoveLayer(p, "title", withChildren: false));
         Assert.False(editor.Apply(new MoveLayerOperation("title", 2)));
@@ -213,7 +213,7 @@ public class EditorDocumentTests
         Assert.True(editor.Apply(new MoveLayerOperation("title", 1), built));
         Assert.Null(editor.Overtaken);
         Assert.True(editor.Apply(new TrimLayerOperation("clip_2", null, 7), editor.View));
-        Assert.Equal((7.0, 0.5), (Saved<VideoLayer>(directory, "clip_2").TrimOut, Saved<VideoLayer>(directory, "clip_2").Volume));
+        Assert.Equal((7.0, 0.5), (Saved<VideoLayer>(directory, "clip_2").TrimOut, Saved<VideoLayer>(directory, "clip_2").Volume.Value));
 
         // The editor's own saves since then aren't another program's.
         built = editor.View;
@@ -237,7 +237,7 @@ public class EditorDocumentTests
         editor.Refresh();
         Assert.False(editor.Apply(new MoveLayerOperation("title", 3), built));
         Assert.Equal("Your change wasn't saved: another program removed 'title' first (remove_layer title). You see its version now.", editor.Status);
-        Assert.Equal((0.3, 0.0), (Saved<AudioLayer>(directory, "music").Volume, Saved<AudioLayer>(directory, "music").FadeIn));
+        Assert.Equal((0.3, 0.0), (Saved<AudioLayer>(directory, "music").Volume.Value, Saved<AudioLayer>(directory, "music").FadeIn));
     }
 
     // (c) Both save at nearly the same moment.
@@ -278,13 +278,13 @@ public class EditorDocumentTests
 
         server.Mutate("update_layer clip_1", p => ProjectEditor.UpdateLayer(p, "clip_1", new JsonObject { ["volume"] = 0.2 }));
         var saved = ProjectStore.Load(directory);
-        Assert.Equal((7.0, 0.2, 0.3), (Assert.IsType<VideoLayer>(saved.FindLayer("clip_2")).TrimOut, Assert.IsType<VideoLayer>(saved.FindLayer("clip_1")).Volume, Assert.IsType<AudioLayer>(saved.FindLayer("music")).Volume));
+        Assert.Equal((7.0, 0.2, 0.3), (Assert.IsType<VideoLayer>(saved.FindLayer("clip_2")).TrimOut, Assert.IsType<VideoLayer>(saved.FindLayer("clip_1")).Volume.Value, Assert.IsType<AudioLayer>(saved.FindLayer("music")).Volume.Value));
         Assert.Equal(["editor trim_layer clip_2"], server.TakeOutsideChanges()!.Edits);
 
         Assert.Equal("update_layer clip_1", server.Undo());
         Assert.Equal("update_layer music", server.Undo());
         saved = ProjectStore.Load(directory);
-        Assert.Equal((7.0, 1.0, 0.8), (Assert.IsType<VideoLayer>(saved.FindLayer("clip_2")).TrimOut, Assert.IsType<VideoLayer>(saved.FindLayer("clip_1")).Volume, Assert.IsType<AudioLayer>(saved.FindLayer("music")).Volume));
+        Assert.Equal((7.0, 1.0, 0.8), (Assert.IsType<VideoLayer>(saved.FindLayer("clip_2")).TrimOut, Assert.IsType<VideoLayer>(saved.FindLayer("clip_1")).Volume.Value, Assert.IsType<AudioLayer>(saved.FindLayer("music")).Volume.Value));
 
         // The server can't take back an edit to a layer the editor changed after it.
         server.Mutate("update_layer clip_2", p => ProjectEditor.UpdateLayer(p, "clip_2", new JsonObject { ["fadeIn"] = 1 }));
@@ -317,7 +317,7 @@ public class EditorDocumentTests
         Assert.Equal("Undid 'move_layer title' and stepped over 'update_layer music', which can't be undone on top of another program's changes. Saved · revision 5", editor.Status);
         Assert.Equal(0, editor.View.FindLayer("title")!.Start);
         var music = Saved<AudioLayer>(directory, "music");
-        Assert.Equal((0.3, 1.0), (music.Volume, music.FadeIn));
+        Assert.Equal((0.3, 1.0), (music.Volume.Value, music.FadeIn));
 
         Assert.False(editor.Undo());
         Assert.Equal("nothing to undo: 'update_layer music' can't be undone on top of another program's changes", editor.Status);
@@ -345,7 +345,7 @@ public class EditorDocumentTests
         Assert.Equal("Redid 'move_layer title' and stepped over 'update_layer music', which can't be redone on top of another program's changes. Saved · revision 7", editor.Status);
         Assert.Equal(1, editor.View.FindLayer("title")!.Start);
         var music = Saved<AudioLayer>(directory, "music");
-        Assert.Equal((0.8, 1.0), (music.Volume, music.FadeIn));
+        Assert.Equal((0.8, 1.0), (music.Volume.Value, music.FadeIn));
 
         Assert.False(editor.Redo());
         Assert.Equal("nothing to redo: 'update_layer music' can't be redone on top of another program's changes", editor.Status);
@@ -407,7 +407,7 @@ public class EditorDocumentTests
         {
             Assert.False(editor.Refresh());
             Assert.Matches("^Couldn't check project.json for another program's changes: .+", editor.Status);
-            Assert.Equal(0.8, Assert.IsType<AudioLayer>(editor.View.FindLayer("music")).Volume);
+            Assert.Equal(0.8, Assert.IsType<AudioLayer>(editor.View.FindLayer("music")).Volume.Value);
             Assert.False(editor.Apply(new MoveLayerOperation("title", 1)));
             Assert.Matches("^move_layer title wasn't saved: .+", editor.Status);
         }
@@ -420,7 +420,7 @@ public class EditorDocumentTests
         // With the folder back, the other program's change is taken.
         Assert.True(editor.Refresh());
         Assert.Equal("Saved · revision 2", editor.Status);
-        Assert.Equal(0.3, Assert.IsType<AudioLayer>(editor.View.FindLayer("music")).Volume);
+        Assert.Equal(0.3, Assert.IsType<AudioLayer>(editor.View.FindLayer("music")).Volume.Value);
         Assert.Equal(["update_layer music"], editor.TakeOutsideChanges()!.Edits);
     }
 

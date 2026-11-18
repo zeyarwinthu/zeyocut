@@ -207,6 +207,20 @@ public sealed record SetSpeedOperation(string LayerId, double Speed) : EditOpera
     }
 }
 
+// The project's settings, as update_project changes them: the Audio view's mixer, ducking and loudness.
+public sealed record UpdateProjectOperation(ProjectOptions Options) : EditOperation
+{
+    public override string Label => "update_project";
+
+    public override IReadOnlyList<string> Layers => [];
+
+    public override string Apply(Project project)
+    {
+        var update = ProjectEditor.UpdateProject(project, Options);
+        return string.Join("; ", update.Changes.Concat(update.Warnings));
+    }
+}
+
 // Markers, as add_markers adds or changes them, in one step: all of them or none.
 public sealed record AddMarkersOperation(IReadOnlyList<MarkerEntry> Entries) : EditOperation
 {

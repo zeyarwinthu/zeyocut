@@ -1,5 +1,5 @@
 {
-  "formatVersion": 8,
+  "formatVersion": 9,
   "revision": 0,
   "name": "comic-panels",
   "width": 1280,
@@ -287,7 +287,9 @@
       "asset": "boing",
       "trimIn": 0,
       "trimOut": null,
-      "volume": 0.8,
+      "volume": {
+        "value": 0.8
+      },
       "role": "effects",
       "fadeIn": 0,
       "fadeOut": 0
@@ -304,7 +306,9 @@
       "asset": "thud",
       "trimIn": 0,
       "trimOut": null,
-      "volume": 1,
+      "volume": {
+        "value": 1
+      },
       "role": "effects",
       "fadeIn": 0,
       "fadeOut": 0

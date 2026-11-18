@@ -3,6 +3,7 @@
 using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Text.RegularExpressions;
 using ZeyoCut.Core;
 using ZeyoCut.Core.Editing;
 using ZeyoCut.Core.Model;
@@ -16,7 +17,7 @@ public class MigrationTests
     [Fact]
     public void EveryEarlierFormatHasAStep()
     {
-        Assert.Equal(8, Project.CurrentFormatVersion);
+        Assert.Equal(9, Project.CurrentFormatVersion);
         Assert.Equal(Enumerable.Range(2, Project.CurrentFormatVersion - 1), ProjectMigrations.Steps.Select(s => s.To));
     }
 
@@ -28,6 +29,7 @@ public class MigrationTests
     [InlineData(5)]
     [InlineData(6)]
     [InlineData(7)]
+    [InlineData(8)]
     public void ProjectsSavedByEachEarlierFormatMigrateWithoutLosingAnything(int version)
     {
         var original = File.ReadAllText(TestFixtures.OldProject(version));
@@ -45,10 +47,12 @@ public class MigrationTests
         var now = Leaves(saved);
         var before = Leaves(original);
         Assert.True(before.Count > 100, $"{before.Count} values");
+        // Format 9 keeps a sound's volume as a value with keyframes: layers[3].volume is now layers[3].volume.value.
+        string Now(string key) => Regex.IsMatch(key, @"^layers\[\d+\]\.volume$") ? $"{key}.value" : key;
         var lost = before
             .Where(leaf => leaf.Key != "formatVersion")
-            .Where(leaf => now.TryGetValue(leaf.Key, out var value) ? value != leaf.Value : leaf.Value != "null")
-            .Select(leaf => $"{leaf.Key}: {leaf.Value} -> {(now.TryGetValue(leaf.Key, out var value) ? value : "missing")}")
+            .Where(leaf => now.TryGetValue(Now(leaf.Key), out var value) ? value != leaf.Value : leaf.Value != "null")
+            .Select(leaf => $"{leaf.Key}: {leaf.Value} -> {(now.TryGetValue(Now(leaf.Key), out var value) ? value : "missing")}")
             .ToList();
         Assert.Empty(lost);
         Assert.Equal(saved, ProjectJson.Serialize(ProjectJson.Deserialize(ProjectMigrations.Migrate(saved, out var again))));
@@ -100,10 +104,10 @@ public class MigrationTests
         Assert.Same(unversioned, ProjectMigrations.Migrate(unversioned, out savedVersion));
         Assert.Equal(Project.CurrentFormatVersion, savedVersion);
 
-        const string newer = """{ "formatVersion": 9, "name": "from the future", "width": 320, "height": 240 }""";
+        const string newer = """{ "formatVersion": 10, "name": "from the future", "width": 320, "height": 240 }""";
         Assert.Same(newer, ProjectMigrations.Migrate(newer, out savedVersion));
-        Assert.Equal(9, savedVersion);
-        Assert.Contains("formatVersion 9 is newer than this version of ZeyoCut supports (8)", ProjectValidator.Validate(ProjectJson.Deserialize(newer)));
+        Assert.Equal(10, savedVersion);
+        Assert.Contains("formatVersion 10 is newer than this version of ZeyoCut supports (9)", ProjectValidator.Validate(ProjectJson.Deserialize(newer)));
 
         const string broken = """{ "formatVersion": 2, "name": """;
         Assert.Same(broken, ProjectMigrations.Migrate(broken, out savedVersion));

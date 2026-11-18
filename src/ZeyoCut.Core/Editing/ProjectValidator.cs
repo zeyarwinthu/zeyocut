@@ -228,6 +228,48 @@ public static class ProjectValidator
         {
             errors.Add($"audio.truePeak must be between -9 and 0 dBTP (got {project.Audio.TruePeak})");
         }
+
+        if (!double.IsFinite(project.Audio.DuckLevel) || project.Audio.DuckLevel < AudioSettings.MinDuckLevel || project.Audio.DuckLevel > 0)
+        {
+            errors.Add($"audio.duckLevel must be between {AudioSettings.MinDuckLevel} and 0 dB (got {project.Audio.DuckLevel})");
+        }
+
+        foreach (var (name, fade) in new[] { ("duckFadeIn", project.Audio.DuckFadeIn), ("duckFadeOut", project.Audio.DuckFadeOut) })
+        {
+            if (!double.IsFinite(fade) || fade < 0 || fade > AudioSettings.MaxDuckFade)
+            {
+                errors.Add($"audio.{name} must be between 0 and {AudioSettings.MaxDuckFade} seconds (got {fade})");
+            }
+        }
+
+        foreach (var role in Enum.GetValues<AudioRole>())
+        {
+            var mix = project.Audio.For(role);
+            var name = $"audio.{EnumNames.ToName(role)}";
+            if (!double.IsFinite(mix.Gain) || mix.Gain < RoleMix.MinGain || mix.Gain > RoleMix.MaxGain)
+            {
+                errors.Add($"{name}.gain must be between {RoleMix.MinGain} and {RoleMix.MaxGain} dB (got {mix.Gain})");
+            }
+
+            if (!double.IsFinite(mix.Pan) || mix.Pan < -1 || mix.Pan > 1)
+            {
+                errors.Add($"{name}.pan must be between -1 and 1 (got {mix.Pan})");
+            }
+        }
+    }
+
+    // The static volume, and every keyframe's, from 0 to 10.
+    private static void ValidateVolume(AnimatedValue volume, string prefix, List<string> errors)
+    {
+        if (!double.IsFinite(volume.Value) || volume.Value < 0 || volume.Value > 10)
+        {
+            errors.Add($"{prefix}: volume must be between 0 and 10 (1 = original level)");
+        }
+
+        if (volume.Keyframes.Any(k => double.IsFinite(k.Value) && (k.Value < 0 || k.Value > 10)))
+        {
+            errors.Add($"{prefix}.volume: keyframe values must be between 0 and 10 (1 = original level)");
+        }
     }
 
     private static void ValidateLayer(
@@ -727,9 +769,12 @@ public static class ProjectValidator
             errors.Add($"{prefix}: asset '{layer.Asset}' is {Article(asset.Type)}, not audio");
         }
 
-        if (!double.IsFinite(layer.Volume) || layer.Volume < 0 || layer.Volume > 10)
+        ValidateVolume(layer.Volume, prefix, errors);
+        ValidateTimes(layer.Volume.Keyframes.Select(k => k.Time).ToList(), $"{prefix}.volume", errors);
+        ValidateEasings(layer.Volume.Keyframes, $"{prefix}.volume", errors);
+        if (layer.Volume.Keyframes.Any(k => !double.IsFinite(k.Value)))
         {
-            errors.Add($"{prefix}: volume must be between 0 and 10 (1 = original level)");
+            errors.Add($"{prefix}.volume: keyframe values must be finite numbers");
         }
 
         if (!double.IsFinite(layer.TrimIn) || layer.TrimIn < 0)
@@ -797,10 +842,7 @@ public static class ProjectValidator
             errors.Add($"{prefix}: trimOut ({layer.TrimOut}) is past the end of '{asset.Id}' ({duration}s)");
         }
 
-        if (!double.IsFinite(layer.Volume) || layer.Volume < 0 || layer.Volume > 10)
-        {
-            errors.Add($"{prefix}: volume must be between 0 and 10 (1 = original level)");
-        }
+        ValidateVolume(layer.Volume, prefix, errors);
 
         if (!double.IsFinite(layer.FadeIn) || layer.FadeIn < 0 || !double.IsFinite(layer.FadeOut) || layer.FadeOut < 0)
         {

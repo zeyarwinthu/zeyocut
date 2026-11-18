@@ -395,7 +395,7 @@ Remove all keyframes of one property, or of every property of a layer when prope
 | Parameter | Type | Description |
 |---|---|---|
 | `layerId` | string, required | Layer id, or "camera". |
-| `property` | string | x, y, rotation, scaleX, scaleY, opacity, brightness, contrast, saturation, cropX, cropY, drawing, or an effect or mask property such as shadow.x or mask.width; for the camera x, y, zoom, rotation, shakeX, shakeY or shakeRotation; for a redaction a track id. Omit for all. |
+| `property` | string | x, y, rotation, scaleX, scaleY, opacity, brightness, contrast, saturation, cropX, cropY, volume, drawing, or an effect or mask property such as shadow.x or mask.width; for the camera x, y, zoom, rotation, shakeX, shakeY or shakeRotation; for a redaction a track id. Omit for all. |
 
 ### `create_project`
 
@@ -975,7 +975,7 @@ Add, change or remove one effect on a visual layer (one undo step). The effect i
 
 ### `set_keyframes`
 
-Add or replace many keyframes in one call (one undo step; all-or-nothing). A keyframe at the same layer/property/time is replaced. Each keyframe's easing shapes the segment from it to the next keyframe. Before the first and after the last keyframe a property holds that keyframe's value; once a property has keyframes its static value is ignored. layerId "camera" animates the project camera (x, y, zoom, rotation), which moves every layer except those with ignoreCamera. Effect and mask numbers (shadow.x, blur.x, mask.width, ...) animate after set_effect / set_mask added them. x or y keyframes take a set_motion_path path off the layer. On a redaction layer the properties are its keyframed boxes from tracks_to_keyframes (&lt;track&gt;.x, .y, .width, .height), with time in the footage's own seconds.
+Add or replace many keyframes in one call (one undo step; all-or-nothing). A keyframe at the same layer/property/time is replaced. Each keyframe's easing shapes the segment from it to the next keyframe. Before the first and after the last keyframe a property holds that keyframe's value; once a property has keyframes its static value is ignored. layerId "camera" animates the project camera (x, y, zoom, rotation), which moves every layer except those with ignoreCamera. Effect and mask numbers (shadow.x, blur.x, mask.width, ...) animate after set_effect / set_mask added them. x or y keyframes take a set_motion_path path off the layer. volume keyframes ride a sound's level (audio layers, and video layers' own sound): 1 as recorded, 0 silent, up to 10, in the export and the editor's preview. On a redaction layer the properties are its keyframed boxes from tracks_to_keyframes (&lt;track&gt;.x, .y, .width, .height), with time in the footage's own seconds.
 
 | Parameter | Type | Description |
 |---|---|---|
@@ -1134,7 +1134,7 @@ Change static fields of a layer. 'changes' is an object of field: value, using t
 
 ### `update_project`
 
-Change the open project's settings. Only the parameters you pass change. Keyframe times are in seconds, so changing fps keeps the timing; changing the canvas size does not move layers (for landscape footage on a new vertical canvas use reframe_to_vertical). Extend the duration when a voiceover or music runs past the end; the result warns about audio that would be cut and keyframes or layers past a shorter end. Audio: loudnessTarget (LUFS, two-pass loudnorm at export; 0 = off) and ducking (music under voice).
+Change the open project's settings. Only the parameters you pass change. Keyframe times are in seconds, so changing fps keeps the timing; changing the canvas size does not move layers (for landscape footage on a new vertical canvas use reframe_to_vertical). Extend the duration when a voiceover or music runs past the end; the result warns about audio that would be cut and keyframes or layers past a shorter end. Audio: loudnessTarget (LUFS, two-pass loudnorm at export; 0 = off); ducking (music under voice) with duckLevel, duckFadeIn and duckFadeOut; and a role's mixer strip: role with gain, pan and muted (every clip of that role, in the export and the editor's preview).
 
 | Parameter | Type | Description |
 |---|---|---|
@@ -1147,6 +1147,13 @@ Change the open project's settings. Only the parameters you pass change. Keyfram
 | `preset` | string | youtube_1080p (1920x1080) or shorts_1080p (1080x1920): sets width, height, fps and loudness. |
 | `loudnessTarget` | number | Export loudness in LUFS, -40..-5 (-14 for YouTube and most platforms); 0 turns normalization off. |
 | `ducking` | boolean | Duck music (role music) under voice (role voice) in the export. |
+| `duckLevel` | number | How far ducking lowers the music where voice clips play, in dB: 0 to -40 (default -12). |
+| `duckFadeIn` | number | Seconds the music takes to go down before a voice clip starts, 0-5 (default 0.5). |
+| `duckFadeOut` | number | Seconds the music takes to come back up after a voice clip ends, 0-5 (default 1.5). |
+| `role` | string | voice, music or effects: the role whose gain, pan and muted change. Voice holds videos' own sound and narration. |
+| `gain` | number | The role's gain in dB, -60 to +6 (0 = as the clips are). |
+| `pan` | number | The role's balance, -1 (left only) through 0 (center) to 1 (right only). |
+| `muted` | boolean | Silence every clip of the role (true) or bring it back (false). |
 
 ### `view_source`
 

@@ -6,7 +6,7 @@ namespace ZeyoCut.Core.Model;
 
 public sealed class Project
 {
-    public const int CurrentFormatVersion = 8;
+    public const int CurrentFormatVersion = 9;
 
     public int FormatVersion { get; set; } = CurrentFormatVersion;
 

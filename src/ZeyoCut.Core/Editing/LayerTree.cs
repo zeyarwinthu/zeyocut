@@ -146,11 +146,16 @@ public static class LayerTree
                 parts.Add($"font={(text.FontAsset ?? text.FontFamily)} {Num(text.FontSize)}px");
                 break;
             case AudioLayer audio:
-                parts.Add($"asset={audio.Asset} volume={Num(audio.Volume)}");
+                parts.Add($"asset={audio.Asset} volume={Num(audio.Volume.Value)}");
+                if (audio.Volume.Keyframes.Count > 0)
+                {
+                    parts.Add($"keys: volume({audio.Volume.Keyframes.Count})");
+                }
+
                 break;
             case VideoLayer video:
                 parts.Add($"asset={video.Asset} source={Num(video.TrimIn)}–{Num(video.TrimOut)}s speed={Num(video.Speed)}");
-                parts.Add(video.Muted ? "muted" : $"volume={Num(video.Volume)}");
+                parts.Add(video.Muted ? "muted" : $"volume={Num(video.Volume.Value)}");
                 if (video.CropWidth is { } cropWidth && video.CropHeight is { } cropHeight)
                 {
                     parts.Add($"crop={Num(cropWidth)}x{Num(cropHeight)}");

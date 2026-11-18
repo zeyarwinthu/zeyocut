@@ -30,6 +30,9 @@ public static class ProjectMigrations
         new(7, _ => { }),
         // 8: cubic bezier easing.
         new(8, _ => { }),
+        // 9: each role's mix, the duck level and fades, and volume keyframes. A volume written as a
+        // number reads as a value without keyframes.
+        new(9, _ => { }),
     ];
 
     private static readonly JsonNodeOptions NodeOptions = new() { PropertyNameCaseInsensitive = true };

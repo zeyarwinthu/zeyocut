@@ -35,7 +35,7 @@ Here is the demo project (`ZeyoCut.Mcp.exe demo`) cut down to one asset and one 
 
 ```json
 {
-  "formatVersion": 8,
+  "formatVersion": 9,
   "revision": 2,
   "name": "Tora Jumps",
   "width": 1280,
@@ -43,7 +43,13 @@ Here is the demo project (`ZeyoCut.Mcp.exe demo`) cut down to one asset and one 
   "fps": 30,
   "duration": 3,
   "backgroundColor": "#BFE6FF",
-  "audio": {"loudnessTarget": -14, "truePeak": -1, "ducking": true},
+  "audio": {
+    "loudnessTarget": -14, "truePeak": -1,
+    "ducking": true, "duckLevel": -12, "duckFadeIn": 0.5, "duckFadeOut": 1.5,
+    "voice": {"gain": 0, "pan": 0, "muted": false},
+    "music": {"gain": -3, "pan": 0, "muted": false},
+    "effects": {"gain": 0, "pan": 0, "muted": false}
+  },
   "assets": [
     {
       "id": "clouds",
@@ -92,14 +98,14 @@ Here is the demo project (`ZeyoCut.Mcp.exe demo`) cut down to one asset and one 
 
 | Field | Default | What it is |
 |---|---|---|
-| `formatVersion` | 8 | The format the file was saved in; see [Format versions](#format-versions) |
+| `formatVersion` | 9 | The format the file was saved in; see [Format versions](#format-versions) |
 | `revision` | 0 | How many times the project has been saved. Every save adds 1, whichever program saves it, and it never goes back: undo, redo and `restore_backup` put back older content as a new revision. ZeyoCut sets it; no tool does |
 | `name` | | The project's name |
 | `width`, `height` | 1920, 1080 | The canvas in pixels |
 | `fps` | 30 | Frames per second |
 | `duration` | 10 | Length in seconds |
 | `backgroundColor` | `#FFFFFF` | Shown where no layer draws |
-| `audio` | | `loudnessTarget`: the loudness of the exported mix in LUFS, -14 by default, `null` for off. `truePeak`: the highest true peak, -1 dBTP. `ducking`: lower music under voice, on by default |
+| `audio` | | `loudnessTarget`: the loudness of the exported mix in LUFS, -14 by default, `null` for off. `truePeak`: the highest true peak, -1 dBTP. `ducking`: lower music under voice, on by default, by `duckLevel` dB (-12, from 0 to -40), going down over `duckFadeIn` seconds (0.5) before a voice clip starts and back up over `duckFadeOut` seconds (1.5) after it ends. `voice`, `music` and `effects`: each role's mixer strip, applied to every clip of that role: `gain` in dB (-60 to +6, 0 by default), `pan` from -1 (left only) to 1 (right only), and `muted` |
 | `camera` | | Written once `set_camera`, a camera keyframe or `camera_shake` makes one: animated `x`, `y`, `zoom` and `rotation`, and the shake channels `shakeX`, `shakeY` and `shakeRotation` |
 | `assets` | `[]` | The files the project uses |
 | `layers` | `[]` | Everything on the timeline, as one flat list; `parentId` makes the hierarchy |
@@ -132,8 +138,8 @@ Image, text and video layers add the anchor (`anchorX`, `anchorY`), `ignoreCamer
 |---|---|
 | `image` | `drawings` (drawing name → image asset id), `drawing` (which drawing shows, animated), `flipX`, the animated color adjustments `brightness`, `contrast` and `saturation`, and `matte` (background removal). An image layer without drawings is a null layer |
 | `text` | `text`, `fontFamily` or `fontAsset`, `fontSize`, `bold`, `color`, `strokeColor`, `strokeWidth`, `align`, `maxWidth`, `lineHeight`, and `box` (`color`, `padding`, `cornerRadius`) |
-| `video` | `asset`, `trimIn`, `trimOut`, `speed`, `volume`, `muted`, `role`, `fadeIn`, `fadeOut`, a crop (`cropWidth`, `cropHeight` and the animated `cropX`, `cropY`), the color adjustments, and `matte` |
-| `audio` | `asset`, `trimIn`, `trimOut`, `volume`, `role` (`voice`, `music` or `effects`), `fadeIn` and `fadeOut` |
+| `video` | `asset`, `trimIn`, `trimOut`, `speed`, `volume` (animated), `muted`, `role`, `fadeIn`, `fadeOut`, a crop (`cropWidth`, `cropHeight` and the animated `cropX`, `cropY`), the color adjustments, and `matte` |
+| `audio` | `asset`, `trimIn`, `trimOut`, `volume` (animated), `role` (`voice`, `music` or `effects`), `fadeIn` and `fadeOut` |
 | `cutout` | Made by `text_behind_subject`: the subject of its `sources` (a clip and the pieces splits made of it) drawn again above the text, cut out with its `matte`. It follows its sources, so only `name`, `zIndex`, `visible` and `opacity` are its own. `captionGroup` names the captions `generate_captions` made it for |
 | `redaction` | Made by `apply_redaction`: hides the boxes of its `tracks` with a `style` (`pixelate`, `blur` or `solid`), `strength`, `paddingPercent`, `feather`, `holdFrames` and `color`. After `tracks_to_keyframes`, `boxes` holds a track's box as keyframes |
 
@@ -150,6 +156,8 @@ A property that can be animated is an object with a `value` and a list of `keyfr
   ]
 }
 ```
+
+A sound's `volume` is one too: `"volume": { "value": 0.8 }`. Before format 9 it was a plain number, which still reads as a value without keyframes.
 
 `value` is used while there are no keyframes. A keyframe's `easing` shapes the segment that starts at it; see [Animation](#animation). A `cubicBezier` keyframe also has its curve: `{ "time": 0, "value": 0, "easing": "cubicBezier", "bezier": [0.42, 0, 0.58, 1] }`. An image layer's `drawing` works the same way with drawing names, and always holds: `"drawing": { "value": "normal", "keyframes": [{ "time": 1.2, "value": "happy" }] }`.
 
@@ -182,8 +190,9 @@ A marker has an `id`, a `time`, a `name` and a `kind`, `chapter` or `scene`. `ex
 | 6 | Markers and language tags |
 | 7 | `revision`, the count of saves |
 | 8 | The `cubicBezier` easing and a keyframe's `bezier` |
+| 9 | Each role's mix (`gain`, `pan`, `muted`), the duck level and fades, and `volume` as an animated value |
 
-A project saved by an older ZeyoCut opens too: it's updated to the current format as it opens, and the file as it was is kept in `backups\` for good. So far every version has only added fields, and a field an older file lacks gets its default.
+A project saved by an older ZeyoCut opens too: it's updated to the current format as it opens, and the file as it was is kept in `backups\` for good. Every version has added fields, and a field an older file lacks gets its default; version 9 also turned `volume` into an animated value, and a number there still reads as one without keyframes.
 
 ### Saving alongside another program
 

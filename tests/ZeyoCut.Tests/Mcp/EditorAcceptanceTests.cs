@@ -80,7 +80,7 @@ public partial class EditorAcceptanceTests
         Assert.Equal((2.0, 3.5), (saved.FindLayer("green")!.Start, saved.FindLayer("green")!.End!.Value));
         Assert.Equal((3.5, 5.0), (saved.FindLayer(second)!.Start, saved.FindLayer(second)!.End!.Value));
         Assert.Equal("Hello street", ((TextLayer)saved.FindLayer(typo)!).Text);
-        Assert.Equal((0.25, 1.0), (Music(directory).Volume, Music(directory).FadeOut));
+        Assert.Equal((0.25, 1.0), (Music(directory).Volume.Value, Music(directory).FadeOut));
         Assert.NotNull(saved.FindLayer("captions_ja"));
 
         // The editor shows Claude's captions and names the edit.
@@ -91,13 +91,13 @@ public partial class EditorAcceptanceTests
         // 4. Undo in the editor takes back the user's last edit and keeps Claude's captions; redo puts
         // it back. Claude's undo takes back only Claude's captions, and its redo puts them back.
         Assert.True(editor.Undo(), editor.Status);
-        Assert.Equal((1.0, 0.0), (Music(directory).Volume, Music(directory).FadeOut));
+        Assert.Equal((1.0, 0.0), (Music(directory).Volume.Value, Music(directory).FadeOut));
         Assert.NotNull(ProjectStore.Load(directory).FindLayer("captions_ja"));
         Assert.True(editor.Redo(), editor.Status);
-        Assert.Equal(0.25, Music(directory).Volume);
+        Assert.Equal(0.25, Music(directory).Volume.Value);
         Assert.Contains("undid: add_caption_track ja", await CallOk(client, "undo", new(), ct));
         Assert.Null(ProjectStore.Load(directory).FindLayer("captions_ja"));
-        Assert.Equal(("Hello street", 0.25), (((TextLayer)ProjectStore.Load(directory).FindLayer(typo)!).Text, Music(directory).Volume));
+        Assert.Equal(("Hello street", 0.25), (((TextLayer)ProjectStore.Load(directory).FindLayer(typo)!).Text, Music(directory).Volume.Value));
         Assert.Contains("redid: add_caption_track ja", await CallOk(client, "redo", new(), ct));
         Assert.True(editor.Refresh());
         Assert.NotNull(editor.View.FindLayer("captions_ja"));

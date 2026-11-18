@@ -23,7 +23,7 @@ public sealed class VideoLayer : VisualLayer, IColorAdjustable, IMattable
     public double TrimIn { get; set; }
     public double TrimOut { get; set; }
     public double Speed { get; set; } = 1;
-    public double Volume { get; set; } = 1;
+    public AnimatedValue Volume { get; set; } = new(1);
     public bool Muted { get; set; }
     public AudioRole Role { get; set; } = AudioRole.Voice;
     public double FadeIn { get; set; }

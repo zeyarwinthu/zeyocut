@@ -5,6 +5,9 @@ using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using SkiaSharp;
 using ZeyoCut.Core;
+using ZeyoCut.Core.Editing;
+using ZeyoCut.Core.Model;
+using ZeyoCut.Core.Serialization;
 using ZeyoCut.Mcp;
 using ZeyoCut.Render;
 using ZeyoCut.Tests.TestSupport;
@@ -555,6 +558,52 @@ public class McpServerTests
         Assert.Contains("undid: add_video_layer", await CallOk(client, "undo", new(), ct));
         Assert.Contains("undid: import_video phone.mp4", await CallOk(client, "undo", new(), ct));
         Assert.Contains("(no assets", await CallOk(client, "list_assets", new(), ct));
+    }
+
+    [Fact]
+    public async Task ServerSetsEachRolesMixTheDuckingAndVolumeKeyframesAsTheEditorDoes()
+    {
+        Ffmpeg.Require();
+        var ct = TestContext.Current.CancellationToken;
+        var root = TestPaths.NewDirectory("mcp-mix");
+        var tone = Path.Combine(root, "song.wav");
+        ZeyoCut.Mcp.Demo.ToneGenerator.WriteTone(tone, 440, 2, 0.1);
+        var file = Path.Combine(root, "projects", "mix", "project.json");
+
+        await using var client = await StartServer(root, Path.Combine(root, "projects"), Path.Combine(root, "logs"), ct);
+        await CallOk(client, "create_project", new() { ["name"] = "mix", ["width"] = 320, ["height"] = 180, ["fps"] = 10, ["duration"] = 2.0 }, ct);
+        await CallOk(client, "import_asset", new() { ["path"] = tone }, ct);
+        await CallOk(client, "add_audio_layer", new() { ["asset"] = "song", ["id"] = "song" }, ct);
+        var before = File.ReadAllText(file);
+
+        var mix = await CallOk(client, "update_project", new() { ["role"] = "music", ["gain"] = -6, ["pan"] = -0.5, ["muted"] = false, ["duckLevel"] = -18, ["duckFadeOut"] = 0.75 }, ct);
+        Assert.Contains("updated project 'mix': duck level -12 dB → -18 dB; duck fade out 1.5s → 0.75s; music gain 0 dB → -6 dB; music pan center → 50% left", mix);
+        var keys = await CallOk(client, "set_keyframes", new()
+        {
+            ["entries"] = new object[]
+            {
+                new Dictionary<string, object?> { ["layerId"] = "song", ["property"] = "volume", ["time"] = 0, ["value"] = 1 },
+                new Dictionary<string, object?> { ["layerId"] = "song", ["property"] = "volume", ["time"] = 2, ["value"] = 0.25, ["easing"] = "easeIn" },
+            },
+        }, ct);
+        Assert.Contains("on song.volume", keys);
+        Assert.Contains("keys: volume(2)", await CallOk(client, "list_layers", new(), ct));
+
+        var badRole = await Call(client, "update_project", new() { ["role"] = "drums", ["gain"] = 1 }, ct);
+        Assert.Contains("unknown role 'drums'", Text(badRole));
+        var noRole = await Call(client, "update_project", new() { ["pan"] = 0.5 }, ct);
+        Assert.Contains("gain, pan and muted set a role's mix; pass role too (voice, music or effects)", Text(noRole));
+
+        // The editor's operations make the same project from the same start.
+        var editor = ProjectJson.Deserialize(before);
+        new UpdateProjectOperation(new ProjectOptions { Role = AudioRole.Music, Gain = -6, Pan = -0.5, Muted = false, DuckLevel = -18, DuckFadeOut = 0.75 }).Apply(editor);
+        new SetKeyframesOperation(
+        [
+            new KeyframeEntry("song", "volume", 0, JsonSerializer.SerializeToElement(1)),
+            new KeyframeEntry("song", "volume", 2, JsonSerializer.SerializeToElement(0.25), "easeIn"),
+        ]).Apply(editor);
+        editor.Revision = ProjectJson.Deserialize(File.ReadAllText(file)).Revision;
+        Assert.Equal(TestProjects.WithoutRevision(File.ReadAllText(file)), TestProjects.WithoutRevision(ProjectJson.Serialize(editor)));
     }
 
     [Fact]
@@ -1536,7 +1585,7 @@ public class McpServerTests
         }
 
         var first = JsonDocument.Parse(File.ReadAllText(projectFile)).RootElement.GetProperty("tracks")[0];
-        Assert.Equal(8, JsonDocument.Parse(File.ReadAllText(projectFile)).RootElement.GetProperty("formatVersion").GetInt32());
+        Assert.Equal(9, JsonDocument.Parse(File.ReadAllText(projectFile)).RootElement.GetProperty("formatVersion").GetInt32());
         var firstFile = first.GetProperty("file").GetString()!;
         Assert.True(File.Exists(Path.Combine(root, "projects", "tracking", firstFile)));
 
@@ -2619,10 +2668,10 @@ public class McpServerTests
         await using var client = await StartServer(root, projects, Path.Combine(root, "logs"), ct);
 
         var opened = await CallOk(client, "open_project", new() { ["nameOrPath"] = "tora" }, ct);
-        Assert.Matches(@"\nupdated project\.json from format 1 \(saved by an older ZeyoCut\) to 8; the file as it was is kept as backups\\project-v1-\d{8}-\d{6}\.json\n", opened);
+        Assert.Matches(@"\nupdated project\.json from format 1 \(saved by an older ZeyoCut\) to 9; the file as it was is kept as backups\\project-v1-\d{8}-\d{6}\.json\n", opened);
         Assert.Contains("tora_head", opened);
         Assert.Single(Directory.GetFiles(Path.Combine(projects, "tora", "backups"), "project-v1-*.json"));
-        Assert.Matches("\"formatVersion\": 8,\r?\n  \"revision\": 1,", await CallOk(client, "get_project", new(), ct));
+        Assert.Matches("\"formatVersion\": 9,\r?\n  \"revision\": 1,", await CallOk(client, "get_project", new(), ct));
 
         Assert.DoesNotContain("updated project.json", await CallOk(client, "open_project", new() { ["nameOrPath"] = "tora" }, ct));
     }

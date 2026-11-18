@@ -171,7 +171,7 @@ public static partial class InspectorFields
                 fields.Add(Section("Sound"));
                 fields.Add(Info("Asset", audio.Asset));
                 fields.Add(Info("Plays", $"{Num(audio.TrimIn)} – {(audio.TrimOut is { } trimOut ? Num(trimOut) + " s" : "the end")} of the file"));
-                AddSound(fields, id, audio.Role, audio.Volume, audio.FadeIn, audio.FadeOut);
+                AddSound(fields, id, audio.Role, audio.Volume.Value, audio.FadeIn, audio.FadeOut);
                 break;
             case ImageLayer image when image.Drawings.Count > 0:
                 fields.Add(Section("Image"));
@@ -240,7 +240,7 @@ public static partial class InspectorFields
                 else
                 {
                     fields.Add(Toggle("Sound on", !video.Muted, on => new UpdateLayerOperation(id, new JsonObject { ["muted"] = !on })));
-                    AddSound(fields, id, video.Role, video.Volume, video.FadeIn, video.FadeOut);
+                    AddSound(fields, id, video.Role, video.Volume.Value, video.FadeIn, video.FadeOut);
                 }
 
                 Tab("Audio");
