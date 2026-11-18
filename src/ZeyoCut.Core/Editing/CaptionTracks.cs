@@ -149,6 +149,14 @@ public static partial class CaptionTracks
         return new CaptionTrack(id, language, cues, ids, replaced, created, problems);
     }
 
+    // Cues given as add_caption_track's cues or srt, checked against the project (Check) and put in
+    // as the language's caption track; the problems with them come after the notes.
+    public static CaptionTrack AddEntries(Project project, string language, IReadOnlyList<CueEntry> entries, CaptionOptions options, IReadOnlyList<string> notes, ITextMeasurer? measurer)
+    {
+        var (cues, problems) = Check(entries, project.Duration);
+        return Add(project, language, cues, options, [.. notes, .. problems], measurer);
+    }
+
     public static string Describe(CaptionTrack track, string font, int listed = 12)
     {
         var lines = new List<string>

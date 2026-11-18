@@ -273,13 +273,8 @@ public static class CaptionTools
         var renderer = state.Renderer;
         var (track, used, warnings) = session.Mutate($"add_caption_track {tag}", p =>
         {
-            List<CaptionCue> list;
-            List<string> problems;
-            if (transcript is null)
-            {
-                (list, problems) = CaptionTracks.Check(entries!, p.Duration);
-            }
-            else
+            List<CaptionCue>? list = null;
+            if (transcript is not null)
             {
                 var words = CaptionBuilder.TimelineWords(p, transcript, CaptionBuilder.Sources(p, fromTranscript, null).Layers);
                 if (words.Count == 0)
@@ -287,7 +282,7 @@ public static class CaptionTools
                     throw new ZeyoCutException("none of the transcript's words are on the timeline (the clips play other parts of the source)");
                 }
 
-                (list, problems) = (CaptionBuilder.Cues(words, 6, 2, p.Duration), []);
+                list = CaptionBuilder.Cues(words, 6, 2, p.Duration);
             }
 
             var options = new CaptionOptions
@@ -299,7 +294,10 @@ public static class CaptionTools
                 LibraryStyle = libraryStyle,
                 FontAsset = font is null && libraryStyle is not null ? TextStyles.AdoptFont(p, session.Directory, state.Library, libraryStyle) : null,
             };
-            var made = CaptionTracks.Add(p, tag, list, options, [.. notes, .. problems], new TextMeasurer(renderer, p));
+            var measurer = new TextMeasurer(renderer, p);
+            var made = list is null
+                ? CaptionTracks.AddEntries(p, tag, entries!, options, notes, measurer)
+                : CaptionTracks.Add(p, tag, list, options, notes, measurer);
             var texts = made.LayerIds.Select(id => (TextLayer)p.FindLayer(id)!).ToList();
             var layout = texts.SelectMany(t => renderer.Text.Layout(p, session.Directory, t).Warnings).Distinct().ToList();
             return (made, texts[0].FontAsset is { } fontAsset ? $"asset '{fontAsset}'" : texts[0].FontFamily, layout);
