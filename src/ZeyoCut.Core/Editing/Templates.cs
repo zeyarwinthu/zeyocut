@@ -7,7 +7,11 @@ using ZeyoCut.Core.Serialization;
 
 namespace ZeyoCut.Core.Editing;
 
-// save_template / new_project_from_template.
+// add_template's result: the template's name, the layers added, the asset files copied in and those
+// the project had already, and what to look at.
+public sealed record TemplatePlacement(string Name, double At, IReadOnlyList<string> Layers, IReadOnlyList<string> AddedAssets, IReadOnlyList<string> ReusedAssets, IReadOnlyList<string> Warnings);
+
+// save_template / new_project_from_template / add_template.
 public static class Templates
 {
     public static TemplateFile Save(Project project, string projectDirectory, Library library, string? name, IReadOnlyList<string>? layerIds, IReadOnlyList<string>? pinToEnd, bool overwrite)
@@ -148,6 +152,126 @@ public static class Templates
 
         return project;
     }
+
+    // Adds a template's layers to an open project as one block from At: each keeps its time from the
+    // template's start, and a layer that ran to the template's end ends where the template does.
+    // Pictures, text and footage go on draw levels above the project's, as add_rig puts a rig. Ids the
+    // project has already get a number; the template's files are copied into assets/, or the project's
+    // own copy is used. A template with tracked footage only makes new projects.
+    public static TemplatePlacement Add(Project project, string projectDirectory, Library library, string? name, double at)
+    {
+        var template = library.Load<TemplateFile>(LibraryKind.Template, name);
+        var folder = library.PathOf(LibraryKind.Template, Library.CheckName(name, LibraryKind.Template));
+        if (!double.IsFinite(at) || at < 0)
+        {
+            throw new ZeyoCutException($"at must be 0 or later (got {Num(at)})");
+        }
+
+        var source = ProjectJson.Clone(template.Project);
+        if (source.Tracks.Count > 0 || source.Layers.Any(l => l is RedactionLayer))
+        {
+            throw new ZeyoCutException($"template '{template.Name}' has tracked footage; make a new project from it with new_project_from_template");
+        }
+
+        if (source.Layers.Count == 0)
+        {
+            throw new ZeyoCutException($"template '{template.Name}' has no layers");
+        }
+
+        var warnings = new List<string>();
+        if (source.Width != project.Width || source.Height != project.Height)
+        {
+            warnings.Add($"the template is {source.Width}x{source.Height} and the project {project.Width}x{project.Height}; its layers keep their pixel positions");
+        }
+
+        var assetMap = new Dictionary<string, string>(StringComparer.Ordinal);
+        var added = new List<string>();
+        var reused = new List<string>();
+        foreach (var asset in source.Assets)
+        {
+            var before = project.Assets.Count;
+            var adopted = AssetImporter.Adopt(project, projectDirectory, asset, ProjectStore.AssetPath(folder, asset), asset.Id);
+            assetMap[asset.Id] = adopted.Id;
+            (project.Assets.Count > before ? added : reused).Add(adopted.Id);
+        }
+
+        var taken = project.Layers.Select(l => l.Id).ToHashSet(StringComparer.Ordinal);
+        var ids = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var layer in source.Layers)
+        {
+            ids[layer.Id] = Ids.Unique(layer.Id, taken.Contains);
+            taken.Add(ids[layer.Id]);
+        }
+
+        static bool Drawn(Layer layer) => layer is VisualLayer or CutoutLayer;
+        var top = project.Layers.Where(Drawn).Select(l => l.ZIndex).DefaultIfEmpty(-1).Max() + 1;
+        var lift = source.Layers.Any(Drawn) ? top - source.Layers.Where(Drawn).Min(l => l.ZIndex) : 0;
+        foreach (var layer in source.Layers)
+        {
+            var old = layer.Id;
+            layer.Id = ids[old];
+            layer.Name = layer.Name == old ? layer.Id : layer.Name;
+            layer.ParentId = layer.ParentId is { } parent ? ids[parent] : null;
+            layer.ZIndex += Drawn(layer) ? lift : 0;
+            switch (layer)
+            {
+                case ImageLayer image:
+                    foreach (var drawing in image.Drawings.Keys.ToList())
+                    {
+                        image.Drawings[drawing] = assetMap[image.Drawings[drawing]];
+                    }
+
+                    break;
+                case TextLayer { FontAsset: { } font } text:
+                    text.FontAsset = assetMap[font];
+                    break;
+                case AudioLayer audio:
+                    audio.Asset = assetMap[audio.Asset];
+                    break;
+                case VideoLayer video:
+                    video.Asset = assetMap[video.Asset];
+                    break;
+                case CutoutLayer cutout:
+                    cutout.Sources = cutout.Sources.Select(s => ids.GetValueOrDefault(s, s)).ToList();
+                    break;
+            }
+
+            if (layer is VisualLayer { Mask: { Asset: { } maskAsset } mask })
+            {
+                mask.Asset = assetMap[maskAsset];
+            }
+
+            if (layer is CutoutLayer)
+            {
+                continue;
+            }
+
+            if (layer.End is null && layer is not VideoLayer)
+            {
+                layer.End = source.Duration;
+            }
+
+            Shift(layer, at);
+            if (layer is AudioLayer sound)
+            {
+                KeyframeWindow.Shift(sound.Volume, at);
+            }
+        }
+
+        project.Layers.AddRange(source.Layers);
+        var end = at + source.Duration;
+        if (end > project.Duration + 1e-6)
+        {
+            warnings.Add($"the template runs to {Num(end)}s, past the project's end ({Num(project.Duration)}s)");
+        }
+
+        return new TemplatePlacement(template.Name, at, source.Layers.Select(l => l.Id).ToList(), added, reused, warnings);
+    }
+
+    public static string Describe(TemplatePlacement placed) =>
+        $"added template '{placed.Name}' at {Num(placed.At)}s: {placed.Layers.Count} layer(s): {Ids.List(placed.Layers)}"
+        + (placed.AddedAssets.Count > 0 ? $"; imported {placed.AddedAssets.Count} file(s)" : "")
+        + (placed.ReusedAssets.Count > 0 ? $"; reused {placed.ReusedAssets.Count} asset(s) already in the project" : "");
 
     public static string Describe(TemplateFile template)
     {

@@ -57,7 +57,7 @@ public static class ServerInfo
         - save_rig stores a rig (a root layer and everything under it); add_rig places a copy in any project with its own ids (<instanceName>_<part>).
         - save_action stores a rig's keyframes over a time window by part role (head, tail, ...; the root moves relative to where the rig stands); apply_action plays it on any rig with those roles, with speed and loops. Name parts with update_layer {"rigRole": "arm_l"} when the ids don't share a prefix.
         - save_style / apply_style store and apply a text look; add_text_layer and generate_captions take a library style name as style.
-        - save_template / new_project_from_template reuse fixed layers (intro, watermark, end screen); pinToEnd layers follow the end of a longer or shorter video.
+        - save_template / new_project_from_template reuse fixed layers (intro, watermark, end screen); pinToEnd layers follow the end of a longer or shorter video. add_template puts a template's layers into the open project at a time (a lower third, a chapter card).
         - list_library shows what is saved. Saves aren't undo steps; placing or applying is.
         - build_from_script builds a whole episode from a script (JSON, or Markdown in fixed line patterns; docs/GUIDE.md has both) into a new project: each scene's rigs, actions, sound effects and captions at their times, with a scene marker per scene. It lists what it couldn't map (an unknown rig, action or sound, a time past its scene) and builds the rest; check the result with render_contact_sheet.
 

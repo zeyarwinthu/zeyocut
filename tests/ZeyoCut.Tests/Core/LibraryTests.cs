@@ -270,6 +270,43 @@ public class LibraryTests
             Assert.Throws<ZeyoCutException>(() => Templates.Create(library, "channel", directory, "again", null, warnings)).Message);
     }
 
+    // add_template: the layers as a block from the time, with their children, drawings and keyframes,
+    // renamed where the project has their ids, above its levels; files reused or copied in.
+    [Fact]
+    public void ATemplateAddsItsLayersToAnOpenProjectAsABlock()
+    {
+        var (project, directory) = RigProject("library-add-template");
+        var library = new Library(TestPaths.NewDirectory("library-add-template-lib"));
+        Animate(project);
+        Templates.Save(project, directory, library, "hop", ["tora_body"], null, overwrite: false);
+
+        var placed = Templates.Add(project, directory, library, "HOP", 1.5);
+        Assert.Equal(("hop", 1.5), (placed.Name, placed.At));
+        Assert.Equal(["tora_body_2", "tora_head_2", "tora_tail_2"], placed.Layers);
+        Assert.Equal((0, 4), (placed.AddedAssets.Count, placed.ReusedAssets.Count));
+        var body = (ImageLayer)project.FindLayer("tora_body_2")!;
+        var head = (ImageLayer)project.FindLayer("tora_head_2")!;
+        Assert.Equal(("tora_body_2", "tora_body_2"), (head.ParentId!, project.FindLayer("tora_tail_2")!.ParentId!));
+        Assert.Equal((1.5, 5.5, 13), (body.Start, body.End!.Value, body.ZIndex));
+        Assert.Equal([1.5, 2.5], body.X.Keyframes.Select(k => k.Time));
+        Assert.Equal([1.5, 2.0, 2.4], head.Drawing.Keyframes.Select(k => k.Time));
+        Assert.Equal(((ImageLayer)project.FindLayer("tora_head")!).Drawings, head.Drawings);
+        Assert.Equal(["the template runs to 5.5s, past the project's end (4s)"], placed.Warnings);
+        Assert.Equal("added template 'hop' at 1.5s: 3 layer(s): tora_body_2, tora_head_2, tora_tail_2; reused 4 asset(s) already in the project", Templates.Describe(placed));
+
+        var other = TestProjects.Empty(width: 320, height: 180, duration: 8);
+        var otherDirectory = TestPaths.NewDirectory("library-add-template-other");
+        var copied = Templates.Add(other, otherDirectory, library, "hop", 0);
+        Assert.Equal(["tora_body", "tora_head", "tora_tail"], copied.Layers);
+        Assert.Equal(4, copied.AddedAssets.Count);
+        Assert.All(other.Assets, a => Assert.True(File.Exists(ProjectStore.AssetPath(otherDirectory, a))));
+        Assert.Equal(["the template is 640x360 and the project 320x180; its layers keep their pixel positions"], copied.Warnings);
+        Assert.Equal((0.0, 4.0, 0), (other.FindLayer("tora_tail")!.Start, other.FindLayer("tora_tail")!.End!.Value, other.FindLayer("tora_tail")!.ZIndex));
+        ProjectValidator.ThrowIfInvalid(other);
+
+        Assert.Contains("at must be 0 or later", Assert.Throws<ZeyoCutException>(() => Templates.Add(other, otherDirectory, library, "hop", -1)).Message);
+    }
+
     [Fact]
     public void LibraryNamesAreCheckedAndListed()
     {

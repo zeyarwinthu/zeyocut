@@ -1,6 +1,6 @@
 # ZeyoCut tool guide
 
-The `zeyocut` server has 94 tools, plus [`describe_clip`](#optional-describe_clip) when a clip describer is configured, and 4 [workflow prompts](#workflow-prompts). Every example below was run against the real server; paths are shortened to `C:\Users\you\...` and `C:\videos\...`.
+The `zeyocut` server has 95 tools, plus [`describe_clip`](#optional-describe_clip) when a clip describer is configured, and 4 [workflow prompts](#workflow-prompts). Every example below was run against the real server; paths are shortened to `C:\Users\you\...` and `C:\videos\...`.
 
 ## Conventions
 
@@ -43,7 +43,7 @@ Contents:
 - [Optional: describe_clip](#optional-describe_clip): `describe_clip`, only when a clip describer is configured
 - [Captions](#captions): `generate_captions`, `add_caption_track`, `import_srt`, `export_srt`
 - [Languages](#languages): language tags, one version per language, a font per language
-- [Library](#library): `save_rig`, `add_rig`, `save_action`, `apply_action`, `save_style`, `apply_style`, `save_template`, `new_project_from_template`, `list_library`
+- [Library](#library): `save_rig`, `add_rig`, `save_action`, `apply_action`, `save_style`, `apply_style`, `save_template`, `new_project_from_template`, `add_template`, `list_library`
 - [Audio for animation](#audio-for-animation): `list_sfx`, `add_sfx`, `detect_beats`, `auto_lip_flap`
 - [Episode scripts](#episode-scripts): `build_from_script`
 - [Checks](#checks): `frame_diff`, `audio_levels`, `check_project`
@@ -3752,6 +3752,31 @@ tora-ep2: 1280x720 @ 30 fps, 8s, 3 layer(s), 0 asset(s)
 title [text]  z=2  t=0–2  text="Episode 1"  font=Segoe UI 72px  anchor=(162.07,47.883)
 handle [text]  z=3  t=0–end  text="@tora_cat"  font=Segoe UI 28px  anchor=(62.535,18.621)
 endcard [text]  z=4  t=7–end  text="Subscribe!"  font=Segoe UI 64px  anchor=(145.875,42.563)
+```
+
+### `add_template`
+
+Adds a template's layers to the open project as one block that starts at `at`, in one undo step: a lower third, a chapter card or an end screen in the middle of a video.
+
+- each layer keeps its time from the template's start; one that ran to the template's end ends where the template does, `at` plus the template's length
+- pictures, text and footage go on draw levels above the project's, in their own order
+- a layer whose id the project has already gets a number (`title_2`), and its children follow it
+- the template's files are copied into the project's `assets`, or the project's own copy of the same file is used
+- `pinToEnd` doesn't apply here: the whole block goes where `at` puts it
+
+A template with tracked footage (tracks and redactions) only makes new projects. A template of another canvas size is added as it is, with a warning. The editor's Titles view adds a template at the playhead the same way.
+
+| Parameter | Default | Notes |
+|---|---|---|
+| `name` | required | Template name |
+| `at` | 0 | Where the template's start goes, timeline seconds |
+
+In `tora-ep2`, which already has the template's layers:
+```json
+{ "name": "tora show", "at": 4 }
+```
+```text
+added template 'tora show' at 4s: 3 layer(s): title_2, handle_2, endcard_2
 ```
 
 ### `list_library`

@@ -176,6 +176,10 @@ when they open.
 - **Title animations:** `add_text_layer` takes `animateIn` and `animateOut`: `fade`, `pop` or
   `slideUp`, added as keyframes on opacity, scale and y over half a second (a third of a short
   layer). The editor's Titles view uses the same presets.
+- **`add_template`** adds a library template's layers to the open project as a block from `at`:
+  each keeps its time from the template's start, ids the project has get a number, the layers go
+  above the project's, and the files are copied in or reused. The editor's Titles view adds
+  templates at the playhead the same way.
 
 ### Changed
 

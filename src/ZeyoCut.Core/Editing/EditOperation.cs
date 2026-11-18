@@ -258,6 +258,38 @@ public sealed record AddTitleOperation(
     }
 }
 
+// A library style on a text layer, or on every text layer under a group, as apply_style puts it on
+// (TextStyles.Apply): its font copied from Library into the project's Directory. Text, position and
+// timing stay. Measurer measures text in the project it's applied to.
+public sealed record ApplyStyleOperation(TextStyle Style, string LayerId, string Directory, Library Library, Func<Project, ITextMeasurer>? Measurer = null) : EditOperation
+{
+    public override string Label => $"apply_style {Style.Name} to {LayerId}";
+
+    public override IReadOnlyList<string> Layers => [LayerId];
+
+    public override string Apply(Project project)
+    {
+        var ids = TextStyles.Apply(project, Directory, Library, Style, LayerId, Measurer?.Invoke(project));
+        ProjectValidator.ThrowIfInvalid(project);
+        return $"applied style '{Style.Name}' to {ids.Count} text layer(s): {Ids.List(ids)}";
+    }
+}
+
+// A library template's layers as one block from At, as add_template adds them (Templates.Add): its
+// files copied from Library into the project's Directory.
+public sealed record AddTemplateOperation(string Name, double At, string Directory, Library Library) : EditOperation
+{
+    public override string Label => $"add_template {Name}";
+
+    public override IReadOnlyList<string> Layers => [];
+
+    public override string Apply(Project project)
+    {
+        var placed = Templates.Add(project, Directory, Library, Name, At);
+        return Templates.Describe(placed) + string.Concat(placed.Warnings.Select(w => $"; {w}"));
+    }
+}
+
 // The project's settings, as update_project changes them: the Audio view's mixer, ducking and loudness.
 public sealed record UpdateProjectOperation(ProjectOptions Options) : EditOperation
 {

@@ -3,7 +3,7 @@
 
 # Tool reference
 
-The `zeyocut` server has 94 tools and 4 [workflow prompts](#workflow-prompts). Each is listed here as the server describes it to the model, with its parameters. The [guide](GUIDE.md) shows how they work together, with an example call and the real response for each. One more tool, `describe_clip`, appears only when a clip describer is configured (see the [guide](GUIDE.md#optional-describe_clip)).
+The `zeyocut` server has 95 tools and 4 [workflow prompts](#workflow-prompts). Each is listed here as the server describes it to the model, with its parameters. The [guide](GUIDE.md) shows how they work together, with an example call and the real response for each. One more tool, `describe_clip`, appears only when a clip describer is configured (see the [guide](GUIDE.md#optional-describe_clip)).
 
 | Tool | What it does |
 |---|---|
@@ -13,6 +13,7 @@ The `zeyocut` server has 94 tools and 4 [workflow prompts](#workflow-prompts). E
 | [`add_markers`](#add_markers) | Add or change project markers in one call (one undo step; all-or-nothing): named points on the timeline, each a chapter (the default) or a scene. |
 | [`add_rig`](#add_rig) | Place a rig from the library in the open project (one undo step). |
 | [`add_sfx`](#add_sfx) | Add a sound effect from the library at a time (one undo step): the file is imported into the project once (later adds of the same sound reuse the asset) and placed as an audio layer with role effects, so music ducking leaves it alone. |
+| [`add_template`](#add_template) | Add a library template's layers to the open project as one block starting at 'at' (one undo step): a lower third, a chapter card, an end screen. |
 | [`add_text_layer`](#add_text_layer) | Add a text layer (titles, subtitles). |
 | [`add_transition`](#add_transition) | Add a transition between layerA and layerB, which must be back to back (or already overlapping). |
 | [`add_video_layer`](#add_video_layer) | Add a video clip from a video asset. |
@@ -204,6 +205,15 @@ Add a sound effect from the library at a time (one undo step): the file is impor
 | `name` | string, required | Sound effect name from list_sfx (impacts/thud, or thud when unique). |
 | `time` | number, required | When it plays, seconds on the timeline. |
 | `volume` | number, default `1` | Volume 0-10, 1 = as recorded. Default 1. |
+
+### `add_template`
+
+Add a library template's layers to the open project as one block starting at 'at' (one undo step): a lower third, a chapter card, an end screen. Each layer keeps its time from the template's start, and layers that ran to the template's end end where it does. Pictures, text and footage go on draw levels above the project's; ids the project already has get a number; the template's files are copied into the project's assets, or the project's own copy is used. A template with tracked footage only makes new projects (new_project_from_template).
+
+| Parameter | Type | Description |
+|---|---|---|
+| `name` | string, required | Template name from list_library. |
+| `at` | number, default `0` | Where the template's start goes on the timeline, seconds. Default 0. |
 
 ### `add_text_layer`
 

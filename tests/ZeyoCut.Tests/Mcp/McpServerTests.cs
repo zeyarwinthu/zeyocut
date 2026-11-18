@@ -29,7 +29,7 @@ public class McpServerTests
         "add_markers", "remove_markers", "export_markers", "build_from_script",
         "analyze_video", "get_transcript", "view_source", "remove_silences", "cut_by_transcript",
         "generate_captions", "add_caption_track", "export_srt", "import_srt",
-        "save_rig", "add_rig", "save_action", "apply_action", "save_style", "apply_style", "save_template", "new_project_from_template", "list_library",
+        "save_rig", "add_rig", "save_action", "apply_action", "save_style", "apply_style", "save_template", "new_project_from_template", "add_template", "list_library",
         "set_camera", "camera_shake",
         "frame_diff", "audio_levels", "check_project",
         "list_sfx", "add_sfx", "detect_beats", "auto_lip_flap",
@@ -739,6 +739,65 @@ public class McpServerTests
 
         var unknown = await Call(client, "add_text_layer", new() { ["text"] = "No", ["animateIn"] = "spin" }, ct);
         Assert.Contains("unknown animateIn 'spin'; valid values: fade, pop, slideUp", Text(unknown));
+    }
+
+    // add_template and apply_style make the project the editor's AddTemplateOperation and
+    // ApplyStyleOperation make: the template's layers as a block from the playhead, renamed where the
+    // project has their ids, above the project's levels, with its files copied in.
+    [Fact]
+    public async Task ServerAddsTemplatesAndStylesAsTheEditorDoes()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var root = TestPaths.NewDirectory("mcp-add-template");
+        var card = TestImages.Solid(Path.Combine(root, "card.png"), 40, 20, SKColors.Blue);
+        var directory = Path.Combine(root, "projects", "show");
+        var file = Path.Combine(directory, "project.json");
+        await using var client = await StartServer(root, Path.Combine(root, "projects"), Path.Combine(root, "logs"), ct);
+        await CallOk(client, "create_project", new() { ["name"] = "kit", ["width"] = 320, ["height"] = 180, ["fps"] = 10, ["duration"] = 3.0 }, ct);
+        await CallOk(client, "import_asset", new() { ["path"] = card }, ct);
+        await CallOk(client, "add_image_layer", new() { ["asset"] = "card", ["id"] = "bar", ["start"] = 0.5, ["zIndex"] = 2 }, ct);
+        await CallOk(client, "add_text_layer", new() { ["text"] = "Name", ["id"] = "name", ["parentId"] = "bar", ["start"] = 0.5, ["end"] = 2.5, ["zIndex"] = 3, ["animateIn"] = "fade" }, ct);
+        await CallOk(client, "add_text_layer", new() { ["text"] = "Gold", ["id"] = "gold", ["fontSize"] = 20, ["color"] = "#FFD700", ["bold"] = true, ["zIndex"] = 3 }, ct);
+        await CallOk(client, "save_style", new() { ["layerId"] = "gold", ["name"] = "Gold" }, ct);
+        await CallOk(client, "save_template", new() { ["name"] = "lower third", ["layerIds"] = new[] { "bar" } }, ct);
+
+        await CallOk(client, "create_project", new() { ["name"] = "show", ["width"] = 320, ["height"] = 180, ["fps"] = 10, ["duration"] = 6.0 }, ct);
+        await CallOk(client, "import_asset", new() { ["path"] = card }, ct);
+        await CallOk(client, "add_image_layer", new() { ["asset"] = "card", ["id"] = "bar", ["end"] = 6.0, ["zIndex"] = 4 }, ct);
+        var before = File.ReadAllText(file);
+        var copy = Path.Combine(root, "editor-copy");
+        Directory.CreateDirectory(Path.Combine(copy, "assets"));
+        foreach (var asset in Directory.GetFiles(Path.Combine(directory, "assets")))
+        {
+            File.Copy(asset, Path.Combine(copy, "assets", Path.GetFileName(asset)));
+        }
+
+        var added = await CallOk(client, "add_template", new() { ["name"] = "Lower Third", ["at"] = 2.0 }, ct);
+        Assert.Equal("added template 'lower third' at 2s: 2 layer(s): bar_2, name; reused 1 asset(s) already in the project", added);
+        var library = new Library(Path.Combine(root, "library"));
+        var editor = ProjectJson.Deserialize(before);
+        var template = new AddTemplateOperation("Lower Third", 2, copy, library);
+        Assert.Equal(added, template.Apply(editor));
+        editor.Revision = ProjectJson.Deserialize(File.ReadAllText(file)).Revision;
+        Assert.Equal(TestProjects.WithoutRevision(File.ReadAllText(file)), TestProjects.WithoutRevision(ProjectJson.Serialize(editor)));
+        var (bar, name) = (editor.FindLayer("bar_2")!, (TextLayer)editor.FindLayer("name")!);
+        Assert.Equal((2.5, 5.0, 5, "bar_2"), (bar.Start, bar.End!.Value, bar.ZIndex, name.ParentId!));
+        Assert.Equal((2.5, 4.5, 6), (name.Start, name.End!.Value, name.ZIndex));
+        Assert.Equal([2.5, 3.0], name.Opacity.Keyframes.Select(k => k.Time));
+
+        var late = await CallOk(client, "add_template", new() { ["name"] = "lower third", ["at"] = 4.0 }, ct);
+        Assert.Contains("added template 'lower third' at 4s: 2 layer(s): bar_3, name_2", late);
+        Assert.Contains("the template runs to 7s, past the project's end (6s)", late);
+        Assert.Contains("no template named 'credits' in the library", Text(await Call(client, "add_template", new() { ["name"] = "credits" }, ct)));
+        Assert.StartsWith("undid: add_template lower third", await CallOk(client, "undo", new(), ct));
+
+        var styled = await CallOk(client, "apply_style", new() { ["name"] = "Gold", ["layerId"] = "name" }, ct);
+        using var renderer = new FrameRenderer(copy);
+        var style = new ApplyStyleOperation(library.Load<TextStyle>(LibraryKind.Style, "Gold"), "name", copy, library, p => new ZeyoCut.Render.Text.TextMeasurer(renderer, p));
+        Assert.Equal("apply_style Gold to name", style.Label);
+        Assert.Equal(styled, style.Apply(editor));
+        editor.Revision = ProjectJson.Deserialize(File.ReadAllText(file)).Revision;
+        Assert.Equal(TestProjects.WithoutRevision(File.ReadAllText(file)), TestProjects.WithoutRevision(ProjectJson.Serialize(editor)));
     }
 
     [Fact]
