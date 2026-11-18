@@ -135,6 +135,7 @@ public sealed class KeyframeView : FrameworkElement
         _frames = Math.Max(1, frames);
         _landing = null;
         _selectedLayer = selectedLayer;
+        var reveal = false;
         if (selectedLayer != _shownFor)
         {
             // A layer newly selected opens, and the graph shows its curves.
@@ -142,6 +143,7 @@ public sealed class KeyframeView : FrameworkElement
             if (selectedLayer is not null)
             {
                 _expanded.Add(selectedLayer);
+                reveal = true;
                 _shown.Clear();
                 _shown.AddRange(layers.Where(l => l.LayerId == selectedLayer).SelectMany(l => l.Rows).Where(r => !r.Drawing).Take(Palette.Length).Select(r => r.Key));
             }
@@ -156,6 +158,11 @@ public sealed class KeyframeView : FrameworkElement
         }
 
         _scroll = Math.Clamp(_scroll, 0, MaxScroll);
+        if (reveal && selectedLayer is not null)
+        {
+            Reveal(selectedLayer);
+        }
+
         InvalidateVisual();
     }
 
@@ -848,6 +855,32 @@ public sealed class KeyframeView : FrameworkElement
         {
             Seek?.Invoke(this, frame);
         }
+    }
+
+    // Scrolls the list so a layer and its values are in view, or as much of them as fits from the
+    // layer's own row.
+    private void Reveal(string layerId)
+    {
+        var lines = Lines();
+        var index = lines.FindIndex(l => l.Layer.LayerId == layerId && l.Row is null);
+        var visible = ActualHeight - RulerHeight - (_mode == KeyframeMode.Graph ? LegendHeight : 0);
+        if (index < 0 || visible <= RowHeight)
+        {
+            return;
+        }
+
+        var top = lines[index].Top + _scroll - RulerHeight - 4;
+        var height = (1 + (_expanded.Contains(layerId) ? lines[index].Layer.Rows.Count : 0)) * RowHeight;
+        if (top < _scroll)
+        {
+            _scroll = top;
+        }
+        else if (top + height > _scroll + visible)
+        {
+            _scroll = Math.Min(top, top + height - visible + 8);
+        }
+
+        _scroll = Math.Clamp(_scroll, 0, MaxScroll);
     }
 
     private List<Line> Lines()

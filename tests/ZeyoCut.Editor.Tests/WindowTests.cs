@@ -289,6 +289,12 @@ public class WindowTests
         Assert.Equal((360.0, Easing.EaseIn), (YKey(project, "tora", 1.45).Value, YKey(project, "tora", 1.45).Easing));
         Assert.Equal("moved tora.y's keyframe from 1.35s to 1.45s", Text(window, "MessageText"));
         Assert.Equal(new KeyframeRef("tora", "y", 1.45), Assert.Single(keys.Selection).Ref);
+
+        // A layer selected low in the list is scrolled into view with its values.
+        window.SelectLayer("tora_head");
+        var drawing = keys.RowBounds("tora_head", AnimatableProperties.Drawing)!.Value;
+        Assert.True(drawing.Bottom <= keys.ActualHeight && drawing.Top >= KeyframeView.RulerHeight, $"{drawing} in {keys.ActualHeight}");
+        window.SelectLayer("tora");
         Assert.StartsWith("Key at 1.45 s · tora · Position Y = 360 px", Text(window, "KeyStatus"));
 
         // One step back.
