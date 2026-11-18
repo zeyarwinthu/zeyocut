@@ -59,7 +59,7 @@ public static class ValueEditor
             }
 
             var at = KeyAt(project, track, time)?.Time ?? time;
-            keys.Add(new KeyframeEntry(layer.Id, property, at, JsonSerializer.SerializeToElement(value), EnumNames.ToName(EasingAt(track, at))));
+            keys.Add(Entry(layer.Id, property, at, value, EasedLike(track, at)));
         }
 
         var operations = Statics(layer.Id, statics);
@@ -95,7 +95,7 @@ public static class ValueEditor
         }
 
         var value = Interpolator.Evaluate(track, time);
-        return new SetKeyframesOperation([new KeyframeEntry(layer.Id, property, time, JsonSerializer.SerializeToElement(value), EnumNames.ToName(EasingAt(track, time)))]);
+        return new SetKeyframesOperation([Entry(layer.Id, property, time, value, EasedLike(track, time))]);
     }
 
     // One diamond for several values, such as x and y: when each has a keyframe at time they are all
@@ -118,7 +118,7 @@ public static class ValueEditor
         return new SetKeyframesOperation(missing.Select(p =>
         {
             var track = Track(layer, p);
-            return new KeyframeEntry(layer.Id, p, time, JsonSerializer.SerializeToElement(Interpolator.Evaluate(track, time)), EnumNames.ToName(EasingAt(track, time)));
+            return Entry(layer.Id, p, time, Interpolator.Evaluate(track, time), EasedLike(track, time));
         }).ToList());
     }
 
@@ -204,12 +204,15 @@ public static class ValueEditor
 
     private static double Frame(Project project, double time) => Math.Round(time * project.Fps, MidpointRounding.AwayFromZero);
 
-    // The easing of the keyframe at time, or else of the one before it: it shapes the segment the new
-    // keyframe starts.
-    private static Easing EasingAt(AnimatedValue track, double time) =>
-        track.Keyframes.FirstOrDefault(k => Math.Abs(k.Time - time) < KeyframeEditor.TimeTolerance)?.Easing
-        ?? track.Keyframes.LastOrDefault(k => k.Time < time)?.Easing
-        ?? Easing.Linear;
+    // The keyframe at time, or else the one before it: its easing shapes the segment the new keyframe
+    // starts.
+    private static Keyframe? EasedLike(AnimatedValue track, double time) =>
+        track.Keyframes.FirstOrDefault(k => Math.Abs(k.Time - time) < KeyframeEditor.TimeTolerance)
+        ?? track.Keyframes.LastOrDefault(k => k.Time < time);
+
+    // A keyframe as set_keyframes takes it, eased like 'like' (linear when there's none).
+    private static KeyframeEntry Entry(string layerId, string property, double time, double value, Keyframe? like) =>
+        new(layerId, property, time, JsonSerializer.SerializeToElement(value), EnumNames.ToName(like?.Easing ?? Easing.Linear), like is { Easing: Easing.CubicBezier } ? like.Bezier : null);
 
     private static string MoveInto(Project project, VisualLayer layer) =>
         $"move the playhead into {Num(layer.Start)}–{Num(SceneEvaluator.EndOf(layer, project.Duration))}s, where the layer is";

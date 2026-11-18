@@ -76,7 +76,7 @@ public class BackupTests
 
         // The copy from format 4 reads as the current format.
         var old = ProjectBackups.Load(original);
-        Assert.Equal(7, old.FormatVersion);
+        Assert.Equal(8, old.FormatVersion);
         Assert.Equal("behind", old.Name);
     }
 

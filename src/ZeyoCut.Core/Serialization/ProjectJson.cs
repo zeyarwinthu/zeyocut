@@ -263,7 +263,7 @@ public static class ProjectJson
             ReadCommentHandling = JsonCommentHandling.Skip,
             AllowTrailingCommas = true,
             Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
-            TypeInfoResolver = new DefaultJsonTypeInfoResolver { Modifiers = { OmitEmptyKeyframes, OmitVideoEnd, OmitNoTracks } },
+            TypeInfoResolver = new DefaultJsonTypeInfoResolver { Modifiers = { OmitEmptyKeyframes, OmitBezier, OmitVideoEnd, OmitNoTracks } },
         };
         options.Converters.Add(new JsonStringEnumConverter(JsonNamingPolicy.CamelCase));
         options.MakeReadOnly();
@@ -282,6 +282,23 @@ public static class ProjectJson
             if (property.Name == "keyframes")
             {
                 property.ShouldSerialize = static (_, value) => value is ICollection { Count: > 0 };
+            }
+        }
+    }
+
+    // A keyframe's bezier is written only while its easing is cubicBezier.
+    private static void OmitBezier(JsonTypeInfo info)
+    {
+        if (info.Type != typeof(Keyframe))
+        {
+            return;
+        }
+
+        foreach (var property in info.Properties)
+        {
+            if (property.Name == "bezier")
+            {
+                property.ShouldSerialize = static (owner, value) => value is not null && owner is Keyframe { Easing: Easing.CubicBezier };
             }
         }
     }

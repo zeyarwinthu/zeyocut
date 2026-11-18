@@ -41,7 +41,7 @@ public class LibraryTests
         var body = (ImageLayer)project.FindLayer("tora_body")!;
         body.X.Keyframes = [Key(0, 300, Easing.EaseInOut), Key(1, 500)];
         body.Y.Keyframes = [Key(0, 200, Easing.EaseOut), Key(0.5, 150, Easing.EaseIn), Key(1, 200)];
-        body.ScaleY.Keyframes = [Key(0, 1), Key(0.5, 1.2), Key(1, 1)];
+        body.ScaleY.Keyframes = [new Keyframe { Time = 0, Value = 1, Easing = Easing.CubicBezier, Bezier = [0.3, 1.4, 0.6, 1] }, Key(0.5, 1.2), Key(1, 1)];
         var head = (ImageLayer)project.FindLayer("tora_head")!;
         head.Rotation.Keyframes = [Key(0, 0, Easing.EaseOutBack), Key(0.5, 20, Easing.EaseInOut), Key(1, 0)];
         head.Drawing.Keyframes = [new DrawingKeyframe { Time = 0, Value = "normal" }, new DrawingKeyframe { Time = 0.5, Value = "shocked" }, new DrawingKeyframe { Time = 0.9, Value = "normal" }];

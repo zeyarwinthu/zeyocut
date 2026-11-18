@@ -35,6 +35,44 @@ public class EasingTests
         Assert.Equal(expected, EasingFunctions.Apply(easing, t), 1e-9);
     }
 
+    // Worked out separately by halving the interval at 50 digits. 0.25, 0.1, 0.25, 1 is CSS's ease.
+    [Theory]
+    [InlineData(0.25, 0.1, 0.25, 1, 0.1, 0.094796305716043)]
+    [InlineData(0.25, 0.1, 0.25, 1, 0.25, 0.408510591355396)]
+    [InlineData(0.25, 0.1, 0.25, 1, 0.5, 0.802403387584857)]
+    [InlineData(0.25, 0.1, 0.25, 1, 0.9, 0.994316477484556)]
+    [InlineData(0, 0, 0.4, 1, 0.1, 0.211069922789738)]
+    [InlineData(0, 0, 0.4, 1, 0.5, 0.765988682530208)]
+    [InlineData(0, 0, 0.4, 1, 0.75, 0.941991889400904)]
+    [InlineData(0.34, 1.56, 0.64, 1, 0.25, 0.816289198692472)]
+    [InlineData(0.34, 1.56, 0.64, 1, 0.5, 1.087400670218698)]
+    [InlineData(0.34, 1.56, 0.64, 1, 0.75, 1.059646859964033)]
+    [InlineData(0.42, 0, 0.58, 1, 0.1, 0.019722453548311)]
+    [InlineData(0.42, 0, 0.58, 1, 0.5, 0.5)]
+    [InlineData(0.42, 0, 0.58, 1, 0.9, 0.980277546451689)]
+    [InlineData(1, 0, 0, 1, 0.5, 0.5)]
+    public void CubicBezierMatchesReferencePoints(double x1, double y1, double x2, double y2, double t, double expected)
+    {
+        Assert.Equal(expected, EasingFunctions.Apply(Easing.CubicBezier, t, [x1, y1, x2, y2]), 1e-9);
+    }
+
+    [Fact]
+    public void ACubicBezierAlongTheDiagonalIsLinearAndTheNumbersCountOnlyForIt()
+    {
+        for (var i = 0; i <= 100; i++)
+        {
+            Assert.Equal(i / 100.0, EasingFunctions.Apply(Easing.CubicBezier, i / 100.0, [0.3, 0.3, 0.7, 0.7]), 1e-9);
+        }
+
+        Assert.Equal(0.125, EasingFunctions.Apply(Easing.EaseIn, 0.5, [0, 0, 0.4, 1]));
+        Assert.Null(EasingFunctions.BezierProblem([0, 0, 0.4, 1]));
+        Assert.Null(EasingFunctions.BezierProblem([0.2, -1.5, 0.8, 2.5]));
+        Assert.Equal("bezier must be 4 numbers, [x1, y1, x2, y2] (got none)", EasingFunctions.BezierProblem(null));
+        Assert.Equal("bezier must be 4 numbers, [x1, y1, x2, y2] (got [0, 1])", EasingFunctions.BezierProblem([0, 1]));
+        Assert.Equal("bezier's x1 and x2 must be from 0 to 1, so the curve has one value at each time (got [1.2, 0, 0.4, 1])", EasingFunctions.BezierProblem([1.2, 0, 0.4, 1]));
+        Assert.Equal("bezier's numbers must be finite (got [0, NaN, 0.4, 1])", EasingFunctions.BezierProblem([0, double.NaN, 0.4, 1]));
+    }
+
     [Fact]
     public void EaseOutBackOvershootsByAboutTenPercent()
     {

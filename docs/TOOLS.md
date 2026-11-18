@@ -979,12 +979,13 @@ Add or replace many keyframes in one call (one undo step; all-or-nothing). A key
 
 | Parameter | Type | Description |
 |---|---|---|
-| `entries` | array of objects, required | Keyframes: [{layerId, property, time, value, easing}]. |
+| `entries` | array of objects, required | Keyframes: [{layerId, property, time, value, easing, bezier}]. |
 | `entries[].layerId` | string | Layer id, or "camera" for the project camera. |
 | `entries[].property` | string | x, y, rotation, scaleX, scaleY, opacity; brightness, contrast, saturation (image and video layers); cropX, cropY (video layers); drawing (image layers); shadow.x, shadow.y, shadow.blur, shadow.opacity, outline.width, blur.x, blur.y, tint.amount (after set_effect); mask.x, mask.y, mask.width, mask.height, mask.feather (after set_mask). Camera: x, y (the scene point at the frame's center), zoom, rotation, shakeX, shakeY, shakeRotation. |
 | `entries[].time` | number | Time in seconds. |
 | `entries[].value` | any | A number, or a drawing name (string) for the drawing property. |
-| `entries[].easing` | string | Easing of the segment that STARTS at this keyframe: linear (default), hold, easeIn, easeOut, easeInOut, easeOutBack, easeOutBounce, easeOutElastic. Ignored for drawing (always hold). |
+| `entries[].easing` | string | Easing of the segment that STARTS at this keyframe: linear (default), hold, easeIn, easeOut, easeInOut, easeOutBack, easeOutBounce, easeOutElastic, or cubicBezier with bezier. Ignored for drawing (always hold). |
+| `entries[].bezier` | array of numbers | A cubicBezier easing's curve as CSS's cubic-bezier() takes it: [x1, y1, x2, y2], x1 and x2 from 0 to 1, y1 and y2 past 0 or 1 to overshoot; [0.42, 0, 0.58, 1] eases in and out. Easing can be left out. |
 
 ### `set_mask`
 

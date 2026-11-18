@@ -7,7 +7,8 @@ using ZeyoCut.Core.Model;
 
 namespace ZeyoCut.Core.Editing;
 
-public sealed record KeyframeEntry(string LayerId, string Property, double Time, JsonElement Value, string? Easing = null);
+// Bezier: the four numbers of a cubicBezier easing, which they imply when Easing is left out.
+public sealed record KeyframeEntry(string LayerId, string Property, double Time, JsonElement Value, string? Easing = null, IReadOnlyList<double>? Bezier = null);
 
 public sealed record KeyframeRef(string LayerId, string Property, double Time);
 
@@ -185,8 +186,8 @@ public static class KeyframeEditor
             }
 
             var track = AnimatableProperties.GetNumeric(CameraEditor.Ensure(project), entry.Property);
-            var cameraEasing = string.IsNullOrWhiteSpace(entry.Easing) ? Easing.Linear : EnumNames.Parse<Easing>(entry.Easing, "easing");
-            var key = new Keyframe { Time = entry.Time, Value = ReadNumber(entry.Value, entry.Property), Easing = cameraEasing };
+            var (cameraEasing, cameraBezier) = EasingOf(entry);
+            var key = new Keyframe { Time = entry.Time, Value = ReadNumber(entry.Value, entry.Property), Easing = cameraEasing, Bezier = cameraBezier };
             return Upsert(track.Keyframes, entry.Time, k => k.Time, key);
         }
 
@@ -198,8 +199,8 @@ public static class KeyframeEditor
                 throw new ZeyoCutException($"time must be >= 0 (got {entry.Time})");
             }
 
-            var cutoutEasing = string.IsNullOrWhiteSpace(entry.Easing) ? Easing.Linear : EnumNames.Parse<Easing>(entry.Easing, "easing");
-            var key = new Keyframe { Time = entry.Time, Value = ReadNumber(entry.Value, "opacity"), Easing = cutoutEasing };
+            var (cutoutEasing, cutoutBezier) = EasingOf(entry);
+            var key = new Keyframe { Time = entry.Time, Value = ReadNumber(entry.Value, "opacity"), Easing = cutoutEasing, Bezier = cutoutBezier };
             return Upsert(opacity.Keyframes, entry.Time, k => k.Time, key);
         }
 
@@ -218,8 +219,8 @@ public static class KeyframeEditor
                 throw new ZeyoCutException($"{track}.{name} must be above 0 (got {value})");
             }
 
-            var boxEasing = string.IsNullOrWhiteSpace(entry.Easing) ? Easing.Linear : EnumNames.Parse<Easing>(entry.Easing, "easing");
-            return Upsert(box.Keyframes, entry.Time, k => k.Time, new Keyframe { Time = entry.Time, Value = value, Easing = boxEasing });
+            var (boxEasing, boxBezier) = EasingOf(entry);
+            return Upsert(box.Keyframes, entry.Time, k => k.Time, new Keyframe { Time = entry.Time, Value = value, Easing = boxEasing, Bezier = boxBezier });
         }
 
         var layer = ProjectEditor.GetVisualLayer(project, entry.LayerId);
@@ -251,7 +252,7 @@ public static class KeyframeEditor
         }
 
         var number = ReadNumber(entry.Value, property);
-        var easing = string.IsNullOrWhiteSpace(entry.Easing) ? Easing.Linear : EnumNames.Parse<Easing>(entry.Easing, "easing");
+        var (easing, bezier) = EasingOf(entry);
         if (property is "x" or "y" && layer.MotionPath is not null)
         {
             layer.MotionPath = null;
@@ -259,7 +260,29 @@ public static class KeyframeEditor
         }
 
         var target = AnimatableProperties.GetNumeric(layer, property);
-        return Upsert(target.Keyframes, entry.Time, k => k.Time, new Keyframe { Time = entry.Time, Value = number, Easing = easing });
+        return Upsert(target.Keyframes, entry.Time, k => k.Time, new Keyframe { Time = entry.Time, Value = number, Easing = easing, Bezier = bezier });
+    }
+
+    // An entry's easing, with the four numbers of a cubicBezier one; numbers alone mean cubicBezier.
+    private static (Easing Easing, double[]? Bezier) EasingOf(KeyframeEntry entry)
+    {
+        var easing = string.IsNullOrWhiteSpace(entry.Easing)
+            ? entry.Bezier is null ? Easing.Linear : Easing.CubicBezier
+            : EnumNames.Parse<Easing>(entry.Easing, "easing");
+        if (easing != Easing.CubicBezier)
+        {
+            return entry.Bezier is null
+                ? (easing, null)
+                : throw new ZeyoCutException($"bezier goes with easing cubicBezier, not {EnumNames.ToName(easing)}; leave easing out");
+        }
+
+        if (entry.Bezier is null)
+        {
+            throw new ZeyoCutException("easing cubicBezier needs bezier [x1, y1, x2, y2], such as [0.42, 0, 0.58, 1]");
+        }
+
+        var numbers = entry.Bezier.ToArray();
+        return EasingFunctions.BezierProblem(numbers) is { } problem ? throw new ZeyoCutException(problem) : (easing, numbers);
     }
 
     private static void RemoveOne(Project project, KeyframeRef target)

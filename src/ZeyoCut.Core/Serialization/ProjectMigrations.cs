@@ -28,6 +28,8 @@ public static class ProjectMigrations
         new(6, _ => { }),
         // 7: revision, the count of saves.
         new(7, _ => { }),
+        // 8: cubic bezier easing.
+        new(8, _ => { }),
     ];
 
     private static readonly JsonNodeOptions NodeOptions = new() { PropertyNameCaseInsensitive = true };

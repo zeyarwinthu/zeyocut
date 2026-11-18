@@ -731,11 +731,28 @@ public class McpServerTests
         }, ct);
         Assert.Contains("unknown camera property 'opacity'", Text(badProperty));
 
+        // A cubic bezier easing: its four numbers are saved with the keyframe.
+        Assert.Contains("set 2 keyframe(s) (2 added, 0 replaced) on camera.rotation", await CallOk(client, "set_keyframes", new()
+        {
+            ["entries"] = new object[]
+            {
+                new Dictionary<string, object?> { ["layerId"] = "camera", ["property"] = "rotation", ["time"] = 0, ["value"] = 0, ["bezier"] = new[] { 0.42, 0, 0.58, 1 } },
+                new Dictionary<string, object?> { ["layerId"] = "camera", ["property"] = "rotation", ["time"] = 1, ["value"] = 0 },
+            },
+        }, ct));
+        var saved = JsonDocument.Parse(File.ReadAllText(Path.Combine(root, "projects", "cam", "project.json"))).RootElement.GetProperty("camera").GetProperty("rotation").GetProperty("keyframes")[0];
+        Assert.Equal("""{"time":0,"value":0,"easing":"cubicBezier","bezier":[0.42,0,0.58,1]}""", JsonSerializer.Serialize(saved));
+        var badBezier = await Call(client, "set_keyframes", new()
+        {
+            ["entries"] = new object[] { new Dictionary<string, object?> { ["layerId"] = "camera", ["property"] = "rotation", ["time"] = 0, ["value"] = 0, ["bezier"] = new[] { 2.0, 0, 0.58, 1 } } },
+        }, ct);
+        Assert.Contains("bezier's x1 and x2 must be from 0 to 1, so the curve has one value at each time (got [2, 0, 0.58, 1])", Text(badBezier));
+
         var shake = await CallOk(client, "camera_shake", new() { ["startTime"] = 0.5, ["duration"] = 1.0, ["intensity"] = 8 }, ct);
         Assert.Contains("camera shake 0.5–1.5s: 8 px, 12 direction changes per second, seed 1; 39 keyframe(s) on shakeX, shakeY, shakeRotation", shake);
         Assert.Contains("more than half the frame rate (10 fps)", shake);
         var tree = await CallOk(client, "list_layers", new(), ct);
-        Assert.Contains("camera: x=50 y=120 zoom=2 rotation=0  keys: x(2) shakeX(13) shakeY(13) shakeRotation(13)", tree);
+        Assert.Contains("camera: x=50 y=120 zoom=2 rotation=0  keys: x(2) rotation(2) shakeX(13) shakeY(13) shakeRotation(13)", tree);
         Assert.Contains("ignoreCamera", tree);
 
         using (var frame = DecodeImage(await Call(client, "render_frame", new() { ["time"] = 0.0 }, ct)))
@@ -1519,7 +1536,7 @@ public class McpServerTests
         }
 
         var first = JsonDocument.Parse(File.ReadAllText(projectFile)).RootElement.GetProperty("tracks")[0];
-        Assert.Equal(7, JsonDocument.Parse(File.ReadAllText(projectFile)).RootElement.GetProperty("formatVersion").GetInt32());
+        Assert.Equal(8, JsonDocument.Parse(File.ReadAllText(projectFile)).RootElement.GetProperty("formatVersion").GetInt32());
         var firstFile = first.GetProperty("file").GetString()!;
         Assert.True(File.Exists(Path.Combine(root, "projects", "tracking", firstFile)));
 
@@ -2602,10 +2619,10 @@ public class McpServerTests
         await using var client = await StartServer(root, projects, Path.Combine(root, "logs"), ct);
 
         var opened = await CallOk(client, "open_project", new() { ["nameOrPath"] = "tora" }, ct);
-        Assert.Matches(@"\nupdated project\.json from format 1 \(saved by an older ZeyoCut\) to 7; the file as it was is kept as backups\\project-v1-\d{8}-\d{6}\.json\n", opened);
+        Assert.Matches(@"\nupdated project\.json from format 1 \(saved by an older ZeyoCut\) to 8; the file as it was is kept as backups\\project-v1-\d{8}-\d{6}\.json\n", opened);
         Assert.Contains("tora_head", opened);
         Assert.Single(Directory.GetFiles(Path.Combine(projects, "tora", "backups"), "project-v1-*.json"));
-        Assert.Matches("\"formatVersion\": 7,\r?\n  \"revision\": 1,", await CallOk(client, "get_project", new(), ct));
+        Assert.Matches("\"formatVersion\": 8,\r?\n  \"revision\": 1,", await CallOk(client, "get_project", new(), ct));
 
         Assert.DoesNotContain("updated project.json", await CallOk(client, "open_project", new() { ["nameOrPath"] = "tora" }, ct));
     }

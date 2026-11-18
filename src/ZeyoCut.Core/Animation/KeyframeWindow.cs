@@ -32,7 +32,7 @@ public static class KeyframeWindow
             var crossesEased = hasNext && before.Easing is not (Easing.Linear or Easing.Hold);
             result.Add(crossesEased && keepOutside
                 ? Copy(before)
-                : new Keyframe { Time = from, Value = Interpolator.Evaluate(value, from), Easing = before.Easing });
+                : new Keyframe { Time = from, Value = Interpolator.Evaluate(value, from), Easing = before.Easing, Bezier = before.Bezier });
         }
 
         result.AddRange(inside.Select(Copy));
@@ -132,5 +132,5 @@ public static class KeyframeWindow
 
     public static double Round(double time) => Math.Round(time, 9);
 
-    private static Keyframe Copy(Keyframe key) => new() { Time = key.Time, Value = key.Value, Easing = key.Easing };
+    private static Keyframe Copy(Keyframe key) => new() { Time = key.Time, Value = key.Value, Easing = key.Easing, Bezier = key.Bezier };
 }

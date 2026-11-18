@@ -11,8 +11,8 @@ namespace ZeyoCut.Tests.Core;
 
 public class EditingTests
 {
-    private static KeyframeEntry Key(string layer, string property, double time, object value, string? easing = null) =>
-        new(layer, property, time, JsonSerializer.SerializeToElement(value), easing);
+    private static KeyframeEntry Key(string layer, string property, double time, object value, string? easing = null, double[]? bezier = null) =>
+        new(layer, property, time, JsonSerializer.SerializeToElement(value), easing, bezier);
 
     // A new project, as create_project and the editor's New project make it.
     [Fact]
@@ -97,6 +97,63 @@ public class EditingTests
         Assert.Equal(-5, head.Rotation.Keyframes[1].Value);
         Assert.Equal(Easing.EaseInOut, head.Rotation.Keyframes[1].Easing);
         Assert.Equal("shocked", head.Drawing.Keyframes.Single().Value);
+    }
+
+    // A cubic bezier easing is four numbers, saved with the keyframe only while its easing is cubicBezier.
+    [Fact]
+    public void SetKeyframesTakesACubicBezierAndSavesItWithTheKeyframe()
+    {
+        var project = TestProjects.Rig();
+        KeyframeEditor.SetKeyframes(project,
+        [
+            Key("tora_head", "y", 0, 100, bezier: [0, 0, 0.4, 1]),
+            Key("tora_head", "y", 1, 200),
+            Key("camera", "zoom", 0, 1, "cubicBezier", [0.25, 0.1, 0.25, 1]),
+            Key("camera", "zoom", 2, 2),
+        ]);
+
+        var head = (ImageLayer)project.FindLayer("tora_head")!;
+        Assert.Equal(Easing.CubicBezier, head.Y.Keyframes[0].Easing);
+        Assert.Equal([0, 0, 0.4, 1], head.Y.Keyframes[0].Bezier!);
+        Assert.Equal(100 + 100 * 0.765988682530208, ZeyoCut.Core.Animation.Interpolator.Evaluate(head.Y, 0.5), 1e-7);
+        Assert.Equal(1 + 0.802403387584857, ZeyoCut.Core.Animation.Interpolator.Evaluate(project.Camera!.Zoom, 1), 1e-7);
+
+        var json = JsonNode.Parse(ZeyoCut.Core.Serialization.ProjectJson.LayerToJson(head))!;
+        Assert.Equal("""{"time":0,"value":100,"easing":"cubicBezier","bezier":[0,0,0.4,1]}""", json["y"]!["keyframes"]![0]!.ToJsonString());
+        Assert.Equal("""{"time":1,"value":200,"easing":"linear"}""", json["y"]!["keyframes"]![1]!.ToJsonString());
+        Assert.Empty(ProjectValidator.Validate(project));
+
+        // Another easing over it: the numbers stay off the file and out of the curve.
+        KeyframeEditor.SetKeyframes(project, [Key("tora_head", "y", 0, 100, "easeIn")]);
+        Assert.Null(head.Y.Keyframes[0].Bezier);
+        head.Y.Keyframes[0].Bezier = [0, 0, 0.4, 1];
+        Assert.DoesNotContain("bezier", ZeyoCut.Core.Serialization.ProjectJson.LayerToJson(head));
+        Assert.Equal(112.5, ZeyoCut.Core.Animation.Interpolator.Evaluate(head.Y, 0.5), 1e-9);
+
+        var ex = Assert.Throws<ZeyoCutException>(() => KeyframeEditor.SetKeyframes(project,
+        [
+            Key("tora_head", "y", 0, 100, "cubicBezier"),
+            Key("tora_head", "y", 0, 100, "easeIn", [0, 0, 0.4, 1]),
+            Key("tora_head", "y", 0, 100, bezier: [1.5, 0, 0.4, 1]),
+            Key("tora_head", "y", 0, 100, bezier: [0, 0, 1]),
+        ]));
+        Assert.Contains("4 of 4 entries are invalid", ex.Message);
+        Assert.Contains("easing cubicBezier needs bezier [x1, y1, x2, y2], such as [0.42, 0, 0.58, 1]", ex.Message);
+        Assert.Contains("bezier goes with easing cubicBezier, not easeIn; leave easing out", ex.Message);
+        Assert.Contains("bezier's x1 and x2 must be from 0 to 1, so the curve has one value at each time (got [1.5, 0, 0.4, 1])", ex.Message);
+        Assert.Contains("bezier must be 4 numbers, [x1, y1, x2, y2] (got [0, 0, 1])", ex.Message);
+    }
+
+    [Fact]
+    public void AProjectWithACubicBezierKeyframeWithoutItsNumbersIsInvalid()
+    {
+        var project = TestProjects.Rig();
+        KeyframeEditor.SetKeyframes(project, [Key("tora_head", "y", 0, 100, bezier: [0, 0, 0.4, 1]), Key("tora_head", "y", 1, 200)]);
+        var head = (ImageLayer)project.FindLayer("tora_head")!;
+        head.Y.Keyframes[0].Bezier = null;
+        Assert.Contains("layer 'tora_head'.y: the keyframe at 0s has easing cubicBezier and bezier must be 4 numbers, [x1, y1, x2, y2] (got none)", ProjectValidator.Validate(project));
+        head.Y.Keyframes[0].Bezier = [0, 0, 2, 1];
+        Assert.Contains("layer 'tora_head'.y: the keyframe at 0s has easing cubicBezier and bezier's x1 and x2 must be from 0 to 1, so the curve has one value at each time (got [0, 0, 2, 1])", ProjectValidator.Validate(project));
     }
 
     [Fact]

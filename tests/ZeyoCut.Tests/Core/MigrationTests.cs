@@ -16,7 +16,7 @@ public class MigrationTests
     [Fact]
     public void EveryEarlierFormatHasAStep()
     {
-        Assert.Equal(7, Project.CurrentFormatVersion);
+        Assert.Equal(8, Project.CurrentFormatVersion);
         Assert.Equal(Enumerable.Range(2, Project.CurrentFormatVersion - 1), ProjectMigrations.Steps.Select(s => s.To));
     }
 
@@ -27,6 +27,7 @@ public class MigrationTests
     [InlineData(4)]
     [InlineData(5)]
     [InlineData(6)]
+    [InlineData(7)]
     public void ProjectsSavedByEachEarlierFormatMigrateWithoutLosingAnything(int version)
     {
         var original = File.ReadAllText(TestFixtures.OldProject(version));
@@ -68,7 +69,7 @@ public class MigrationTests
         Assert.Equal(copy, session.OriginalCopy);
         Assert.Matches(@"^project-v3-\d{8}-\d{6}\.json$", Path.GetFileName(copy));
         Assert.Equal(original, File.ReadAllBytes(copy));
-        Assert.Equal(7, JsonNode.Parse(File.ReadAllText(file))!["formatVersion"]!.GetValue<int>());
+        Assert.Equal(Project.CurrentFormatVersion, JsonNode.Parse(File.ReadAllText(file))!["formatVersion"]!.GetValue<int>());
         Assert.Equal(1, JsonNode.Parse(File.ReadAllText(file))!["revision"]!.GetValue<long>());
         Assert.Equal(1, session.Revision);
         Assert.Equal(0, session.UndoCount);
@@ -99,10 +100,10 @@ public class MigrationTests
         Assert.Same(unversioned, ProjectMigrations.Migrate(unversioned, out savedVersion));
         Assert.Equal(Project.CurrentFormatVersion, savedVersion);
 
-        const string newer = """{ "formatVersion": 8, "name": "from the future", "width": 320, "height": 240 }""";
+        const string newer = """{ "formatVersion": 9, "name": "from the future", "width": 320, "height": 240 }""";
         Assert.Same(newer, ProjectMigrations.Migrate(newer, out savedVersion));
-        Assert.Equal(8, savedVersion);
-        Assert.Contains("formatVersion 8 is newer than this version of ZeyoCut supports (7)", ProjectValidator.Validate(ProjectJson.Deserialize(newer)));
+        Assert.Equal(9, savedVersion);
+        Assert.Contains("formatVersion 9 is newer than this version of ZeyoCut supports (8)", ProjectValidator.Validate(ProjectJson.Deserialize(newer)));
 
         const string broken = """{ "formatVersion": 2, "name": """;
         Assert.Same(broken, ProjectMigrations.Migrate(broken, out savedVersion));

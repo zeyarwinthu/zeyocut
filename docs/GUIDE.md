@@ -780,6 +780,7 @@ Properties are `x`, `y`, `rotation`, `scaleX`, `scaleY` and `opacity`, plus:
 - `easeOutBack` (overshoot)
 - `easeOutBounce`
 - `easeOutElastic`
+- `cubicBezier`, with the keyframe's `bezier`: `[x1, y1, x2, y2]` as CSS's `cubic-bezier()` takes them, x1 and x2 from 0 to 1. `[0.25, 0.1, 0.25, 1]` is CSS's ease; a y past 1, as in `[0.34, 1.56, 0.64, 1]`, overshoots
 
 **Holding values.** Before the first keyframe and after the last, a property holds that keyframe's value. `drawing` keyframes always hold; add one at time 0 for the starting drawing.
 
@@ -792,6 +793,7 @@ Adds or replaces many keyframes in one call. A keyframe at the same layer, prope
 | `layerId`, `property`, `time` | `layerId` `"camera"` animates the [camera](#camera) |
 | `value` | A number, or a drawing name for `drawing` |
 | `easing` | Optional, default `linear` |
+| `bezier` | Optional: a `cubicBezier` easing's four numbers, which make the easing `cubicBezier` when `easing` is left out |
 
 This example sets squash before takeoff, a rise and fall, an easeOutBack landing and a face swap:
 ```json
@@ -819,7 +821,7 @@ set 10 keyframe(s) (10 added, 0 replaced) on tora_body.y, tora_body.scaleY, tora
 ```
 ```text
 An error occurred invoking 'set_keyframes': 2 of 2 entries are invalid, so nothing was changed:
-- entry 0 (tora_tail.rotation @ 0s): unknown easing 'bouncy'; valid values: linear, hold, easeIn, easeOut, easeInOut, easeOutBack, easeOutBounce, easeOutElastic
+- entry 0 (tora_tail.rotation @ 0s): unknown easing 'bouncy'; valid values: linear, hold, easeIn, easeOut, easeInOut, easeOutBack, easeOutBounce, easeOutElastic, cubicBezier
 - entry 1 (tora_hed.x @ 0s): layer 'tora_hed' not found; existing layers: tora_body, tora_head, tora_tail, subtitle_my, subtitle_ja, boing
 ```
 

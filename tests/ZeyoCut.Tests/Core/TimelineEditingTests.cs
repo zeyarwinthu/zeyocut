@@ -14,8 +14,8 @@ public class TimelineEditingTests
 {
     private sealed record Seen(string Content, double[] Values);
 
-    private static KeyframeEntry Key(string layer, string property, double time, object value, string? easing = null) =>
-        new(layer, property, time, JsonSerializer.SerializeToElement(value), easing);
+    private static KeyframeEntry Key(string layer, string property, double time, object value, string? easing = null, double[]? bezier = null) =>
+        new(layer, property, time, JsonSerializer.SerializeToElement(value), easing, bezier);
 
     private static Asset Clip(string id = "clip", double seconds = 10) => new()
     {
@@ -108,6 +108,8 @@ public class TimelineEditingTests
             Key("tora_head", "scaleX", 2, 1.5),
             Key("tora_tail", "opacity", 0.5, 1, "hold"),
             Key("tora_tail", "opacity", 1.7, 0.2),
+            Key("tora_tail", "rotation", 0.2, 0, bezier: [0.2, -0.5, 0.7, 1.3]),
+            Key("tora_tail", "rotation", 2.8, 40),
             Key("tora_body", "saturation", 0, 1),
             Key("tora_body", "saturation", 3, 0),
         ]);

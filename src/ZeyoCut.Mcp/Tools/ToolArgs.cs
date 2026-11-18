@@ -25,8 +25,12 @@ public sealed class KeyframeArg
     public JsonElement Value { get; set; }
 
     [JsonPropertyName("easing")]
-    [Description("Easing of the segment that STARTS at this keyframe: linear (default), hold, easeIn, easeOut, easeInOut, easeOutBack, easeOutBounce, easeOutElastic. Ignored for drawing (always hold).")]
+    [Description("Easing of the segment that STARTS at this keyframe: linear (default), hold, easeIn, easeOut, easeInOut, easeOutBack, easeOutBounce, easeOutElastic, or cubicBezier with bezier. Ignored for drawing (always hold).")]
     public string? Easing { get; set; }
+
+    [JsonPropertyName("bezier")]
+    [Description("A cubicBezier easing's curve as CSS's cubic-bezier() takes it: [x1, y1, x2, y2], x1 and x2 from 0 to 1, y1 and y2 past 0 or 1 to overshoot; [0.42, 0, 0.58, 1] eases in and out. Easing can be left out.")]
+    public double[]? Bezier { get; set; }
 }
 
 public sealed class PathPointArg

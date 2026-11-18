@@ -35,7 +35,7 @@ Here is the demo project (`ZeyoCut.Mcp.exe demo`) cut down to one asset and one 
 
 ```json
 {
-  "formatVersion": 7,
+  "formatVersion": 8,
   "revision": 2,
   "name": "Tora Jumps",
   "width": 1280,
@@ -92,7 +92,7 @@ Here is the demo project (`ZeyoCut.Mcp.exe demo`) cut down to one asset and one 
 
 | Field | Default | What it is |
 |---|---|---|
-| `formatVersion` | 7 | The format the file was saved in; see [Format versions](#format-versions) |
+| `formatVersion` | 8 | The format the file was saved in; see [Format versions](#format-versions) |
 | `revision` | 0 | How many times the project has been saved. Every save adds 1, whichever program saves it, and it never goes back: undo, redo and `restore_backup` put back older content as a new revision. ZeyoCut sets it; no tool does |
 | `name` | | The project's name |
 | `width`, `height` | 1920, 1080 | The canvas in pixels |
@@ -151,7 +151,7 @@ A property that can be animated is an object with a `value` and a list of `keyfr
 }
 ```
 
-`value` is used while there are no keyframes. A keyframe's `easing` shapes the segment that starts at it; see [Animation](#animation). An image layer's `drawing` works the same way with drawing names, and always holds: `"drawing": { "value": "normal", "keyframes": [{ "time": 1.2, "value": "happy" }] }`.
+`value` is used while there are no keyframes. A keyframe's `easing` shapes the segment that starts at it; see [Animation](#animation). A `cubicBezier` keyframe also has its curve: `{ "time": 0, "value": 0, "easing": "cubicBezier", "bezier": [0.42, 0, 0.58, 1] }`. An image layer's `drawing` works the same way with drawing names, and always holds: `"drawing": { "value": "normal", "keyframes": [{ "time": 1.2, "value": "happy" }] }`.
 
 ### Tracks
 
@@ -181,6 +181,7 @@ A marker has an `id`, a `time`, a `name` and a `kind`, `chapter` or `scene`. `ex
 | 5 | Tracks and redactions |
 | 6 | Markers and language tags |
 | 7 | `revision`, the count of saves |
+| 8 | The `cubicBezier` easing and a keyframe's `bezier` |
 
 A project saved by an older ZeyoCut opens too: it's updated to the current format as it opens, and the file as it was is kept in `backups\` for good. So far every version has only added fields, and a field an older file lacks gets its default.
 
@@ -220,7 +221,8 @@ ZeyoCut 0.1.0 doesn't know about `project.lock` and never re-reads `project.json
 
 ## Animation
 - Animatable properties are `x`, `y`, `rotation`, `scaleX`, `scaleY` and `opacity`, plus `drawing` on image layers, `brightness`, `contrast` and `saturation` on image and video layers, and `cropX`/`cropY` on cropped video layers.
-- A keyframe's easing shapes the segment that *starts* at that keyframe: `linear`, `hold`, `easeIn`, `easeOut`, `easeInOut`, `easeOutBack`, `easeOutBounce`, `easeOutElastic`.
+- A keyframe's easing shapes the segment that *starts* at that keyframe: `linear`, `hold`, `easeIn`, `easeOut`, `easeInOut`, `easeOutBack`, `easeOutBounce`, `easeOutElastic` or `cubicBezier`.
+- A `cubicBezier` keyframe's `bezier` is its curve as CSS's `cubic-bezier()` takes it: `[x1, y1, x2, y2]`, the handles of a curve from (0, 0) to (1, 1) across the segment, with time across and the change up. `x1` and `x2` are from 0 to 1; `y1` and `y2` can go past 0 and 1 to overshoot. `bezier` is written only with that easing.
 - Before the first keyframe and after the last, a property holds that keyframe's value. Once a property has keyframes, its static value is ignored.
 - `drawing` always holds, and before its first keyframe it shows the first keyframe's drawing. Add a keyframe at 0 for the starting drawing.
 

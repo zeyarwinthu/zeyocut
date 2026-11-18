@@ -284,6 +284,11 @@ public static class EffectEditor
             }
 
             var easing = string.IsNullOrWhiteSpace(point.Easing) ? Easing.Linear : EnumNames.Parse<Easing>(point.Easing, "easing");
+            if (easing == Easing.CubicBezier)
+            {
+                throw new ZeyoCutException($"point {i}: a path point's easing is one of the named ones; cubicBezier is for keyframes (set_keyframes with bezier)");
+            }
+
             path.Points.Add(new PathPoint { X = point.X, Y = point.Y, InX = point.InX, InY = point.InY, OutX = point.OutX, OutY = point.OutY });
             keys.Add(new Keyframe { Time = KeyframeWindow.Round(point.Time), Value = i, Easing = easing });
         }

@@ -126,6 +126,9 @@ when they open.
   goes. Fades stay at the new edges.
 - **Project format 7:** `revision`, the count of saves. It never goes back, even after undo, redo,
   `restore_backup` or an older `project.json` put back by hand. Older projects update as they open.
+- **Cubic bezier easing (project format 8):** a keyframe's easing can be `cubicBezier`, with its
+  curve as four numbers in `bezier` (`[x1, y1, x2, y2]`, as CSS's `cubic-bezier()`); `set_keyframes`
+  takes `bezier`. Older projects update as they open.
 
 ### Changed
 

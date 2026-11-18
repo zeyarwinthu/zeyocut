@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 
+using System.Globalization;
 using ZeyoCut.Core.Animation;
 using ZeyoCut.Core.Model;
 
@@ -176,6 +177,7 @@ public static class ProjectValidator
             }
 
             ValidateTimes(value.Keyframes.Select(k => k.Time).ToList(), $"camera.{name}", errors);
+            ValidateEasings(value.Keyframes, $"camera.{name}", errors);
         }
 
         var zooms = camera.Zoom.Keyframes.Select(k => k.Value).Prepend(camera.Zoom.Value);
@@ -413,6 +415,8 @@ public static class ProjectValidator
                 {
                     errors.Add($"{prefix}: {id}.{name} keyframes need times of 0 or more and finite values{(size ? " above 0" : "")}");
                 }
+
+                ValidateEasings(value.Keyframes, $"{prefix}.{id}.{name}", errors);
             }
         }
     }
@@ -475,6 +479,7 @@ public static class ProjectValidator
         }
 
         ValidateTimes(layer.Opacity.Keyframes.Select(k => k.Time).ToList(), $"{prefix}.opacity", errors);
+        ValidateEasings(layer.Opacity.Keyframes, $"{prefix}.opacity", errors);
         if (layer.Opacity.Keyframes.Any(k => !double.IsFinite(k.Value)))
         {
             errors.Add($"{prefix}.opacity: keyframe values must be finite numbers");
@@ -496,6 +501,7 @@ public static class ProjectValidator
             }
 
             ValidateTimes(value.Keyframes.Select(k => k.Time).ToList(), $"{prefix}.{name}", errors);
+            ValidateEasings(value.Keyframes, $"{prefix}.{name}", errors);
             if (value.Keyframes.Any(k => !double.IsFinite(k.Value)))
             {
                 errors.Add($"{prefix}.{name}: keyframe values must be finite numbers");
@@ -814,6 +820,17 @@ public static class ProjectValidator
             else if (asset is { Width: { } width, Height: { } height } && (cropWidth > width + 1e-6 || cropHeight > height + 1e-6))
             {
                 errors.Add($"{prefix}: the crop ({cropWidth}x{cropHeight}) is larger than the source ({width}x{height})");
+            }
+        }
+    }
+
+    private static void ValidateEasings(List<Keyframe> keys, string where, List<string> errors)
+    {
+        foreach (var key in keys.Where(k => k.Easing == Easing.CubicBezier))
+        {
+            if (EasingFunctions.BezierProblem(key.Bezier) is { } problem)
+            {
+                errors.Add($"{where}: the keyframe at {key.Time.ToString("0.######", CultureInfo.InvariantCulture)}s has easing cubicBezier and {problem}");
             }
         }
     }

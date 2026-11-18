@@ -249,7 +249,7 @@ public static class CameraEditor
     }
 
     private static AnimatedValue Copy(AnimatedValue value) =>
-        new(value.Value) { Keyframes = value.Keyframes.Select(k => new Keyframe { Time = k.Time, Value = k.Value, Easing = k.Easing }).ToList() };
+        new(value.Value) { Keyframes = value.Keyframes.Select(k => new Keyframe { Time = k.Time, Value = k.Value, Easing = k.Easing, Bezier = k.Bezier }).ToList() };
 
     private static string Num(double value) => value.ToString("0.###", CultureInfo.InvariantCulture);
 

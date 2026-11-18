@@ -177,7 +177,7 @@ public static class RigActions
                         ActionMode.Factor => origin * key.Value,
                         _ => key.Value,
                     };
-                    Upsert(value.Keyframes, new Keyframe { Time = At(loop, key.Time), Value = v, Easing = key.Easing }, k => k.Time);
+                    Upsert(value.Keyframes, new Keyframe { Time = At(loop, key.Time), Value = v, Easing = key.Easing, Bezier = key.Bezier }, k => k.Time);
                 }
             }
 
@@ -215,17 +215,20 @@ public static class RigActions
             return null;
         }
 
-        var result = new List<Keyframe> { new() { Time = 0, Value = first, Easing = EasingAt(keys, startTime) } };
-        result.AddRange(inside.Select(k => new Keyframe { Time = KeyframeWindow.Round(k.Time - startTime), Value = k.Value, Easing = k.Easing }));
-        result.Add(new Keyframe { Time = KeyframeWindow.Round(endTime - startTime), Value = last, Easing = EasingAt(keys, endTime) });
+        var start = SegmentAt(keys, startTime);
+        var end = SegmentAt(keys, endTime);
+        var result = new List<Keyframe> { new() { Time = 0, Value = first, Easing = start?.Easing ?? Easing.Linear, Bezier = start?.Bezier } };
+        result.AddRange(inside.Select(k => new Keyframe { Time = KeyframeWindow.Round(k.Time - startTime), Value = k.Value, Easing = k.Easing, Bezier = k.Bezier }));
+        result.Add(new Keyframe { Time = KeyframeWindow.Round(endTime - startTime), Value = last, Easing = end?.Easing ?? Easing.Linear, Bezier = end?.Bezier });
         return result;
     }
 
-    // The easing of the segment that runs from 'time' (the keyframe at or before it).
-    private static Easing EasingAt(List<Keyframe> keys, double time)
+    // The keyframe whose easing shapes the segment that runs from 'time' (the one at or before it);
+    // null when there's none after it, which holds.
+    private static Keyframe? SegmentAt(List<Keyframe> keys, double time)
     {
         var key = keys.LastOrDefault(k => k.Time <= time + Epsilon);
-        return key is null || key == keys[^1] ? Easing.Linear : key.Easing;
+        return key is null || key == keys[^1] ? null : key;
     }
 
     private static void Upsert<T>(List<T> keys, T item, Func<T, double> timeOf)

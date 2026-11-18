@@ -15,9 +15,9 @@ public static class AnimationTools
     [Description("Add or replace many keyframes in one call (one undo step; all-or-nothing). A keyframe at the same layer/property/time is replaced. Each keyframe's easing shapes the segment from it to the next keyframe. Before the first and after the last keyframe a property holds that keyframe's value; once a property has keyframes its static value is ignored. layerId \"camera\" animates the project camera (x, y, zoom, rotation), which moves every layer except those with ignoreCamera. Effect and mask numbers (shadow.x, blur.x, mask.width, ...) animate after set_effect / set_mask added them. x or y keyframes take a set_motion_path path off the layer. On a redaction layer the properties are its keyframed boxes from tracks_to_keyframes (<track>.x, .y, .width, .height), with time in the footage's own seconds.")]
     public static string SetKeyframes(
         EditorState state,
-        [Description("Keyframes: [{layerId, property, time, value, easing}].")] KeyframeArg[] entries) => Guard(() =>
+        [Description("Keyframes: [{layerId, property, time, value, easing, bezier}].")] KeyframeArg[] entries) => Guard(() =>
     {
-        var list = (entries ?? []).Select(e => new KeyframeEntry(e.LayerId, e.Property, e.Time, e.Value, e.Easing)).ToList();
+        var list = (entries ?? []).Select(e => new KeyframeEntry(e.LayerId, e.Property, e.Time, e.Value, e.Easing, e.Bezier)).ToList();
         var change = state.Session.Mutate($"set_keyframes ({list.Count} entries)", p => KeyframeEditor.SetKeyframes(p, list));
         var targets = list.Select(e => $"{e.LayerId}.{e.Property}").Distinct().ToList();
         return WithWarnings(

@@ -12,7 +12,7 @@ The tests only check how many faces and plates are found and where. Nothing iden
 
 ## Old projects
 
-`project-v1.json` to `project-v6.json` are `project.json` files as earlier versions of ZeyoCut saved them, for the migration tests. Their assets aren't included; the tests only read the files.
+`project-v1.json` to `project-v7.json` are `project.json` files as earlier versions of ZeyoCut saved them, for the migration tests. Their assets aren't included; the tests only read the files.
 
 | File | Format | Saved by | What's in it |
 |---|---|---|---|
@@ -22,3 +22,4 @@ The tests only check how many faces and plates are found and where. Nothing iden
 | `project-v4.json` | 4 | Phase 4's smoke run | a presenter cut out of the footage with text behind them |
 | `project-v5.json` | 5 | Phase 6's smoke run | two redactions following three tracks over two clips |
 | `project-v6.json` | 6 | ZeyoCut 0.1.0's code, before format 7 | the comic-panels example (captions in English, Japanese and Burmese with language tags) plus three markers added with `add_markers`' code |
+| `project-v7.json` | 7 | The manual editor's code, before format 8 | the tora-jump example: a cat rig with drawings, keyframes eased `linear`, `easeIn`, `easeOut`, `easeInOut` and `easeOutBack`, text and two sound effects |
