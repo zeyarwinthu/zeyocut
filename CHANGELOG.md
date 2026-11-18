@@ -29,7 +29,7 @@ when they open.
     config to copy, and the sample to open, copied into the projects folder; it turns green when
     Claude connects. The release zip and the bundle carry `examples\tora-jump` next to the editor.
   - **Keyboard shortcuts** (? or F1): every key in groups, with a search by action or key, from the
-    same table the keys run from. Ctrl+1, Ctrl+6 and Ctrl+E go to Edit, Activity and Export, Ctrl+D
+    same table the keys run from. Ctrl+1, Ctrl+5, Ctrl+6 and Ctrl+E go to Edit, Captions, Activity and Export, Ctrl+D
     duplicates the selected clip with its child layers, N turns snapping on and off, and
     Ctrl+Shift+Z redoes as Ctrl+Y does.
   - **Media:** tiles with thumbnails and sound waveforms (kept in the project's `cache\thumbnails`
@@ -43,7 +43,9 @@ when they open.
     size while playing, and loops. A click selects the layer drawn on top there, a child layer too,
     and dragging moves it, redrawn as it goes and saved on release; Shift keeps it on one axis and
     Escape puts it back. A paused frame is drawn again when a file it shows changes without a save,
-    such as a matte the server finishes.
+    such as a matte the server finishes. A project with languages is drawn and played in one
+    language's version, as exports draw it, chosen in the preview's header and kept in the editor's
+    settings.
   - **Timeline:** a lane for each draw level, caption track and sound role, named for what it holds
     and numbered from the bottom, with an eye on each that hides every clip in it (mutes, on a sound
     lane) as one step. Clips are drawn rounded in their kind's color with a thumbnail, or a sound's
@@ -71,6 +73,15 @@ when they open.
     redaction's style, strength, padding, feather, hold frames and fill; and a video's crop is set
     by its sides, keeping what's left of the picture in place. With nothing selected, it sets the
     project's Duration.
+  - **Captions view:** the caption tracks side by side, a row for each caption of the source track
+    (English when there is one) with the other languages' captions that overlap it most, and chips
+    with how many rows each track fills. A cell saves its caption's text, removes it when emptied, or
+    adds one at the row's times styled like the track's others; a row's start and end move its
+    captions in every language as one undo step. Add caption at playhead, Import .srt… (as
+    `import_srt` reads it, in the language chosen), Save .srt files (to `exports`, as `export_srt`
+    writes them), a preview in the chosen language, and a style for all captions: each track's font,
+    and the size, position (top, middle or bottom inside the title-safe margin), background (box,
+    outline or none) and line width of every track, each as one undo step.
   - **Export view:** renders the project as `start_export` does, with preset cards, language
     versions, a quality (crf 18, 23 or 28), .srt files of the caption tracks as `export_srt` writes
     them, a summary card with a picture of the project, progress and stop, Claude's running exports

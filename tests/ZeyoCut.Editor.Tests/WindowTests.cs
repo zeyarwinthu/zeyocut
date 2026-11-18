@@ -88,6 +88,20 @@ public class WindowTests
         }
     }
 
+    // The Captions grid's boxes: each row's start and end, and its cells.
+    private static List<TextBox> CaptionBoxes(MainWindow window)
+    {
+        TestWindow.Pump();
+        return Descendants<TextBox>((ItemsControl)window.FindName("CaptionRows")).ToList();
+    }
+
+    // A row's start or end; row 0 is a new row's.
+    private static TextBox CaptionTime(MainWindow window, int row, string part) =>
+        CaptionBoxes(window).Single(b => b.Tag is CaptionRow r && r.Number == row && System.Windows.Automation.AutomationProperties.GetName(b) == part);
+
+    private static TextBox CaptionCell(MainWindow window, int row, string track) =>
+        CaptionBoxes(window).Single(b => b.Tag is CaptionCell c && c.Row.Number == row && c.Column.GroupId == track);
+
     // The inspector's text box for a field, also one of a row's parts.
     private static TextBox Field(MainWindow window, string label)
     {
@@ -207,6 +221,144 @@ public class WindowTests
         var shown = Text(window, "RenderText");
         TestWindow.Pump(2500);
         Assert.Equal(shown, Text(window, "RenderText"));
+    });
+
+    [Fact]
+    public void ATimeTypedInTheCaptionsGridMovesItsRowInEveryLanguageAsOneStep() => TestWindow.Run("window-captions-time", (window, folder) =>
+    {
+        var directory = TestFiles.Example("comic-panels", folder);
+        window.OpenProject(directory);
+        Assert.Equal(Command.Captions, window.RunKey(Key.D5, ModifierKeys.Control, inField: false));
+        Assert.Equal(Visibility.Visible, Shown(window, "CaptionsPage"));
+        Assert.Equal(Visibility.Collapsed, Shown(window, "Workspace"));
+        string[] row = ["captions_en_2", "captions_ja_2", "captions_my_2"];
+
+        // The second row's start, typed in seconds.
+        var start = CaptionTime(window, 2, "Start");
+        Assert.Equal("00:03.40", start.Text);
+        start.Text = "3.1";
+        TestWindow.Press(start, Key.Return);
+        WaitForSaves(window);
+        var project = ProjectStore.Load(directory);
+        Assert.Equal([(3.1, 5.7), (3.1, 5.7), (3.1, 5.7)], row.Select(id => (project.FindLayer(id)!.Start, project.FindLayer(id)!.End!.Value)));
+        Assert.StartsWith("trimmed 'captions_en_2': now 3.1–5.7s (was 3.4–5.7s); trimmed 'captions_ja_2'", Text(window, "MessageText"));
+        Assert.Equal("00:03.10", CaptionTime(window, 2, "Start").Text);
+
+        // One step: undo puts it back in every language.
+        Click(window, "UndoButton");
+        WaitForSaves(window);
+        project = ProjectStore.Load(directory);
+        Assert.Equal([3.4, 3.4, 3.4], row.Select(id => project.FindLayer(id)!.Start));
+        Assert.Equal("00:03.40", CaptionTime(window, 2, "Start").Text);
+    });
+
+    [Fact]
+    public void ACaptionAddedAtThePlayheadIsStyledLikeItsNeighbours() => TestWindow.Run("window-captions-add", (window, folder) =>
+    {
+        var directory = TestFiles.Example("comic-panels", folder);
+        window.OpenProject(directory);
+        window.RunKey(Key.D5, ModifierKeys.Control, inField: false);
+
+        // Going into the first row takes the playhead there; the new row comes after it, up to the next.
+        Assert.True(CaptionCell(window, 1, "captions_en").Focus());
+        TestWindow.Pump();
+        Assert.Equal("00:00:00:12", Text(window, "TimecodeText"));
+        Click(window, "CaptionAdd");
+        TestWindow.Pump();
+        var draft = CaptionBoxes(window).Where(b => b.Tag is CaptionCell { Row.Draft: true }).ToList();
+        Assert.Equal(3, draft.Count);
+        Assert.Equal(("00:02.70", "00:03.40"), (CaptionTime(window, 0, "Start").Text, CaptionTime(window, 0, "End").Text));
+        Assert.Same(draft[0], Keyboard.FocusedElement);
+
+        // Typed into, the English cell saves a caption there, made like the track's others.
+        draft[0].Text = "He gets ready.";
+        TestWindow.Press(draft[0], Key.Return);
+        WaitForSaves(window);
+        var project = ProjectStore.Load(directory);
+        var added = (TextLayer)project.FindLayer("captions_en_4")!;
+        Assert.Equal(("captions_en", 2.7, 3.4, "He gets ready."), (added.ParentId, added.Start, added.End!.Value, added.Text));
+        static string Style(Layer layer)
+        {
+            var node = ZeyoCut.Core.Serialization.ProjectJson.LayerToNode(layer);
+            foreach (var key in new[] { "id", "name", "text", "start", "end" })
+            {
+                node.Remove(key);
+            }
+
+            return node.ToJsonString();
+        }
+
+        Assert.Equal(Style(project.FindLayer("captions_en_1")!), Style(added));
+        Assert.Equal(["captions_en_1", "captions_en_4", "captions_en_2", "captions_en_3"], project.Layers.Where(l => l.ParentId == "captions_en").Select(l => l.Id));
+        Assert.Equal("added caption 'captions_en_4' to 'captions_en' at 2.7–3.4s", Text(window, "MessageText"));
+
+        // It's a row of its own now, with the keyboard still in it, and the other tracks have room for theirs.
+        Assert.Equal(["", "3/4", "3/4"], ((ItemsControl)window.FindName("CaptionChips")).Items.Cast<CaptionColumn>().Select(c => c.Count));
+        TestWindow.Pump();
+        Assert.Same(CaptionCell(window, 2, "captions_en"), Keyboard.FocusedElement);
+        Assert.Equal("", CaptionCell(window, 2, "captions_ja").Text);
+    });
+
+    [Fact]
+    public void ThePreviewDrawsOneLanguagesVersionAsRenderFrameDoes() => TestWindow.Run("window-captions-language", (window, folder) =>
+    {
+        var directory = TestFiles.Example("comic-panels", folder);
+        window.OpenProject(directory);
+        var json = File.ReadAllText(Path.Combine(directory, ProjectStore.ProjectFileName));
+
+        // English first, in the Edit view's button too.
+        Assert.Equal(Visibility.Visible, Shown(window, "LanguageButton"));
+        Assert.Equal("EN", Text(window, "LanguageText"));
+        window.RunKey(Key.D5, ModifierKeys.Control, inField: false);
+        Assert.True(CaptionCell(window, 1, "captions_en").Focus());
+        TestWindow.Pump();
+
+        byte[] OnScreen()
+        {
+            var bitmap = (WriteableBitmap)((Image)window.FindName("PreviewImage")).Source;
+            var pixels = new byte[bitmap.PixelWidth * bitmap.PixelHeight * 4];
+            bitmap.CopyPixels(pixels, bitmap.PixelWidth * 4, 0);
+            return pixels;
+        }
+
+        byte[] Drawn(string language)
+        {
+            var project = ProjectStore.Load(directory);
+            Languages.Choose(project, language, export: false);
+            using var renderer = new ZeyoCut.Render.FrameRenderer(directory);
+            using var image = renderer.RenderImage(project, 12, new ZeyoCut.Render.RenderOptions(Proxies: true));
+            using var bitmap = SkiaSharp.SKBitmap.FromImage(image);
+            using var bgra = bitmap.Copy(SkiaSharp.SKColorType.Bgra8888);
+            return bgra.Bytes;
+        }
+
+        bool Showing(byte[] frame)
+        {
+            for (var i = 0; i < 500 && !frame.AsSpan().SequenceEqual(OnScreen()); i++)
+            {
+                TestWindow.Pump(10);
+            }
+
+            return frame.AsSpan().SequenceEqual(OnScreen());
+        }
+
+        var english = Drawn("en");
+        Assert.True(Showing(english));
+
+        // Japanese chosen: the frame render_frame draws with language ja, here and in the Edit view.
+        var japanese = Drawn("ja");
+        Assert.False(english.AsSpan().SequenceEqual(japanese));
+        var ja = Descendants<RadioButton>((ItemsControl)window.FindName("CaptionLanguages")).Single(r => (string)r.Tag == "ja");
+        ja.IsChecked = true;
+        Assert.True(Showing(japanese));
+        Assert.Equal("JA", Text(window, "LanguageText"));
+        window.RunKey(Key.D1, ModifierKeys.Control, inField: false);
+        TestWindow.Pump();
+        Assert.True(Showing(japanese));
+
+        // An editor setting: the project is as it was.
+        Assert.Contains("\"previewLanguage\": \"ja\"", File.ReadAllText(Path.Combine(folder, "editor.json")));
+        Assert.Equal(json, File.ReadAllText(Path.Combine(directory, ProjectStore.ProjectFileName)));
     });
 
     [Fact]
@@ -1372,8 +1524,11 @@ public class WindowTests
         Assert.False(((TimelineView)window.FindName("Timeline")).Snapping);
         Assert.Contains("\"snapping\": false", File.ReadAllText(Path.Combine(folder, "editor.json")));
 
+        Assert.Equal(Command.Captions, window.RunKey(Key.NumPad5, ModifierKeys.Control, inField: false));
+        Assert.Equal(Visibility.Visible, Shown(window, "CaptionsPage"));
         Assert.Equal(Command.Activity, window.RunKey(Key.D6, ModifierKeys.Control, inField: false));
         Assert.Equal(Visibility.Visible, Shown(window, "ActivityPage"));
+        Assert.Equal(Visibility.Collapsed, Shown(window, "CaptionsPage"));
         Assert.Equal(Command.Export, window.RunKey(Key.E, ModifierKeys.Control, inField: false));
         Assert.Equal(Visibility.Visible, Shown(window, "ExportPage"));
         Assert.Equal(Command.Edit, window.RunKey(Key.NumPad1, ModifierKeys.Control, inField: false));

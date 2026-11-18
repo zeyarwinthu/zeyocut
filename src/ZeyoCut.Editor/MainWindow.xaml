@@ -822,6 +822,173 @@
         </DataTrigger>
       </DataTemplate.Triggers>
     </DataTemplate>
+
+    <Style x:Key="CaptionCell" TargetType="TextBox" BasedOn="{StaticResource {x:Type TextBox}}">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderBrush" Value="Transparent" />
+      <Setter Property="Padding" Value="8,6" />
+      <Setter Property="FontSize" Value="13" />
+      <Setter Property="TextWrapping" Value="Wrap" />
+      <Setter Property="AcceptsReturn" Value="True" />
+      <Setter Property="VerticalContentAlignment" Value="Top" />
+      <EventSetter Event="PreviewKeyDown" Handler="OnCaptionKey" />
+      <EventSetter Event="LostKeyboardFocus" Handler="OnCaptionLeft" />
+      <EventSetter Event="GotKeyboardFocus" Handler="OnCaptionEntered" />
+      <Style.Triggers>
+        <Trigger Property="IsKeyboardFocused" Value="True">
+          <Setter Property="Background" Value="{StaticResource InputBrush}" />
+        </Trigger>
+      </Style.Triggers>
+    </Style>
+
+    <Style x:Key="CaptionTimeBox" TargetType="TextBox" BasedOn="{StaticResource CaptionCell}">
+      <Setter Property="FontFamily" Value="Consolas" />
+      <Setter Property="FontSize" Value="12" />
+      <Setter Property="Foreground" Value="{StaticResource IconTextBrush}" />
+      <Setter Property="Padding" Value="6,3" />
+      <Setter Property="TextWrapping" Value="NoWrap" />
+      <Setter Property="AcceptsReturn" Value="False" />
+    </Style>
+
+    <Style x:Key="CaptionChip" TargetType="Button">
+      <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}" />
+      <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border x:Name="Bd" Height="30" Padding="11,0" CornerRadius="15" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1">
+              <ContentPresenter VerticalAlignment="Center" />
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource ScrollThumbHoverBrush}" />
+              </Trigger>
+              <Trigger Property="IsKeyboardFocused" Value="True">
+                <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource AccentBrush}" />
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
+    <Style x:Key="LookChoice" TargetType="RadioButton">
+      <Setter Property="Width" Value="44" />
+      <Setter Property="Height" Value="32" />
+      <Setter Property="Margin" Value="0,0,8,0" />
+      <Setter Property="Foreground" Value="White" />
+      <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="RadioButton">
+            <Border x:Name="Bd" Background="{StaticResource InputBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="6">
+              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource ScrollThumbHoverBrush}" />
+              </Trigger>
+              <Trigger Property="IsChecked" Value="True">
+                <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource AccentBrush}" />
+                <Setter TargetName="Bd" Property="BorderThickness" Value="2" />
+              </Trigger>
+              <Trigger Property="IsKeyboardFocused" Value="True">
+                <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource AccentHoverBrush}" />
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
+    <DataTemplate x:Key="CaptionChipTemplate">
+      <Border Background="Transparent" Margin="6,0,0,6" ToolTip="{Binding Tip}">
+        <Button x:Name="Chip" Style="{StaticResource CaptionChip}" Tag="{Binding}" Click="OnCaptionSource" IsHitTestVisible="{Binding Pickable}" Focusable="{Binding Pickable}"
+                AutomationProperties.Name="{Binding Chip}">
+          <StackPanel Orientation="Horizontal">
+            <TextBlock x:Name="Name" Text="{Binding Chip}" FontSize="12" FontWeight="Medium" />
+            <TextBlock x:Name="Count" Text="{Binding Count}" FontSize="12" FontWeight="Medium" Foreground="{StaticResource WarningBrush}" Margin="6,0,0,0" />
+          </StackPanel>
+        </Button>
+      </Border>
+      <DataTemplate.Triggers>
+        <DataTrigger Binding="{Binding Full}" Value="True">
+          <Setter TargetName="Count" Property="Foreground" Value="{StaticResource SuccessBrush}" />
+        </DataTrigger>
+        <DataTrigger Binding="{Binding Source}" Value="True">
+          <Setter TargetName="Chip" Property="Background" Value="{StaticResource AccentSoftBrush}" />
+          <Setter TargetName="Chip" Property="BorderBrush" Value="Transparent" />
+          <Setter TargetName="Name" Property="Foreground" Value="{StaticResource AccentSoftTextBrush}" />
+          <Setter TargetName="Count" Property="Visibility" Value="Collapsed" />
+        </DataTrigger>
+      </DataTemplate.Triggers>
+    </DataTemplate>
+
+    <DataTemplate x:Key="CaptionRowTemplate">
+      <Border x:Name="Row" BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,1,0,0" Background="Transparent">
+        <Grid>
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="44" />
+            <ColumnDefinition Width="128" />
+            <ColumnDefinition Width="*" />
+          </Grid.ColumnDefinitions>
+          <Rectangle x:Name="Bar" Width="3" HorizontalAlignment="Left" Fill="{StaticResource AccentBrush}" Visibility="Collapsed" />
+          <TextBlock x:Name="Number" Text="{Binding Number}" Foreground="{StaticResource SecondaryTextBrush}" Margin="14,14,0,0" />
+          <StackPanel Grid.Column="1" Margin="6,8">
+            <TextBox x:Name="StartBox" Style="{StaticResource CaptionTimeBox}" Text="{Binding StartText, Mode=OneWay}" Tag="{Binding}" AutomationProperties.Name="Start"
+                     ToolTip="When it starts, in every language: 00:03.40, or seconds" />
+            <TextBox x:Name="EndBox" Style="{StaticResource CaptionTimeBox}" Text="{Binding EndText, Mode=OneWay}" Tag="{Binding}" AutomationProperties.Name="End"
+                     ToolTip="When it ends, in every language" />
+          </StackPanel>
+          <ItemsControl Grid.Column="2" ItemsSource="{Binding Cells}" Focusable="False" Margin="0,6,6,6">
+            <ItemsControl.ItemsPanel>
+              <ItemsPanelTemplate>
+                <UniformGrid Rows="1" />
+              </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+              <DataTemplate>
+                <TextBox Style="{StaticResource CaptionCell}" Text="{Binding Text, Mode=OneWay}" Tag="{Binding}" FontFamily="{Binding Font}" ToolTip="{Binding Hint}" Margin="2"
+                         AutomationProperties.Name="{Binding Column.Heading}" />
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </Grid>
+      </Border>
+      <DataTemplate.Triggers>
+        <DataTrigger Binding="{Binding Current}" Value="True">
+          <Setter TargetName="Row" Property="Background" Value="{StaticResource ChosenCardBrush}" />
+          <Setter TargetName="Bar" Property="Visibility" Value="Visible" />
+          <Setter TargetName="StartBox" Property="Foreground" Value="{StaticResource AccentSoftTextBrush}" />
+          <Setter TargetName="EndBox" Property="Foreground" Value="{StaticResource AccentSoftTextBrush}" />
+        </DataTrigger>
+        <DataTrigger Binding="{Binding Draft}" Value="True">
+          <Setter TargetName="Number" Property="Text" Value="New" />
+          <Setter TargetName="Number" Property="Foreground" Value="{StaticResource AccentSoftTextBrush}" />
+          <Setter TargetName="Number" Property="FontSize" Value="11" />
+          <Setter TargetName="Number" Property="Margin" Value="8,15,0,0" />
+        </DataTrigger>
+      </DataTemplate.Triggers>
+    </DataTemplate>
+
+    <DataTemplate x:Key="CaptionHeadingTemplate">
+      <TextBlock Text="{Binding HeadingCaps}" Margin="10,10,4,10" TextTrimming="CharacterEllipsis" ToolTip="{Binding GroupId}" />
+    </DataTemplate>
+
+    <DataTemplate x:Key="CaptionFontTemplate">
+      <DockPanel Margin="0,0,0,6">
+        <TextBlock DockPanel.Dock="Left" Width="30" Text="{Binding Code}" Foreground="{StaticResource SecondaryTextBrush}" FontSize="11" FontWeight="Medium" VerticalAlignment="Center" />
+        <TextBox Text="{Binding Font, Mode=OneWay}" Tag="{Binding}" Height="32" Padding="8,0" VerticalContentAlignment="Center" FontSize="12" AutomationProperties.Name="{Binding Code}"
+                 PreviewKeyDown="OnCaptionFontKey" LostKeyboardFocus="OnCaptionFontLeft" ToolTip="An installed font's family name for this track's captions, such as Yu Gothic" />
+      </DockPanel>
+    </DataTemplate>
+
+    <DataTemplate x:Key="PreviewLanguageTemplate">
+      <RadioButton Style="{StaticResource SegmentButton}" GroupName="CaptionPreviewLanguage" Content="{Binding Code}" IsChecked="{Binding Chosen, Mode=OneTime}" Tag="{Binding Language}"
+                   FontSize="11" FontWeight="Medium" Checked="OnPreviewLanguage" ToolTip="{Binding Tip}" />
+    </DataTemplate>
   </Window.Resources>
 
   <Grid>
@@ -863,6 +1030,8 @@
                 Margin="16,0" VerticalAlignment="Center" Visibility="Collapsed">
           <StackPanel Orientation="Horizontal">
             <RadioButton x:Name="EditMode" GroupName="Mode" Style="{StaticResource TabSegment}" Content="Edit" IsChecked="True" Checked="OnMode" ToolTip="The timeline, preview and inspector (Ctrl+1)" />
+            <RadioButton x:Name="CaptionsMode" GroupName="Mode" Style="{StaticResource TabSegment}" Content="Captions" Checked="OnMode"
+                         ToolTip="Every language's captions side by side, and their style (Ctrl+5)" />
             <RadioButton x:Name="ActivityMode" GroupName="Mode" Style="{StaticResource TabSegment}" Content="Activity" Checked="OnMode"
                          ToolTip="What Claude and you saved last, and how to work with Claude (Ctrl+6)" />
             <RadioButton x:Name="ExportMode" GroupName="Mode" Visibility="Collapsed" Checked="OnMode" />
@@ -1005,6 +1174,172 @@
         </StackPanel>
       </StackPanel>
     </ScrollViewer>
+
+    <Grid x:Name="CaptionsPage" Grid.Row="1" Visibility="Collapsed">
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="*" />
+        <ColumnDefinition Width="420" />
+      </Grid.ColumnDefinitions>
+      <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Focusable="False">
+        <StackPanel Margin="24,20,24,24">
+          <DockPanel>
+            <ItemsControl x:Name="CaptionChips" DockPanel.Dock="Right" Focusable="False" ItemTemplate="{StaticResource CaptionChipTemplate}" VerticalAlignment="Center" Margin="12,0,0,-6">
+              <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                  <WrapPanel />
+                </ItemsPanelTemplate>
+              </ItemsControl.ItemsPanel>
+            </ItemsControl>
+            <TextBlock Text="Captions" FontSize="20" FontWeight="SemiBold" VerticalAlignment="Center" />
+          </DockPanel>
+          <Border Background="{StaticResource NoteBrush}" BorderBrush="{StaticResource NoteBorderBrush}" BorderThickness="1" CornerRadius="10" Padding="14,12" Margin="0,16,0,0">
+            <DockPanel>
+              <TextBlock FontFamily="{StaticResource IconFont}" Text="&#xE946;" FontSize="14" Foreground="{StaticResource AccentSoftTextBrush}" Margin="0,1,12,0" VerticalAlignment="Top" />
+              <TextBlock Foreground="{StaticResource AccentSoftTextBrush}" FontSize="12" TextWrapping="Wrap" LineHeight="18"
+                         Text="Edit any cell: a time you change applies to every language. To translate into a new language, ask Claude in your chat, such as &#x201C;add Thai captions&#x201D;." />
+            </DockPanel>
+          </Border>
+          <Border x:Name="CaptionGridBox" Margin="0,16,0,0" CornerRadius="12" BorderBrush="{StaticResource DividerBrush}" BorderThickness="1">
+            <StackPanel>
+              <Border Background="{StaticResource PanelBrush}" CornerRadius="11,11,0,0">
+                <Grid TextElement.Foreground="{StaticResource SecondaryTextBrush}" TextElement.FontSize="11" TextElement.FontWeight="SemiBold">
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="44" />
+                    <ColumnDefinition Width="128" />
+                    <ColumnDefinition Width="*" />
+                  </Grid.ColumnDefinitions>
+                  <TextBlock Text="#" Margin="14,10,0,10" />
+                  <TextBlock Grid.Column="1" Text="TIME" Margin="12,10,0,10" />
+                  <ItemsControl x:Name="CaptionHeadings" Grid.Column="2" Focusable="False" Margin="0,0,6,0" ItemTemplate="{StaticResource CaptionHeadingTemplate}">
+                    <ItemsControl.ItemsPanel>
+                      <ItemsPanelTemplate>
+                        <UniformGrid Rows="1" />
+                      </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                  </ItemsControl>
+                </Grid>
+              </Border>
+              <ItemsControl x:Name="CaptionRows" Focusable="False" ItemTemplate="{StaticResource CaptionRowTemplate}" />
+            </StackPanel>
+          </Border>
+          <TextBlock x:Name="CaptionsEmpty" Style="{StaticResource Secondary}" FontSize="13" TextWrapping="Wrap" TextTrimming="None" Margin="0,16,0,0" LineHeight="20" Visibility="Collapsed"
+                     Text="This project has no captions yet. Import an .srt file, or ask Claude in your chat to make them from what is said (generate_captions) or to add a language (add_caption_track)." />
+          <WrapPanel Margin="0,16,0,0">
+            <Button x:Name="CaptionAdd" Padding="12,6" Margin="0,0,8,8" Click="OnAddCaption" ToolTip="A new caption at the playhead, or just after the caption the playhead is in">
+              <StackPanel Orientation="Horizontal">
+                <local:Icon Data="{StaticResource PlusShape}" Thickness="2" Width="11" Height="11" Margin="0,0,7,0" />
+                <TextBlock Text="Add caption at playhead" FontWeight="Medium" VerticalAlignment="Center" />
+              </StackPanel>
+            </Button>
+            <Button x:Name="CaptionImport" Content="Import .srt&#x2026;" FontWeight="Medium" Padding="12,6" Margin="0,0,8,8" Click="OnImportSrt"
+                    ToolTip="A subtitle file as its language's caption track, as import_srt imports it" />
+            <Button x:Name="CaptionSave" Content="Save .srt files" FontWeight="Medium" Padding="12,6" Margin="0,0,8,8" Click="OnSaveSrt"
+                    ToolTip="Each track as an .srt file in the project's exports folder, as export_srt writes it" />
+          </WrapPanel>
+          <DockPanel x:Name="CaptionSavedPanel" Visibility="Collapsed" Margin="0,4,0,0">
+            <Button DockPanel.Dock="Right" Style="{StaticResource LinkButton}" Content="Show in folder" Click="OnShowSrt" VerticalAlignment="Top" Margin="12,0,0,0" />
+            <TextBlock x:Name="CaptionSaved" Style="{StaticResource Secondary}" TextWrapping="Wrap" TextTrimming="None" />
+          </DockPanel>
+        </StackPanel>
+      </ScrollViewer>
+
+      <Border Grid.Column="1" Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource DividerBrush}" BorderThickness="1,0,0,0">
+        <ScrollViewer VerticalScrollBarVisibility="Auto" Focusable="False">
+          <StackPanel Margin="20">
+            <DockPanel>
+              <Border x:Name="CaptionLanguageBar" DockPanel.Dock="Right" Background="{StaticResource InputBrush}" CornerRadius="7" Padding="2">
+                <ItemsControl x:Name="CaptionLanguages" Focusable="False" ItemTemplate="{StaticResource PreviewLanguageTemplate}">
+                  <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                      <StackPanel Orientation="Horizontal" />
+                    </ItemsPanelTemplate>
+                  </ItemsControl.ItemsPanel>
+                </ItemsControl>
+              </Border>
+              <TextBlock Text="Preview" FontWeight="SemiBold" VerticalAlignment="Center" />
+            </DockPanel>
+            <Border Margin="0,12,0,0" CornerRadius="8" Background="{StaticResource PreviewBrush}" MinHeight="120">
+              <Grid>
+                <Image x:Name="CaptionPreview" Stretch="Uniform" MaxHeight="420" Source="{Binding Source, ElementName=PreviewImage}" RenderOptions.BitmapScalingMode="HighQuality"
+                       Visibility="{Binding Visibility, ElementName=PreviewImage}" />
+                <TextBlock Style="{StaticResource Secondary}" Text="{Binding Text, ElementName=PreviewMessage}" Visibility="{Binding Visibility, ElementName=PreviewMessage}"
+                           TextWrapping="Wrap" TextTrimming="None" Margin="16" HorizontalAlignment="Center" VerticalAlignment="Center" />
+              </Grid>
+            </Border>
+            <TextBlock x:Name="CaptionPreviewText" Style="{StaticResource Secondary}" FontSize="11" Margin="0,8,0,0" />
+
+            <TextBlock Text="STYLE &#x00B7; ALL CAPTIONS" Foreground="{StaticResource SecondaryTextBrush}" FontSize="11" FontWeight="SemiBold" Margin="0,24,0,12" />
+            <Grid x:Name="CaptionStyle">
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="88" />
+                <ColumnDefinition Width="*" />
+              </Grid.ColumnDefinitions>
+              <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+              </Grid.RowDefinitions>
+              <TextBlock Text="Font" Foreground="{StaticResource IconTextBrush}" Margin="0,8,0,0" VerticalAlignment="Top" />
+              <ItemsControl x:Name="CaptionFonts" Grid.Column="1" Focusable="False" ItemTemplate="{StaticResource CaptionFontTemplate}" Margin="0,0,0,4" />
+
+              <TextBlock Grid.Row="1" Text="Size" Foreground="{StaticResource IconTextBrush}" VerticalAlignment="Center" />
+              <DockPanel Grid.Row="1" Grid.Column="1" Margin="0,4,0,10">
+                <TextBlock x:Name="CaptionSizeText" DockPanel.Dock="Right" Width="48" TextAlignment="Right" FontFamily="Consolas" FontSize="12" VerticalAlignment="Center" />
+                <Slider x:Name="CaptionSize" Minimum="8" Maximum="120" SmallChange="1" LargeChange="4" TickFrequency="1" IsSnapToTickEnabled="True" IsMoveToPointEnabled="True"
+                        VerticalAlignment="Center" AutomationProperties.Name="Caption size"
+                        ToolTip="The captions' font size, in pixels: the box and the outline grow with it" ValueChanged="OnCaptionSizeMoved"
+                        PreviewMouseLeftButtonUp="OnCaptionSizeReleased" KeyUp="OnCaptionSizeKey" />
+              </DockPanel>
+
+              <TextBlock Grid.Row="2" Text="Position" Foreground="{StaticResource IconTextBrush}" VerticalAlignment="Center" />
+              <Border Grid.Row="2" Grid.Column="1" Background="{StaticResource InputBrush}" CornerRadius="7" Padding="2" HorizontalAlignment="Left" Margin="0,0,0,10">
+                <StackPanel Orientation="Horizontal">
+                  <RadioButton x:Name="CaptionTop" GroupName="CaptionPlace" Style="{StaticResource SegmentButton}" Content="Top" Tag="Top" Padding="4,3" Checked="OnCaptionPlace"
+                               ToolTip="At the top, inside the title-safe margin" />
+                  <RadioButton x:Name="CaptionMiddle" GroupName="CaptionPlace" Style="{StaticResource SegmentButton}" Content="Middle" Tag="Middle" Checked="OnCaptionPlace"
+                               ToolTip="In the middle of the frame" />
+                  <RadioButton x:Name="CaptionBottom" GroupName="CaptionPlace" Style="{StaticResource SegmentButton}" Content="Bottom" Tag="Bottom" Checked="OnCaptionPlace"
+                               ToolTip="At the bottom, inside the title-safe margin" />
+                </StackPanel>
+              </Border>
+
+              <TextBlock Grid.Row="3" Text="Background" Foreground="{StaticResource IconTextBrush}" VerticalAlignment="Center" />
+              <StackPanel Grid.Row="3" Grid.Column="1" Orientation="Horizontal" Margin="0,0,0,10">
+                <RadioButton x:Name="CaptionBox" GroupName="CaptionLook" Style="{StaticResource LookChoice}" Tag="Box" Checked="OnCaptionLook" ToolTip="A dark box behind the text"
+                             AutomationProperties.Name="Box background">
+                  <Border Background="Black" CornerRadius="3" Padding="6,1">
+                    <TextBlock Text="Aa" FontSize="10" Foreground="White" />
+                  </Border>
+                </RadioButton>
+                <RadioButton x:Name="CaptionOutline" GroupName="CaptionLook" Style="{StaticResource LookChoice}" Tag="Outline" Checked="OnCaptionLook" ToolTip="A black outline around the letters"
+                             AutomationProperties.Name="Outline">
+                  <TextBlock Text="Aa" FontSize="12" FontWeight="Bold">
+                    <TextBlock.Effect>
+                      <DropShadowEffect Color="Black" ShadowDepth="0" BlurRadius="3" Opacity="1" />
+                    </TextBlock.Effect>
+                  </TextBlock>
+                </RadioButton>
+                <RadioButton x:Name="CaptionNone" GroupName="CaptionLook" Style="{StaticResource LookChoice}" Tag="None" Checked="OnCaptionLook" ToolTip="Nothing behind the text"
+                             AutomationProperties.Name="No background">
+                  <TextBlock Text="Aa" FontSize="12" />
+                </RadioButton>
+              </StackPanel>
+
+              <TextBlock Grid.Row="4" Text="Max line" Foreground="{StaticResource IconTextBrush}" VerticalAlignment="Center" />
+              <Grid Grid.Row="4" Grid.Column="1">
+                <TextBox x:Name="CaptionWidth" Height="32" Padding="8,0,28,0" VerticalContentAlignment="Center" FontFamily="Consolas" FontSize="12" AutomationProperties.Name="Maximum line width"
+                         ToolTip="How wide a line gets before it wraps, in pixels" PreviewKeyDown="OnCaptionWidthKey" LostKeyboardFocus="OnCaptionWidthLeft" />
+                <TextBlock Style="{StaticResource BoxUnit}" Text="px" />
+              </Grid>
+            </Grid>
+            <TextBlock Style="{StaticResource Secondary}" FontSize="12" TextWrapping="Wrap" TextTrimming="None" Margin="0,14,0,0" LineHeight="18"
+                       Text="Size, position, background and line width change every track's captions as one step; each track has its own font." />
+          </StackPanel>
+        </ScrollViewer>
+      </Border>
+    </Grid>
 
     <ScrollViewer x:Name="ActivityPage" Grid.Row="1" VerticalScrollBarVisibility="Auto" Focusable="False" Visibility="Collapsed">
       <Grid MaxWidth="1280" Margin="40,32">
@@ -1374,6 +1709,13 @@
               <TextBlock x:Name="CanvasText" Style="{StaticResource Secondary}" Margin="10,0,0,0" VerticalAlignment="Center" />
             </StackPanel>
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+              <Button x:Name="LanguageButton" Background="{StaticResource PanelBrush}" Padding="8,3" Margin="0,0,8,0" Click="OnLanguageMenu" Visibility="Collapsed"
+                      ToolTip="The language whose version the preview shows, as an export in that language shows it">
+                <StackPanel Orientation="Horizontal">
+                  <TextBlock x:Name="LanguageText" FontWeight="Medium" VerticalAlignment="Center" />
+                  <local:Icon Data="{StaticResource ChevronDownShape}" Thickness="2.5" Width="10" Height="10" Margin="6,0,0,0" />
+                </StackPanel>
+              </Button>
               <ToggleButton x:Name="SafeAreaToggle" Style="{StaticResource IconToggle}" Click="OnOverlay" AutomationProperties.Name="Safe area guides"
                             ToolTip="Safe area: the title-safe margin, and on a vertical canvas the strips the Shorts player covers, as check_project checks them">
                 <local:Icon Data="{StaticResource SafeAreaShape}" Thickness="1.8" Width="15" Height="15" />
@@ -1759,6 +2101,25 @@
         </DockPanel>
       </Border>
 
+      <Border x:Name="ImportSrtDialog" Style="{StaticResource DialogCard}" MaxWidth="520">
+        <DockPanel>
+          <Border DockPanel.Dock="Bottom" BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,1,0,0" Padding="22,16" Margin="0,18,0,0">
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+              <Button Content="Cancel" Padding="16,8" Click="OnCloseDialog" />
+              <Button x:Name="ImportSrtButton" Style="{StaticResource AccentButton}" Content="Import" Padding="16,9" Margin="10,0,0,0" Click="OnImportSrtChosen" />
+            </StackPanel>
+          </Border>
+          <StackPanel Margin="22,22,22,0">
+            <TextBlock x:Name="ImportSrtTitle" FontSize="17" FontWeight="SemiBold" TextWrapping="Wrap" />
+            <TextBlock Style="{StaticResource Secondary}" FontSize="13" TextWrapping="Wrap" TextTrimming="None" LineHeight="20" Margin="0,6,0,16"
+                       Text="Which language are its captions in? They become that language's track, in the subtitle style and the language's font." />
+            <TextBlock Text="Language" Style="{StaticResource DialogLabel}" />
+            <TextBox x:Name="ImportSrtLanguage" Height="36" Padding="10,0" VerticalContentAlignment="Center" FontSize="13" AutomationProperties.Name="Language"
+                     TextChanged="OnImportSrtLanguage" KeyDown="OnImportSrtKey" />
+            <TextBlock x:Name="ImportSrtNote" Style="{StaticResource Secondary}" FontSize="12" TextWrapping="Wrap" TextTrimming="None" LineHeight="18" Margin="0,8,0,0" />
+          </StackPanel>
+        </DockPanel>
+      </Border>
       <Border x:Name="RelinkDialog" Style="{StaticResource DialogCard}" MaxWidth="680">
         <DockPanel>
           <DockPanel DockPanel.Dock="Top" Margin="22,22,22,16">

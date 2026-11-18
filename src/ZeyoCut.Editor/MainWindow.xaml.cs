@@ -5,6 +5,7 @@ using System.Diagnostics;
 using System.Globalization;
 using System.Text.Json.Nodes;
 using System.Windows;
+using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
@@ -20,6 +21,7 @@ using ZeyoCut.Core.Serialization;
 using ZeyoCut.Render;
 using ZeyoCut.Render.Export;
 using ZeyoCut.Render.Jobs;
+using ZeyoCut.Render.Text;
 using ZeyoCut.Render.Video;
 
 namespace ZeyoCut.Editor;
@@ -199,6 +201,27 @@ public partial class MainWindow : Window
 
     // Whose steps the Activity view shows: yours (true), Claude's (false) or both (null).
     private bool? _activityFilter;
+
+    // The Captions view: its grid as last built and the project it was built from, the track picked
+    // as the source, the new row Add caption at playhead made (saved once something is typed into
+    // it), the cell saved last (not saved again as it loses the keyboard), the .srt files saved last,
+    // the .srt file being imported, and whether the style section is being filled in.
+    private CaptionTable? _captionTable;
+    private Project? _captionProject;
+    private string? _captionSource;
+    private (double Start, double End)? _captionDraft;
+    private (CaptionTable Table, string Cell, string Text)? _captionSent;
+    private IReadOnlyList<string> _captionSaved = [];
+    private (string Path, List<CueEntry> Cues, List<string> Problems)? _importSrt;
+    private bool _fillingCaptions;
+
+    // The project as the preview shows it (Shown), the project it's made of, and its language.
+    private Project? _shown;
+    private Project? _shownFrom;
+    private string? _shownLanguage;
+
+    // Measures captions' text (Measurer), made when first needed.
+    private FrameRenderer? _measure;
 
     // What had the keyboard before a view opened over the window, to have it again after.
     private IInputElement? _focusBefore;
@@ -380,11 +403,12 @@ public partial class MainWindow : Window
         }
     }
 
-    // A click anywhere but the inspector field being typed in saves what was typed there first.
+    // A click anywhere but the inspector field (or Captions cell) being typed in saves what was typed
+    // there first.
     protected override void OnPreviewMouseDown(MouseButtonEventArgs e)
     {
         base.OnPreviewMouseDown(e);
-        if (Keyboard.FocusedElement is TextBox { Tag: InspectorField } box && e.OriginalSource is Visual target && !box.IsAncestorOf(target))
+        if (Keyboard.FocusedElement is TextBox { Tag: InspectorField or CaptionCell or CaptionRow or CaptionColumn } box && e.OriginalSource is Visual target && !box.IsAncestorOf(target))
         {
             Keyboard.ClearFocus();
         }
@@ -486,6 +510,7 @@ public partial class MainWindow : Window
             Command.PreviousKeyframe => editing ? () => JumpToKeyframe(next: false) : null,
             Command.NextKeyframe => editing ? () => JumpToKeyframe(next: true) : null,
             Command.Edit => open ? () => TurnOn(EditMode) : null,
+            Command.Captions => open ? () => TurnOn(CaptionsMode) : null,
             Command.Activity => open ? () => TurnOn(ActivityMode) : null,
             Command.Export => open ? () => TurnOn(ExportMode) : null,
             Command.NewProject => () => ShowNewProject(null),
@@ -682,6 +707,15 @@ public partial class MainWindow : Window
         _exportPreset = ExportChoices.ProjectSettings;
         _exportLanguage = ExportChoices.EveryLanguage;
         _exportSrt.Clear();
+        _captionTable = null;
+        _captionProject = null;
+        _captionSource = null;
+        _captionDraft = null;
+        _captionSent = null;
+        _captionSaved = [];
+        CaptionSavedPanel.Visibility = Visibility.Collapsed;
+        _shown = _shownFrom = null;
+        _shownLanguage = null;
         _claudeExports = [];
         ExportClaude.ItemsSource = null;
         ExportStatus.Text = "";
@@ -723,6 +757,17 @@ public partial class MainWindow : Window
         _waveforms = null;
         _claim?.Dispose();
         _claim = null;
+        if (_measure is { } measure)
+        {
+            // After the saves that may be measuring with it.
+            _ = _saving.ContinueWith(_ => measure.Dispose(), CancellationToken.None, TaskContinuationOptions.None, TaskScheduler.Default);
+            _measure = null;
+        }
+
+        CaptionRows.ItemsSource = null;
+        _captionTable = null;
+        _captionProject = null;
+        _shown = _shownFrom = null;
         _waiting.Clear();
         _export = null;
         _exportShown = null;
@@ -823,18 +868,9 @@ public partial class MainWindow : Window
         ShowInspector();
         UpdateStatus();
         ApplyZoom();
+        ShowLanguages();
         ShowPage();
-        _sound!.Update(project, document.Session.Directory);
-        if (_playing)
-        {
-            _playSource = _preview!.Source(project, _prefs.PlaybackScale, _step);
-            _preview.Play(_playSource, _frame);
-            ShowPosition();
-        }
-        else
-        {
-            RequestFrame();
-        }
+        ShowShown();
     }
 
     // The media panel: a tile for each asset the filter chips let through, each with its thumbnail
@@ -1446,7 +1482,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        _preview.Request(_preview.Source(_document.View, 1), _frame);
+        _preview.Request(_preview.Source(Shown, 1), _frame);
         _drawingSince ??= DateTime.UtcNow;
     }
 
@@ -1461,7 +1497,7 @@ public partial class MainWindow : Window
         }
 
         _preview.FilesChanged();
-        if (_preview.Cached(_preview.Source(_document.View, 1), _frame) is null)
+        if (_preview.Cached(_preview.Source(Shown, 1), _frame) is null)
         {
             RequestFrame();
         }
@@ -1475,6 +1511,10 @@ public partial class MainWindow : Window
         TotalText.Text = $"/ {Timecode.Of(_frames - 1, project.Fps)}";
         FrameText.Text = $"Frame {_frame} / {_frames - 1}";
         FrameText.ToolTip = $"{Number(Math.Round(FrameMath.TimeOf(project, _frame), 3))} s";
+        if (CaptionsMode.IsChecked == true)
+        {
+            MarkCurrentCaption();
+        }
     }
 
     private void OnFrame(PreviewFrame frame)
@@ -1734,7 +1774,7 @@ public partial class MainWindow : Window
         Message(_drag.Describe(dx, dy, oneAxis));
         _dragDrawn = _dragAt;
         _dragDrawing = true;
-        _preview.Request(_preview.Source(moved, 1), _frame);
+        _preview.Request(_preview.Source(InShownLanguage(moved), 1), _frame);
         _drawingSince ??= DateTime.UtcNow;
     }
 
@@ -1775,7 +1815,7 @@ public partial class MainWindow : Window
     // is ready (or after a moment).
     private void StartPlayback()
     {
-        _playSource = _preview!.Source(_document!.View, _prefs.PlaybackScale, _step);
+        _playSource = _preview!.Source(Shown, _prefs.PlaybackScale, _step);
         _preview.Play(_playSource, _frame);
         _playFrom = _frame;
         _clock.Stop();
@@ -1899,7 +1939,7 @@ public partial class MainWindow : Window
         if (step != _step)
         {
             _step = step;
-            _playSource = _preview.Source(_document!.View, _prefs.PlaybackScale, _step);
+            _playSource = _preview.Source(Shown, _prefs.PlaybackScale, _step);
             _preview.Play(_playSource, _frame);
             ShowPlaybackSize();
         }
@@ -2351,6 +2391,7 @@ public partial class MainWindow : Window
     private void ShowStartPage(string? error = null)
     {
         Workspace.Visibility = Visibility.Collapsed;
+        CaptionsPage.Visibility = Visibility.Collapsed;
         ActivityPage.Visibility = Visibility.Collapsed;
         ExportPage.Visibility = Visibility.Collapsed;
         StartPage.Visibility = Visibility.Visible;
@@ -2997,6 +3038,7 @@ public partial class MainWindow : Window
         }
 
         Workspace.Visibility = editing ? Visibility.Visible : Visibility.Collapsed;
+        CaptionsPage.Visibility = CaptionsMode.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
         ActivityPage.Visibility = ActivityMode.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
         ExportPage.Visibility = ExportMode.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
         ShowHeader();
@@ -3004,7 +3046,7 @@ public partial class MainWindow : Window
         ShowPage();
     }
 
-    // Brings the Activity or Export view up to date when it is the one showing.
+    // Brings the Captions, Activity or Export view up to date when it is the one showing.
     private void ShowPage()
     {
         if (_document is null)
@@ -3012,7 +3054,11 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (ActivityMode.IsChecked == true)
+        if (CaptionsMode.IsChecked == true)
+        {
+            ShowCaptions();
+        }
+        else if (ActivityMode.IsChecked == true)
         {
             ShowActivity();
         }
@@ -3020,6 +3066,686 @@ public partial class MainWindow : Window
         {
             ShowExportPage();
         }
+    }
+
+    // The project as the preview draws and plays it: the version in the preview language, as an
+    // export in that language has it (Languages.Select). The same copy until the project changes, so
+    // the frames drawn of it are kept.
+    private Project Shown
+    {
+        get
+        {
+            var view = _document!.View;
+            if (!ReferenceEquals(view, _shownFrom))
+            {
+                _shownFrom = view;
+                _shownLanguage = CaptionGrid.PreviewLanguage(view, _prefs.PreviewLanguage);
+                _shown = _shownLanguage is null ? view : InShownLanguage(ProjectJson.Clone(view));
+            }
+
+            return _shown!;
+        }
+    }
+
+    // A copy of the project made the version the preview shows.
+    private Project InShownLanguage(Project copy)
+    {
+        if (_shownLanguage is { } language)
+        {
+            Languages.Select(copy, language);
+        }
+
+        return copy;
+    }
+
+    // The preview and its sound, of the project as shown.
+    private void ShowShown()
+    {
+        var shown = Shown;
+        _sound!.Update(shown, _document!.Session.Directory);
+        if (_playing)
+        {
+            _playSource = _preview!.Source(shown, _prefs.PlaybackScale, _step);
+            _preview.Play(_playSource, _frame);
+            ShowPosition();
+        }
+        else
+        {
+            RequestFrame();
+        }
+    }
+
+    // The preview language's choices: the Edit view's button and the Captions view's switch, while
+    // the project has layers in two languages or more.
+    private void ShowLanguages()
+    {
+        _ = Shown;
+        var used = Languages.Used(_document!.View);
+        var several = used.Count > 1 ? Visibility.Visible : Visibility.Collapsed;
+        LanguageButton.Visibility = CaptionLanguageBar.Visibility = several;
+        LanguageText.Text = _shownLanguage?.ToUpperInvariant() ?? "";
+        CaptionLanguages.ItemsSource = used.Select(l => new PreviewChoice(l, l.ToUpperInvariant(), l == _shownLanguage)).ToList();
+        CaptionPreviewText.Text = _shownLanguage is { } language
+            ? $"What an export in {language.ToUpperInvariant()} shows at the playhead."
+            : "Every layer at the playhead.";
+    }
+
+    private void OnLanguageMenu(object sender, RoutedEventArgs e)
+    {
+        if (_document is not null)
+        {
+            ShowChoices(LanguageButton, Languages.Used(_document.View).Select(l => (PreviewChoice.Name(l), l == _shownLanguage, (Action)(() => SetPreviewLanguage(l)))));
+        }
+    }
+
+    private void OnPreviewLanguage(object sender, RoutedEventArgs e)
+    {
+        if (sender is RadioButton { Tag: string language })
+        {
+            SetPreviewLanguage(language);
+        }
+    }
+
+    // Shows another language's version: an editor setting, never saved in the project.
+    private void SetPreviewLanguage(string language)
+    {
+        if (_document is null || language == _shownLanguage)
+        {
+            return;
+        }
+
+        _prefs.PreviewLanguage = language;
+        SavePrefs();
+        _shownFrom = null;
+        ShowLanguages();
+        ShowShown();
+    }
+
+    // Measures captions' text as frames draw it, for the caption edits that keep where a caption's
+    // text box stands.
+    private Func<Project, ITextMeasurer> Measurer()
+    {
+        var renderer = _measure ??= new FrameRenderer(_document!.Session.Directory);
+        return project => new TextMeasurer(renderer, project);
+    }
+
+    // The Captions view: the tracks' chips, the grid of their captions, the preview's languages and
+    // the captions' style. The cell being typed in is typed in again once the grid is built again.
+    private void ShowCaptions()
+    {
+        var project = _document!.View;
+        (string Key, string? Text, int Caret)? typing = null;
+        if (Keyboard.FocusedElement is TextBox focused && CaptionRows.IsAncestorOf(focused) && CaptionTarget(focused) is { } at)
+        {
+            var text = focused.Text.ReplaceLineEndings("\n");
+            var sent = _captionSent is { } last && last.Cell == at.Key && last.Text == text;
+            typing = (at.Key, text != at.Original.ReplaceLineEndings("\n") && !sent ? focused.Text : null, focused.CaretIndex);
+        }
+
+        var table = CaptionGrid.Build(project, _captionSource, _captionDraft);
+        _captionTable = table;
+        _captionProject = project;
+        CaptionChips.ItemsSource = table.Columns;
+        CaptionHeadings.ItemsSource = table.Columns;
+        CaptionRows.ItemsSource = table.Rows;
+        var tracks = table.Columns.Count > 0;
+        CaptionGridBox.Visibility = tracks ? Visibility.Visible : Visibility.Collapsed;
+        CaptionsEmpty.Visibility = tracks ? Visibility.Collapsed : Visibility.Visible;
+        CaptionAdd.IsEnabled = tracks;
+        CaptionSave.IsEnabled = ExportChoices.Subtitles(project).Count > 0;
+        MarkCurrentCaption();
+        ShowCaptionStyle(project, table);
+        if (typing is { } t)
+        {
+            FocusCaption(t.Key, t.Text, t.Caret);
+        }
+    }
+
+    // The style section shows the source's first caption's size, place, background and line width,
+    // and each track's font.
+    private void ShowCaptionStyle(Project project, CaptionTable table)
+    {
+        _fillingCaptions = true;
+        try
+        {
+            CaptionFonts.ItemsSource = table.Columns;
+            var cue = table.Columns.Select(c => CaptionTracks.Cues(project, c.GroupId).FirstOrDefault()).OfType<TextLayer>().FirstOrDefault();
+            CaptionStyle.IsEnabled = cue is not null;
+            CaptionSize.Value = cue?.FontSize ?? CaptionSize.Minimum;
+            CaptionSizeText.Text = cue is null ? "" : $"{Number(cue.FontSize)}px";
+            var place = cue is null ? (CaptionPlace?)null : CaptionTracks.PlaceOf(project, cue);
+            CaptionTop.IsChecked = place == CaptionPlace.Top;
+            CaptionMiddle.IsChecked = place == CaptionPlace.Middle;
+            CaptionBottom.IsChecked = place == CaptionPlace.Bottom;
+            var look = cue is null ? (CaptionLook?)null : CaptionTracks.LookOf(cue);
+            CaptionBox.IsChecked = look == CaptionLook.Box;
+            CaptionOutline.IsChecked = look == CaptionLook.Outline;
+            CaptionNone.IsChecked = look == CaptionLook.None;
+            if (!CaptionWidth.IsKeyboardFocused)
+            {
+                CaptionWidth.Text = cue?.MaxWidth is { } width ? Number(width) : "";
+            }
+        }
+        finally
+        {
+            _fillingCaptions = false;
+        }
+    }
+
+    // The rows the playhead is in are marked.
+    private void MarkCurrentCaption()
+    {
+        if (_captionTable is not { } table || _document is null)
+        {
+            return;
+        }
+
+        var time = FrameMath.TimeOf(_document.View, _frame);
+        foreach (var row in table.Rows)
+        {
+            row.Current = row.Start <= time + 1e-9 && time < row.End - 1e-9;
+        }
+    }
+
+    // What a box of the grid edits: a track's caption in a row (or the place for one), or the row's
+    // start or end. Key names it across builds of the grid: the row's caption, and the track or
+    // the time.
+    private static (CaptionRow Row, CaptionCell? Cell, bool End, string Key, string Original)? CaptionTarget(TextBox box) => box.Tag switch
+    {
+        CaptionCell cell => (cell.Row, cell, false, $"{cell.Row.Key}|{cell.Column.GroupId}", cell.Text),
+        CaptionRow row when AutomationProperties.GetName(box) == "End" => (row, null, true, $"{row.Key}|end", row.EndText),
+        CaptionRow row => (row, null, false, $"{row.Key}|start", row.StartText),
+        _ => null,
+    };
+
+    // Puts the keyboard in a box of the grid once it's built, with what was typed there.
+    private void FocusCaption(string key, string? text, int? caret = null) => Dispatcher.InvokeAsync(() =>
+    {
+        if (Descendants<TextBox>(CaptionRows).FirstOrDefault(b => CaptionTarget(b)?.Key == key) is { } box)
+        {
+            if (text is not null)
+            {
+                box.Text = text;
+            }
+
+            Keyboard.Focus(box);
+            box.CaretIndex = Math.Min(caret ?? box.Text.Length, box.Text.Length);
+        }
+    }, DispatcherPriority.Loaded);
+
+    // Enter saves a cell (Shift+Enter starts a new line of a caption); Escape puts back what it
+    // holds, and in a new row with nothing to put back, takes the row away.
+    private void OnCaptionKey(object sender, KeyEventArgs e)
+    {
+        if (sender is not TextBox box || CaptionTarget(box) is not { } target)
+        {
+            return;
+        }
+
+        if (e.Key == Key.Return && Keyboard.Modifiers != ModifierKeys.Shift)
+        {
+            e.Handled = true;
+            CommitCaption(box, fromEnter: true);
+        }
+        else if (e.Key == Key.Escape)
+        {
+            e.Handled = true;
+            if (box.Text != target.Original)
+            {
+                box.Text = target.Original;
+                box.SelectAll();
+            }
+            else if (target.Row.Draft)
+            {
+                _captionDraft = null;
+                ShowCaptions();
+            }
+        }
+    }
+
+    // Leaving a cell saves it, once the focus has moved.
+    private void OnCaptionLeft(object sender, KeyboardFocusChangedEventArgs e)
+    {
+        if (sender is TextBox box)
+        {
+            Dispatcher.InvokeAsync(() => CommitCaption(box, fromEnter: false), DispatcherPriority.Input);
+        }
+    }
+
+    // Going into a row takes the playhead to its start, unless it's in the row already.
+    private void OnCaptionEntered(object sender, KeyboardFocusChangedEventArgs e)
+    {
+        if (_document is null || sender is not TextBox box || CaptionTarget(box) is not { } target)
+        {
+            return;
+        }
+
+        var project = _document.View;
+        var time = FrameMath.TimeOf(project, _frame);
+        if (time < target.Row.Start - 1e-9 || time >= target.Row.End - 1e-9)
+        {
+            Seek(Math.Min(_frames - 1, (int)Math.Ceiling(target.Row.Start * project.Fps - 1e-6)));
+        }
+    }
+
+    // Saves what a box of the grid holds: a caption's text (an emptied cell removes the caption, and
+    // text typed into an empty one adds a caption at the row's times, styled like the track's
+    // others), or the row's start or end, for its captions in every language as one step.
+    private void CommitCaption(TextBox box, bool fromEnter)
+    {
+        if (_document is null || _captionTable is not { } table || CaptionTarget(box) is not { } target || !table.Rows.Contains(target.Row))
+        {
+            return;
+        }
+
+        var text = box.Text.ReplaceLineEndings("\n");
+        if (text == target.Original.ReplaceLineEndings("\n") || _captionSent == (table, target.Key, text))
+        {
+            return;
+        }
+
+        var row = target.Row;
+        EditOperation? operation;
+        try
+        {
+            operation = target.Cell is { } cell ? CaptionEdit(row, cell, text) : TimeEdit(row, target.End, text);
+        }
+        catch (ZeyoCutException ex)
+        {
+            Message(ex.Message);
+            if (!fromEnter)
+            {
+                box.Text = target.Original;
+            }
+
+            return;
+        }
+
+        if (operation is null)
+        {
+            return;
+        }
+
+        _captionSent = (table, target.Key, text);
+        var group = target.Cell?.Column.GroupId;
+        HashSet<string> before = group is null ? [] : CaptionTracks.Cues(_document.View, group).Select(c => c.Id).ToHashSet(StringComparer.Ordinal);
+        var draft = row.Draft ? _captionDraft : null;
+        if (draft is not null)
+        {
+            _captionDraft = null;
+        }
+
+        Apply(operation, _captionProject, then: (saved, _) =>
+        {
+            if (draft is null || _document is null)
+            {
+                return;
+            }
+
+            if (!saved)
+            {
+                _captionDraft = draft;
+                ShowCaptions();
+                if (fromEnter)
+                {
+                    FocusCaption(target.Key, box.Text);
+                }
+            }
+            else if (fromEnter && CaptionTracks.Cues(_document.View, group!).FirstOrDefault(c => !before.Contains(c.Id)) is { } added
+                && _captionTable?.Rows.FirstOrDefault(r => r.Cells.Any(c => c.LayerId == added.Id)) is { } made)
+            {
+                FocusCaption($"{made.Key}|{group}", null);
+            }
+        });
+    }
+
+    private EditOperation? CaptionEdit(CaptionRow row, CaptionCell cell, string text)
+    {
+        if (cell.LayerId is { } id)
+        {
+            return text.Trim().Length == 0 ? new RemoveLayerOperation(id, false) : new CaptionTextOperation(id, text, Measurer());
+        }
+
+        var font = Languages.FontFor(_settings.Fonts, cell.Column.Language);
+        return text.Trim().Length == 0 ? null : new AddCaptionOperation(cell.Column.GroupId, row.Start, row.End, text, new CaptionOptions { FontFamily = font }, Measurer());
+    }
+
+    // A row's new start or end; a new row's only moves the row until it's saved.
+    private EditOperation? TimeEdit(CaptionRow row, bool end, string text)
+    {
+        var project = _document!.View;
+        var time = CaptionTime.Parse(text, end ? "the end" : "the start");
+        if (Math.Abs(time - (end ? row.End : row.Start)) < 0.0005)
+        {
+            return null;
+        }
+
+        if (!row.Draft)
+        {
+            return new RetimeCaptionsOperation(row.LayerIds, end ? null : time, end ? time : null);
+        }
+
+        var (start, stop) = end ? (row.Start, Math.Min(time, project.Duration)) : (time, row.End);
+        if (start < 0 || start >= project.Duration || stop <= start)
+        {
+            throw new ZeyoCutException($"a caption must start at 0 s or later and before the project end ({Number(project.Duration)}s), and end after it starts (got {Number(start)}–{Number(stop)}s)");
+        }
+
+        _captionDraft = (start, stop);
+        ShowCaptions();
+        return null;
+    }
+
+    // A new row at the playhead, or after the caption the playhead is in, with the keyboard in the
+    // source's cell: typing into a cell saves a caption there.
+    private void OnAddCaption(object sender, RoutedEventArgs e)
+    {
+        if (_document is null || _captionTable is not { Columns.Count: > 0 } table)
+        {
+            return;
+        }
+
+        var project = _document.View;
+        if (CaptionGrid.Draft(project, table, FrameMath.TimeOf(project, _frame)) is not { } draft)
+        {
+            Message("The captions run on to the end from the playhead: move it to where a new caption goes.");
+            return;
+        }
+
+        _captionDraft = draft;
+        ShowCaptions();
+        FocusCaption($"{CaptionGrid.DraftKey}|{table.Columns[0].GroupId}", null);
+    }
+
+    // A chip of a track picks it as the source the rows follow (without an English track).
+    private void OnCaptionSource(object sender, RoutedEventArgs e)
+    {
+        if (_document is not null && sender is FrameworkElement { Tag: CaptionColumn { Pickable: true } column })
+        {
+            _captionSource = column.GroupId;
+            ShowCaptions();
+        }
+    }
+
+    // Import .srt: the file's captions as its language's track, as import_srt imports them, once
+    // the language is chosen.
+    private void OnImportSrt(object sender, RoutedEventArgs e)
+    {
+        if (_document is null)
+        {
+            return;
+        }
+
+        var dialog = new OpenFileDialog { Title = "Import captions", Filter = "Subtitles (*.srt)|*.srt" };
+        if (dialog.ShowDialog(this) != true)
+        {
+            return;
+        }
+
+        List<CueEntry> cues;
+        List<string> problems;
+        try
+        {
+            (cues, problems) = CaptionTracks.ParseSrt(File.ReadAllText(dialog.FileName));
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            Message($"Couldn't read {Path.GetFileName(dialog.FileName)}: {ex.Message}");
+            return;
+        }
+
+        if (cues.Count == 0)
+        {
+            Message($"{Path.GetFileName(dialog.FileName)} has no captions to import{(problems.Count > 0 ? $": {problems[0]}" : "")}.");
+            return;
+        }
+
+        _importSrt = (dialog.FileName, cues, problems);
+        ImportSrtTitle.Text = $"Import {Path.GetFileName(dialog.FileName)}";
+        ImportSrtLanguage.Text = Languages.FromFileName(dialog.FileName) ?? "";
+        ShowImportSrtNote();
+        ShowDialog(ImportSrtDialog, ImportSrtLanguage);
+        ImportSrtLanguage.SelectAll();
+    }
+
+    private void OnImportSrtLanguage(object sender, TextChangedEventArgs e) => ShowImportSrtNote();
+
+    private void OnImportSrtKey(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Return)
+        {
+            e.Handled = true;
+            ImportSrt();
+        }
+    }
+
+    private void OnImportSrtChosen(object sender, RoutedEventArgs e) => ImportSrt();
+
+    // What importing in the language typed does: adds a track, or replaces the one in it.
+    private void ShowImportSrtNote()
+    {
+        if (_document is null || _importSrt is not { } import)
+        {
+            return;
+        }
+
+        var count = Count(import.Cues.Count, "caption");
+        if (!Languages.TryNormalize(ImportSrtLanguage.Text, out var language))
+        {
+            ImportSrtNote.Text = $"{count} in the file. Type a language code such as en, ja, my or pt-BR.";
+            ImportSrtButton.IsEnabled = false;
+            return;
+        }
+
+        var group = CaptionTracks.GroupId(language);
+        var existing = _document.View.FindLayer(group) is null ? 0 : CaptionTracks.Cues(_document.View, group).Count;
+        var font = Languages.FontFor(_settings.Fonts, language);
+        var code = language.ToUpperInvariant();
+        var what = existing > 0
+            ? $"{count} in the file, in place of the {Count(existing, "caption")} of the {code} track ({group})."
+            : $"{count} in the file, as a new {code} track ({group}){(font is null ? "" : $" in {font}")}.";
+        var problems = import.Problems.Count switch
+        {
+            0 => "",
+            1 => $" Note: {import.Problems[0]}.",
+            _ => $" {import.Problems.Count} notes, the first: {import.Problems[0]}.",
+        };
+        ImportSrtNote.Text = what + problems;
+        ImportSrtButton.IsEnabled = true;
+    }
+
+    private void ImportSrt()
+    {
+        if (_document is null || _importSrt is not { } import || !Languages.TryNormalize(ImportSrtLanguage.Text, out var language))
+        {
+            return;
+        }
+
+        CloseDialog();
+        _importSrt = null;
+        Apply(new ImportSrtOperation(Path.GetFileName(import.Path), language, import.Cues, import.Problems, Languages.FontFor(_settings.Fonts, language), Measurer()));
+    }
+
+    // Save .srt files: each track with captions as an .srt file in the exports folder, as export_srt
+    // writes it, named as the Export view names them (comic-panels.en.srt).
+    private void OnSaveSrt(object sender, RoutedEventArgs e) => WhenSaved(SaveSrt);
+
+    private void SaveSrt()
+    {
+        if (_document is not { } document)
+        {
+            return;
+        }
+
+        var project = document.View;
+        var directory = document.Session.Directory;
+        var files = ExportChoices.SrtFiles(ExportChoices.DefaultFileName(directory), ExportChoices.Subtitles(project));
+        if (files.Count == 0)
+        {
+            return;
+        }
+
+        var there = files.Where(f => File.Exists(Path.Combine(directory, ProjectStore.ExportsFolder, f.Name))).Select(f => f.Name).ToList();
+        if (there.Count > 0 && MessageBox.Show(this, $"{Names(there)} {(there.Count == 1 ? "is" : "are")} in the exports folder already. Replace {(there.Count == 1 ? "it" : "them")}?",
+                "ZeyoCut Editor", MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No) != MessageBoxResult.Yes)
+        {
+            return;
+        }
+
+        try
+        {
+            _captionSaved = files.Select(f => CaptionBuilder.WriteSrt(directory, f.Name, CaptionBuilder.GroupCues(project, f.GroupId))).ToList();
+            CaptionSaved.Text = $"Saved {Names(files.Select(f => f.Name).ToList())} in the exports folder.";
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            _captionSaved = [];
+            CaptionSaved.Text = $"Couldn't save the .srt files: {ex.Message}";
+        }
+
+        CaptionSavedPanel.Visibility = Visibility.Visible;
+    }
+
+    private static string Names(IReadOnlyList<string> names) =>
+        names.Count == 1 ? names[0] : $"{string.Join(", ", names.Take(names.Count - 1))} and {names[^1]}";
+
+    private void OnShowSrt(object sender, RoutedEventArgs e)
+    {
+        if (_captionSaved.FirstOrDefault(File.Exists) is { } file)
+        {
+            ShowInFolder(file);
+        }
+        else
+        {
+            OnShowExportsFolder(sender, e);
+        }
+    }
+
+    // The style section: each change is one step for every track's captions (a font, the track's).
+    private void Restyle(IReadOnlyList<string> groups, CaptionRestyle change)
+    {
+        if (_document is not null && !_fillingCaptions && groups.Count > 0)
+        {
+            Apply(new RestyleCaptionsOperation(groups, change, Measurer()), _captionProject);
+        }
+    }
+
+    private List<string> CaptionGroups() => _captionTable?.Columns.Where(c => CaptionTracks.Cues(_document!.View, c.GroupId).Count > 0).Select(c => c.GroupId).ToList() ?? [];
+
+    private void OnCaptionFontKey(object sender, KeyEventArgs e)
+    {
+        if (sender is not TextBox { Tag: CaptionColumn column } box)
+        {
+            return;
+        }
+
+        if (e.Key == Key.Return)
+        {
+            e.Handled = true;
+            CommitCaptionFont(box, column);
+        }
+        else if (e.Key == Key.Escape)
+        {
+            e.Handled = true;
+            box.Text = column.Font;
+            box.SelectAll();
+        }
+    }
+
+    private void OnCaptionFontLeft(object sender, KeyboardFocusChangedEventArgs e)
+    {
+        if (sender is TextBox { Tag: CaptionColumn column } box)
+        {
+            Dispatcher.InvokeAsync(() => CommitCaptionFont(box, column), DispatcherPriority.Input);
+        }
+    }
+
+    private void CommitCaptionFont(TextBox box, CaptionColumn column)
+    {
+        var font = box.Text.Trim();
+        if (_captionTable?.Columns.Contains(column) == true && font != column.Font)
+        {
+            Restyle([column.GroupId], new CaptionRestyle { FontFamily = font });
+        }
+    }
+
+    private void OnCaptionSizeMoved(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (!_fillingCaptions && IsLoaded)
+        {
+            CaptionSizeText.Text = $"{Number(CaptionSize.Value)}px";
+        }
+    }
+
+    private void OnCaptionSizeReleased(object sender, MouseButtonEventArgs e) => CommitCaptionSize();
+
+    private void OnCaptionSizeKey(object sender, KeyEventArgs e) => CommitCaptionSize();
+
+    private void CommitCaptionSize()
+    {
+        var cue = _captionTable is null || _document is null ? null
+            : _captionTable.Columns.Select(c => CaptionTracks.Cues(_document.View, c.GroupId).FirstOrDefault()).OfType<TextLayer>().FirstOrDefault();
+        if (cue is not null && Math.Abs(CaptionSize.Value - cue.FontSize) > 1e-9)
+        {
+            Restyle(CaptionGroups(), new CaptionRestyle { FontSize = CaptionSize.Value });
+        }
+    }
+
+    private void OnCaptionPlace(object sender, RoutedEventArgs e)
+    {
+        if (sender is RadioButton { Tag: string place })
+        {
+            Restyle(CaptionGroups(), new CaptionRestyle { Place = Enum.Parse<CaptionPlace>(place) });
+        }
+    }
+
+    private void OnCaptionLook(object sender, RoutedEventArgs e)
+    {
+        if (sender is RadioButton { Tag: string look })
+        {
+            Restyle(CaptionGroups(), new CaptionRestyle { Look = Enum.Parse<CaptionLook>(look) });
+        }
+    }
+
+    private void OnCaptionWidthKey(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Return)
+        {
+            e.Handled = true;
+            CommitCaptionWidth();
+        }
+        else if (e.Key == Key.Escape && _captionTable is { } table && _captionProject is { } project)
+        {
+            e.Handled = true;
+            ShowCaptionStyle(project, table);
+            CaptionWidth.Text = table.Columns.Select(c => CaptionTracks.Cues(project, c.GroupId).FirstOrDefault()).OfType<TextLayer>().FirstOrDefault()?.MaxWidth is { } width ? Number(width) : "";
+            CaptionWidth.SelectAll();
+        }
+    }
+
+    private void OnCaptionWidthLeft(object sender, KeyboardFocusChangedEventArgs e) => Dispatcher.InvokeAsync(CommitCaptionWidth, DispatcherPriority.Input);
+
+    private void CommitCaptionWidth()
+    {
+        if (_document is null || _captionTable is not { } table)
+        {
+            return;
+        }
+
+        var text = CaptionWidth.Text.Trim();
+        var cue = table.Columns.Select(c => CaptionTracks.Cues(_document.View, c.GroupId).FirstOrDefault()).OfType<TextLayer>().FirstOrDefault();
+        if (cue is null || text == (cue.MaxWidth is { } shown ? Number(shown) : ""))
+        {
+            return;
+        }
+
+        if (!double.TryParse(text.EndsWith("px", StringComparison.OrdinalIgnoreCase) ? text[..^2] : text, NumberStyles.Float, CultureInfo.InvariantCulture, out var width))
+        {
+            Message($"The line width is a number of pixels, such as 1000 (got '{text}').");
+            return;
+        }
+
+        Restyle(CaptionGroups(), new CaptionRestyle { MaxWidth = width });
     }
 
     // The Activity view: the saves the backups folder keeps, in steps, by the side the filter shows.
@@ -3590,7 +4316,7 @@ public partial class MainWindow : Window
             _focusBefore = Keyboard.FocusedElement;
         }
 
-        foreach (var view in new[] { ShortcutsDialog, NewProjectDialog, RelinkDialog })
+        foreach (var view in new[] { ShortcutsDialog, NewProjectDialog, RelinkDialog, ImportSrtDialog })
         {
             view.Visibility = ReferenceEquals(view, dialog) ? Visibility.Visible : Visibility.Collapsed;
         }
@@ -3603,7 +4329,7 @@ public partial class MainWindow : Window
     {
         _relinkSearch?.Cancel();
         _relinkSearch = null;
-        DialogLayer.Visibility = ShortcutsDialog.Visibility = NewProjectDialog.Visibility = RelinkDialog.Visibility = Visibility.Collapsed;
+        DialogLayer.Visibility = ShortcutsDialog.Visibility = NewProjectDialog.Visibility = RelinkDialog.Visibility = ImportSrtDialog.Visibility = Visibility.Collapsed;
         if (_focusBefore is UIElement { IsVisible: true } before)
         {
             Keyboard.Focus(before);
@@ -4200,7 +4926,7 @@ public partial class MainWindow : Window
         SavePrefs();
         if (_playing)
         {
-            _playSource = _preview!.Source(_document!.View, scale, _step);
+            _playSource = _preview!.Source(Shown, scale, _step);
             _preview.Play(_playSource, _frame);
             ShowPlaybackSize();
         }

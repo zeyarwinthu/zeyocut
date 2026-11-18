@@ -25,7 +25,7 @@ When a project opens with files missing (moved or renamed), the **Relink** view 
 
 The first time the editor starts, when it has no settings file yet, the **Welcome** view shows the projects folder and how to connect Claude: the `zeyocut` entry for Claude Desktop's `claude_desktop_config.json`, with the path of the `ZeyoCut.Mcp.exe` next to the editor, to copy, or the bundle to install instead. Its Connect step turns green when a client lists the server's tools after the Welcome opened (the server notes the last one in `connected.json` in its log folder). The last step copies the sample `examples\tora-jump` into the projects folder, unless a project of that name is there already, and opens it. Skip setup, or I'll do this later, goes to Home, and the Welcome doesn't open again.
 
-The header across the top names the project and whether it's saved ("Saved · rev N"). The logo and **Projects** close the project and go back to Home. In the middle, **Edit** and **Activity** switch views; on the right are Undo and Redo, when Claude last saved the project, and **Export**, which opens the Export view (Ctrl+1, Ctrl+6 and Ctrl+E go to Edit, Activity and Export; ? or F1 lists every key). The status bar at the bottom names the selected clip, counts the layers and lanes, and says what the last change did.
+The header across the top names the project and whether it's saved ("Saved · rev N"). The logo and **Projects** close the project and go back to Home. In the middle, **Edit**, **Captions** and **Activity** switch views; on the right are Undo and Redo, when Claude last saved the project, and **Export**, which opens the Export view (Ctrl+1, Ctrl+5, Ctrl+6 and Ctrl+E go to Edit, Captions, Activity and Export; ? or F1 lists every key). The status bar at the bottom names the selected clip, counts the layers and lanes, and says what the last change did.
 
 ## Media
 
@@ -44,7 +44,7 @@ The preview draws the frame at the playhead with the same renderer as exports, f
 
 - Click a video, picture or text to select it: the one drawn on top there, a layer attached to a clip (a logo on a video, a part of a rig) too. Its box and anchor are outlined, and the timeline highlights the clip that holds it.
 - Drag it to move it. The frame is redrawn as you drag, and the move is saved when you let go, as one undo step. Shift keeps it on one axis, and Escape puts it back. An animated position gets a keyframe at the playhead. A caption takes its whole track along. A layer on a motion path doesn't move: the path places it.
-- The preview draws the layers of every language at once; the Export view exports one language's version.
+- When layers are tagged with languages, the preview draws one language's version, as an export in that language does: the list in its header (EN, JA) picks it, for the Captions view too, and the editor remembers it. English comes first, else the first language. The timeline shows every language's clips.
 - A paused frame is drawn again within a second or so when a file it shows changes without a save, such as the matte of a background Claude removed with an AI method. Until it is computed, the preview draws the clip with its background, and exports refuse to start.
 
 ## Playback
@@ -124,6 +124,21 @@ To blur seconds 2 to 4, say:
 3. At 3.5 s, press ◇.
 4. At 4 s, type 0.
 
+## Captions
+
+![The Captions view with comic-panels open: its English, Japanese and Burmese captions side by side in three rows, the first being edited, with the preview and the style of all captions on the right](editor-captions.png)
+
+**Captions** in the header (Ctrl+5) shows the caption tracks side by side. Each row is a caption of the source track (English when there is one) with the other languages' captions that go with it: the ones it overlaps most. A caption that goes with none of the source's has a row of its own. The chips at the top name the tracks and how many rows each fills ("JA 3/3"); without an English track, a chip makes its track the source.
+
+- A cell saves its caption's text on Enter or when you leave it; Shift+Enter starts a new line, and Escape puts it back. Emptying a cell removes its caption, and typing into an empty one adds a caption to that track at the row's times, styled like the track's others.
+- A row's start and end (`00:03.40`, or seconds) move its captions in every language, as one undo step. Going into a row takes the playhead there, and the row the playhead is in is marked.
+- **Add caption at playhead** adds a row at the playhead, or after the caption the playhead is in, up to the next caption: type a caption into it in any language. Escape in the empty row takes it away.
+- **Import .srt…** reads a subtitle file as `import_srt` does. Choose its language (the file name's, as in `talk.ja.srt`, comes filled in), and it becomes that language's track, in place of the one there.
+- **Save .srt files** writes each track to the `exports` folder as `export_srt` does, named as the Export view names them (`comic-panels.en.srt`); Show in folder opens it.
+- **Preview** shows the frame at the playhead in one language's version, the one the Edit view shows too.
+- **Style · all captions:** each track's font, and the size, the position (Top, Middle or Bottom, inside the title-safe margin), the background (a box, an outline or none) and the longest line, in pixels, of every track's captions, each change as one undo step.
+- A new language is the model's: ask Claude in your chat, such as "add Thai captions" (`add_caption_track`).
+
 ## Export
 
 ![The Export view exporting the Japanese version of comic-panels at 1920×1080, at 24%, with the earlier exports listed in the exports folder](editor-export.png)
@@ -173,7 +188,7 @@ Under **Exports folder**, an export running here has its progress and Stop; expo
 | Shift+Z | Fit the whole video in the timeline |
 | N | Snapping on and off |
 | Ctrl+Z / Ctrl+Shift+Z or Ctrl+Y | Undo and redo; in a field, the typing there |
-| Ctrl+1 / Ctrl+6 / Ctrl+E | Edit, Activity and Export |
+| Ctrl+1 / Ctrl+5 / Ctrl+6 / Ctrl+E | Edit, Captions, Activity and Export |
 | Ctrl+N | New project |
 | Ctrl+O | Open a project |
 | Ctrl+I | Import media |
@@ -181,7 +196,7 @@ Under **Exports folder**, an export running here has its progress and Stop; expo
 
 ## Settings
 
-The editor reads `FfmpegPath`, `ProjectsRoot`, `LibraryPath` and `VideoEncoder` from the same `appsettings.json` and environment variables as the server (see [Configuration](https://github.com/zeyarwinthu/zeyocut#configuration)). It keeps its own settings (recent projects, cards or list on Home, panel sizes, window position, snapping, playback size) in `%LOCALAPPDATA%\ZeyoCut\editor.json`, or the file `ZEYOCUT_EDITOR_SETTINGS` names, never in the project. While there's no such file, the editor starts with the Welcome view.
+The editor reads `FfmpegPath`, `ProjectsRoot`, `LibraryPath` and `VideoEncoder` from the same `appsettings.json` and environment variables as the server (see [Configuration](https://github.com/zeyarwinthu/zeyocut#configuration)). It keeps its own settings (recent projects, cards or list on Home, panel sizes, window position, snapping, playback size, preview language) in `%LOCALAPPDATA%\ZeyoCut\editor.json`, or the file `ZEYOCUT_EDITOR_SETTINGS` names, never in the project. While there's no such file, the editor starts with the Welcome view.
 
 ## What it leaves to the model
 

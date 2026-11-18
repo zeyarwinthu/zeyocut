@@ -36,6 +36,7 @@ public class ShortcutTests
 
         // The digit row's 1 and the keypad's are one key in the list.
         Assert.Equal([["Ctrl", "1"]], Keys("Edit"));
+        Assert.Equal([["Ctrl", "5"]], Keys("Captions"));
         Assert.Equal([["Ctrl", "6"]], Keys("Activity"));
         Assert.Equal([true, false], Shortcuts.Groups(null).SelectMany(g => g.Rows).Single(r => r.Action == "Redo").Keys.Select(k => k.First));
     }

@@ -193,5 +193,5 @@ Each phase: tests first where behavior changes, full suite green before each com
 
 ## Seen in the screenshots, not in the design
 
-- The preview draws every caption language at once (`09`). The design's Edit screen shows one language; picking it belongs with the new Captions screen.
+- The preview draws every caption language at once (`09`). The design's Edit screen shows one language; picking it belongs with the new Captions screen. Settled in new-screens phase 2: the preview draws one language's version, picked in its header and in the Captions view.
 - Long paths fill the start screen, the Project inspector and the status bar ("Opened C:\…"). Phases A and D shorten them and put the full path in tooltips.

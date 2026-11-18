@@ -25,6 +25,38 @@ public static class TestFiles
         return folder;
     }
 
+    // The repository's root folder: the first folder up from the test output that holds ZeyoCut.slnx.
+    public static string RepositoryRoot
+    {
+        get
+        {
+            for (var folder = new DirectoryInfo(AppContext.BaseDirectory); folder is not null; folder = folder.Parent)
+            {
+                if (File.Exists(Path.Combine(folder.FullName, "ZeyoCut.slnx")))
+                {
+                    return folder.FullName;
+                }
+            }
+
+            throw new InvalidOperationException($"ZeyoCut.slnx isn't in any folder above {AppContext.BaseDirectory}");
+        }
+    }
+
+    // A copy of one of the repository's examples (comic-panels) in a folder; returns the copy's.
+    public static string Example(string name, string folder)
+    {
+        var from = Path.Combine(RepositoryRoot, "examples", name);
+        var copy = Path.Combine(folder, name);
+        foreach (var file in Directory.GetFiles(from, "*", SearchOption.AllDirectories))
+        {
+            var to = Path.Combine(copy, Path.GetRelativePath(from, file));
+            Directory.CreateDirectory(Path.GetDirectoryName(to)!);
+            File.Copy(file, to);
+        }
+
+        return copy;
+    }
+
     public static Project Project(int width = 320, int height = 180, double duration = 2) => new()
     {
         Name = "test",

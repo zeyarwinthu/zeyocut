@@ -6,6 +6,8 @@
   <SolidColorBrush x:Key="HeaderBrush" Color="#16181D" />
   <SolidColorBrush x:Key="MenuBrush" Color="#1A1D24" />
   <SolidColorBrush x:Key="DialogBrush" Color="#15171C" />
+  <SolidColorBrush x:Key="NoteBrush" Color="#161A26" />
+  <SolidColorBrush x:Key="NoteBorderBrush" Color="#27304A" />
   <SolidColorBrush x:Key="DividerBrush" Color="#23262E" />
   <SolidColorBrush x:Key="BorderBrush" Color="#2A2E37" />
   <SolidColorBrush x:Key="ControlBrush" Color="#1A1D24" />
