@@ -103,6 +103,8 @@ public sealed class TimelineView : FrameworkElement
     private double _scrollY;
     private int _playhead;
     private string? _selected;
+    private TimelineCut? _cut;
+    private TimelineCut? _pressCut;
     private Drag? _drag;
 
     // A drag let go, drawn where it was dropped until the project is shown with its edit (Show): the
@@ -148,6 +150,9 @@ public sealed class TimelineView : FrameworkElement
     // A lane's eye clicked: hide (or mute) every clip in it, or show them all when all are hidden.
     public event EventHandler<TimelineLane>? LaneToggled;
 
+    // A click where two clips meet on a lane chose that cut; one elsewhere, none.
+    public event EventHandler<TimelineCut?>? CutChosen;
+
     // The thumbnail of an asset, by its id, drawn at the start of the clips that show it; null while
     // there is none.
     public Func<string, ImageSource?>? Thumbnail { get; set; }
@@ -189,6 +194,17 @@ public sealed class TimelineView : FrameworkElement
         set
         {
             _selected = value;
+            DrawContent();
+        }
+    }
+
+    // The cut the Effects view puts a transition on, marked where its clips meet.
+    public TimelineCut? Cut
+    {
+        get => _cut;
+        set
+        {
+            _cut = value;
             DrawContent();
         }
     }
@@ -418,11 +434,18 @@ public sealed class TimelineView : FrameworkElement
             return;
         }
 
+        _pressCut = null;
         if (HitClip(point) is not { } hit)
         {
             ChangeSelection(null);
+            ChooseCut(null);
             SeekTo(point.X);
             return;
+        }
+
+        if (hit.Part != DragPart.Body)
+        {
+            _pressCut = EffectsPanel.At(hit.Lane, hit.Clip.LayerId, hit.Part == DragPart.End, _fps);
         }
 
         if (_tool == TimelineTool.Blade)
@@ -614,6 +637,11 @@ public sealed class TimelineView : FrameworkElement
 
         _drag = null;
         ReleaseMouseCapture();
+        if (!drag.Active)
+        {
+            ChooseCut(_pressCut);
+        }
+
         var operation = drag.Active ? TimelineEdits.Operation(drag.Clip, drag.Part, drag.Place, drag.Drop) : null;
         _landing = operation is null ? null : drag;
         DrawContent();
@@ -758,6 +786,18 @@ public sealed class TimelineView : FrameworkElement
 
         lines.AddRange(clip.Marks.Select(m => $"followed by {m}"));
         return string.Join("\n", lines);
+    }
+
+    private void ChooseCut(TimelineCut? cut)
+    {
+        if (cut == _cut)
+        {
+            return;
+        }
+
+        _cut = cut;
+        DrawContent();
+        CutChosen?.Invoke(this, cut);
     }
 
     private void ChangeSelection(string? id)
@@ -996,6 +1036,16 @@ public sealed class TimelineView : FrameworkElement
             {
                 var dragged = drag is not null && drag.Clip.LayerId == clip.LayerId;
                 DrawClip(dc, lane, clip, top, scale, width, dpi, text, secondary, accent, dragged ? 0.35 : 1);
+            }
+
+            // The chosen cut: a bar where its clips meet, with a notch at each end.
+            if (_cut is { } cut && cut.Lane == lane.Key && lane.Clips.FirstOrDefault(c => c.LayerId == cut.LayerB) is { } after)
+            {
+                var row = ClipRect(lane, after, top, scale);
+                var x = Math.Round(HeaderWidth + scale.XOf(cut.Time));
+                dc.DrawRectangle(accent, null, new Rect(x - 1.5, row.Top - 2, 3, row.Height + 4));
+                dc.DrawRectangle(accent, null, new Rect(x - 4.5, row.Top - 3, 9, 3));
+                dc.DrawRectangle(accent, null, new Rect(x - 4.5, row.Bottom, 9, 3));
             }
         }
 

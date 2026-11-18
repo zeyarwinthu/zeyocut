@@ -97,6 +97,18 @@ when they open.
     (kind, size, uses, file size, location) and tags, which it adds and takes off several files at
     once as one step each; New bin; Relink for missing files; Add at playhead, Open in source viewer
     and Show in folder.
+  - **Titles** (on the media panel's rail): the library's text styles and templates as cards drawn
+    by the renderer. A new title's two lines, fill and outline, in a style if one is chosen, with
+    Animate in and out (None, Fade, Pop, Slide up), added at the playhead as `add_text_layer` adds
+    it; the selected title's lines, colors and presets saved as you change them; Apply style
+    (`apply_style`) and Update saved style (`save_style` over it); a template's layers added from the
+    playhead as `add_template` adds them.
+  - **Effects** (on the media panel's rail): transitions, video effects and text animations, with
+    search. A click on a clip's edge in the timeline, without dragging, chooses the cut there, and a
+    strip of the lane marks its cuts. Each transition is a drawn tile; Duration and Direction set
+    it, and Apply to selected cut or Apply to every cut (one undo step) puts it on as
+    `add_transition` does, with the program at the cut shown. Blur, Shadow, Border and Tint go on
+    or off the selected layer; Fade, Pop and Slide up are its way in or out.
   - **Source viewer** (double-click a video or sound): the file alone, drawn by the renderer and
     played with its sound, beside the program at the playhead. Mark in (I), Mark out (O) and Alt+X
     to clear them choose the part, which becomes the clip's trim in and out; Audio adds footage with

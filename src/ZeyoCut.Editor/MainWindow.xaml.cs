@@ -101,6 +101,25 @@ public partial class MainWindow : Window
     private MediaThumbnails? _thumbnails;
     private MediaWaveforms? _waveforms;
     private ProjectThumbnails? _projectPictures;
+    private LibraryPictures? _libraryPictures;
+
+    // The Effects view: the cut chosen on the timeline, the category showing, the tile chosen in
+    // each, and the transition's length and direction. Never saved.
+    private TimelineCut? _cut;
+    private EffectCategory _effectCategory = EffectCategory.Transitions;
+    private readonly Dictionary<EffectCategory, string> _effectKeys = new()
+    {
+        [EffectCategory.Transitions] = "crossfade",
+        [EffectCategory.VideoEffects] = "blur",
+        [EffectCategory.TextAnimations] = "fade",
+    };
+    private double _transitionLength = EffectsPanel.DefaultDuration;
+    private TransitionDirection? _transitionDirection;
+
+    // The Titles view: the style or template card chosen, and the new title's fields.
+    private string? _titleCard;
+    private bool _titleTemplate;
+    private TitleDraft _titleDraft = TitlesPanel.Fresh;
     private PreviewSound? _sound;
 
     // The roles soloed in the Audio view: the preview hears only them. Never saved.
@@ -657,6 +676,7 @@ public partial class MainWindow : Window
         _settle.Stop();
         _ticker.Stop();
         _projectPictures?.Dispose();
+        _libraryPictures?.Dispose();
         var running = _jobs.All.Where(j => j.State == JobState.Running).ToList();
         foreach (var job in running)
         {
@@ -874,6 +894,8 @@ public partial class MainWindow : Window
         _watcher = null;
         _bitmap = null;
         _selectedLayer = null;
+        _cut = null;
+        Timeline.Cut = null;
         PreviewImage.Source = null;
         PendingList.ItemsSource = null;
         Title = "ZeyoCut Editor";
@@ -957,6 +979,12 @@ public partial class MainWindow : Window
         }
 
         Timeline.Selection = ClipOf(_selectedLayer);
+        if (_cut is { } cut && (project.FindLayer(cut.LayerA) is null || project.FindLayer(cut.LayerB) is null))
+        {
+            _cut = null;
+        }
+
+        Timeline.Cut = _cut;
         ShowKeyTimes();
 
         ShowMedia();
@@ -1442,19 +1470,20 @@ public partial class MainWindow : Window
     }
 
     // The header: the way back to the projects, the project's path and its commands while one is
-    // open; the Export view, the Media browser and the source viewer have a way back to Edit in place
-    // of the tabs, and the Export view has it in place of the Export button too.
+    // open; the Export view, the Media browser, the source viewer and the Titles and Effects views have
+    // a way back to Edit in place of the tabs, and the Export view has it in place of the Export button
+    // too.
     private void ShowHeader()
     {
         var open = _document is not null;
         var exporting = open && ExportMode.IsChecked == true;
-        var away = exporting || open && (MediaMode.IsChecked == true || SourceMode.IsChecked == true);
+        var away = exporting || open && (MediaMode.IsChecked == true || SourceMode.IsChecked == true || TitlesMode.IsChecked == true || EffectsMode.IsChecked == true);
         LogoButton.IsEnabled = open;
         AppName.Visibility = open ? Visibility.Collapsed : Visibility.Visible;
         Crumbs.Visibility = ProjectCommands.Visibility = open ? Visibility.Visible : Visibility.Collapsed;
         ModeBar.Visibility = open && !away ? Visibility.Visible : Visibility.Collapsed;
         ExportCrumb.Visibility = BackToEdit.Visibility = away ? Visibility.Visible : Visibility.Collapsed;
-        CrumbName.Text = exporting ? "Export" : MediaMode.IsChecked == true ? "Media" : "Source";
+        CrumbName.Text = exporting ? "Export" : MediaMode.IsChecked == true ? "Media" : TitlesMode.IsChecked == true ? "Titles" : EffectsMode.IsChecked == true ? "Effects" : "Source";
         ExportViewButton.Visibility = exporting ? Visibility.Collapsed : Visibility.Visible;
     }
 
@@ -2367,6 +2396,10 @@ public partial class MainWindow : Window
         {
             ShowAnimate();
         }
+        else if (_document is not null && (TitlesMode.IsChecked == true || EffectsMode.IsChecked == true))
+        {
+            ShowPage();
+        }
     }
 
     // The selected clip can be split at the playhead when the playhead is inside it.
@@ -3166,6 +3199,614 @@ public partial class MainWindow : Window
 
     private void OnMediaBrowser(object sender, RoutedEventArgs e) => MediaMode.IsChecked = true;
 
+    private void OnTitlesView(object sender, RoutedEventArgs e) => TitlesMode.IsChecked = true;
+
+    private void OnEffectsView(object sender, RoutedEventArgs e)
+    {
+        EffectsMode.IsChecked = true;
+        if (_document is { } document && _cut is { } cut && _effectCategory == EffectCategory.Transitions)
+        {
+            Seek(FrameMath.NearestFrame(document.View, cut.Time));
+        }
+    }
+
+    private Library OpenLibrary() => new(_settings.LibraryPath ?? Settings.DefaultLibraryPath);
+
+    // A cut chosen on the timeline: the Effects view puts a transition on it.
+    private void OnCutChosen(object? sender, TimelineCut? cut)
+    {
+        _cut = cut;
+        if (cut is not null)
+        {
+            Message($"Cut {cut.Label} chosen: Effects puts a transition on it");
+        }
+    }
+
+    // The Effects view: the categories, the chosen one's tiles, and what the chosen tile does to the
+    // chosen cut or the selected layer.
+    private void ShowEffects()
+    {
+        if (_document is not { } document)
+        {
+            return;
+        }
+
+        var project = document.View;
+        EffectCategories.Children.Clear();
+        foreach (var category in Enum.GetValues<EffectCategory>())
+        {
+            var row = new DockPanel();
+            var count = new TextBlock { Text = EffectsPanel.Count(category).ToString(CultureInfo.InvariantCulture), FontSize = 12, Foreground = (Brush)FindResource("SecondaryTextBrush"), Margin = new Thickness(8, 0, 0, 0) };
+            DockPanel.SetDock(count, Dock.Right);
+            row.Children.Add(count);
+            row.Children.Add(new TextBlock { Text = EffectsPanel.Name(category), TextTrimming = TextTrimming.CharacterEllipsis });
+            var button = new RadioButton { Style = (Style)FindResource("ShelfButton"), GroupName = "EffectCategory", Content = row, Tag = category, IsChecked = category == _effectCategory };
+            AutomationProperties.SetName(button, EffectsPanel.Name(category));
+            button.Checked += OnEffectCategory;
+            EffectCategories.Children.Add(button);
+        }
+
+        var tiles = EffectsPanel.Tiles(_effectCategory, EffectSearch.Text);
+        _rebuilding = true;
+        try
+        {
+            EffectList.ItemsSource = tiles;
+            EffectList.SelectedItem = tiles.FirstOrDefault(t => t.Key == _effectKeys[_effectCategory]);
+        }
+        finally
+        {
+            _rebuilding = false;
+        }
+
+        EffectsTitle.Text = EffectsPanel.Name(_effectCategory);
+        EffectsHint.Text = _effectCategory switch
+        {
+            EffectCategory.Transitions => "Click where two clips meet on the timeline, or a mark on the lane below, to choose a cut. Pick a transition and apply it; the picture shows the program at the cut.",
+            EffectCategory.VideoEffects => "Pick an effect and add it to the selected layer. Its settings are in the inspector, where they can be keyframed.",
+            _ => "Pick how the selected title, picture or video comes in at its start or goes out at its end.",
+        };
+        EffectsEmpty.Visibility = tiles.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        EffectSearchHint.Visibility = EffectSearch.Text.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
+        ShowEffectSettings(project);
+    }
+
+    private void ShowEffectSettings(Project project)
+    {
+        var key = _effectKeys[_effectCategory];
+        var transitions = _effectCategory == EffectCategory.Transitions;
+        TransitionSettings.Visibility = CutPanel.Visibility = transitions ? Visibility.Visible : Visibility.Collapsed;
+        EffectEveryButton.Visibility = _effectCategory == EffectCategory.VideoEffects ? Visibility.Collapsed : Visibility.Visible;
+        switch (_effectCategory)
+        {
+            case EffectCategory.Transitions:
+            {
+                var choice = EffectsPanel.Choice(EnumNames.Parse<TransitionType>(key, "transition"));
+                var lanes = TimelineLayout.Lanes(project);
+                var current = EffectsPanel.Current(lanes, _cut, project.Fps);
+                var lane = lanes.FirstOrDefault(l => l.Key == _cut?.Lane) ?? lanes.FirstOrDefault(l => l.Clips.Any(c => c.LayerId == _selectedLayer));
+                var cuts = lane is null ? [] : EffectsPanel.Cuts(lane, project.Fps);
+                EffectName.Text = choice.Name;
+                EffectTarget.Text = _cut?.Label ?? "No cut chosen";
+                if (!EffectDuration.IsKeyboardFocused)
+                {
+                    EffectDuration.Text = EffectsPanel.Seconds(_transitionLength);
+                }
+
+                ShowDirections(choice);
+                EffectApplyButton.Content = "Apply to selected cut";
+                EffectApplyButton.IsEnabled = current is not null;
+                EffectApplyButton.ToolTip = current is not null ? $"Puts it on {current.Label}, as one undo step"
+                    : _cut is null ? "Choose a cut first: click where two clips meet on the timeline" : $"{_cut.Label} isn't a cut now: the clips overlap or are apart";
+                EffectEveryButton.Content = cuts.Count > 1 ? $"Apply to every cut ({cuts.Count})" : "Apply to every cut";
+                EffectEveryButton.IsEnabled = cuts.Count > 0;
+                EffectEveryButton.ToolTip = lane is null ? "Choose a cut, or select a clip, first" : $"Puts it on the {Count(cuts.Count, "cut")} of {lane.Title}, as one undo step";
+                EffectNote.Text = "A transition is keyframes and fades on the two clips: adjust them in the Animate view, or undo (Ctrl+Z) to take it off.";
+                CutTitle.Text = _cut is { } chosen ? $"Selected cut · {SourceViewer.Stamp(chosen.Time)}{(lane is null ? "" : $" · {lane.Title}")}"
+                    : lane is null ? "No cut chosen · click where two clips meet on the timeline" : $"No cut chosen · {lane.Title} has {Count(cuts.Count, "cut")}";
+                CutStrip.Show(lane?.Clips ?? [], cuts, _cut, project.Duration);
+                break;
+            }
+
+            case EffectCategory.VideoEffects:
+            {
+                var (kind, name, _) = EffectsPanel.Effects.First(e => EnumNames.ToName(e.Kind) == key);
+                var layer = _selectedLayer is { } id ? project.FindLayer(id) as VisualLayer : null;
+                var has = layer is not null && EffectsPanel.Has(layer, kind);
+                var what = name.ToLowerInvariant();
+                EffectName.Text = name;
+                EffectTarget.Text = layer?.Id ?? "No layer selected";
+                EffectApplyButton.Content = has ? $"Take the {what} off" : "Add to selected layer";
+                EffectApplyButton.IsEnabled = layer is not null;
+                EffectApplyButton.ToolTip = layer is null ? "Select a picture, text or video on the timeline first"
+                    : has ? $"Takes '{layer.Id}''s {what} away" : $"Gives '{layer.Id}' a {what}, as the inspector's switch does";
+                EffectNote.Text = "Its settings are in the inspector in the Edit view, where they can be keyframed. Undo (Ctrl+Z) takes it off.";
+                break;
+            }
+
+            default:
+            {
+                var animation = EnumNames.Parse<TitleAnimation>(key, "animation");
+                var layer = _selectedLayer is { } id ? project.FindLayer(id) as VisualLayer : null;
+                EffectName.Text = TitleAnimations.Name(animation);
+                EffectTarget.Text = layer is null ? "No layer selected"
+                    : $"{layer.Id} · in: {TitlesPanel.Shown(project, layer, TitleSide.In)} · out: {TitlesPanel.Shown(project, layer, TitleSide.Out)}";
+                EffectApplyButton.Content = "Use to come in";
+                EffectEveryButton.Content = "Use to go out";
+                EffectApplyButton.IsEnabled = EffectEveryButton.IsEnabled = layer is not null;
+                EffectApplyButton.ToolTip = EffectEveryButton.ToolTip = layer is null ? "Select a title, picture or video on the timeline first" : null;
+                EffectNote.Text = "Keyframes on its opacity, scale and position for half a second, or a third of a short layer, from its start or up to its end. Undo (Ctrl+Z) takes them off.";
+                break;
+            }
+        }
+    }
+
+    // The ways the chosen transition can go, as the design draws them: arrows for where the new
+    // picture comes from, In and Out for a zoom.
+    private void ShowDirections(TransitionChoice choice)
+    {
+        EffectDirections.Children.Clear();
+        if (choice.Directions.Count == 0)
+        {
+            EffectDirections.Children.Add(new TextBlock { Text = "None: it has no direction", Style = (Style)FindResource("Secondary"), FontSize = 12, Margin = new Thickness(0, 6, 0, 6) });
+            return;
+        }
+
+        var chosen = Direction(choice.Type);
+        foreach (var direction in choice.Directions)
+        {
+            var name = EffectsPanel.DirectionName(direction);
+            var arrow = direction switch
+            {
+                TransitionDirection.Left => "←",
+                TransitionDirection.Right => "→",
+                TransitionDirection.Up => "↑",
+                TransitionDirection.Down => "↓",
+                _ => name,
+            };
+            var button = new RadioButton { Style = (Style)FindResource("FilterChip"), GroupName = "TransitionDirection", Content = arrow, IsChecked = direction == chosen, ToolTip = name, MinWidth = 36 };
+            AutomationProperties.SetName(button, name);
+            button.Checked += (_, _) => _transitionDirection = direction;
+            EffectDirections.Children.Add(button);
+        }
+    }
+
+    // The direction chosen for a transition, or its default when none of its own was chosen.
+    private TransitionDirection? Direction(TransitionType type)
+    {
+        var choice = EffectsPanel.Choice(type);
+        return _transitionDirection is { } way && choice.Directions.Contains(way) ? way : choice.Default;
+    }
+
+    private void OnEffectCategory(object sender, RoutedEventArgs e)
+    {
+        _effectCategory = (EffectCategory)((FrameworkElement)sender).Tag;
+        Dispatcher.BeginInvoke(ShowEffects);
+    }
+
+    private void OnEffectChosen(object sender, SelectionChangedEventArgs e)
+    {
+        if (_rebuilding || _document is not { } document || EffectList.SelectedItem is not EffectTile tile)
+        {
+            return;
+        }
+
+        _effectKeys[_effectCategory] = tile.Key;
+        ShowEffectSettings(document.View);
+    }
+
+    private void OnEffectsSized(object sender, SizeChangedEventArgs e) => EffectList.Tag = Math.Max(1, (int)((e.NewSize.Width + 14) / (150 + 14)));
+
+    private void OnEffectSearch(object sender, TextChangedEventArgs e)
+    {
+        if (_document is not null && EffectsMode.IsChecked == true)
+        {
+            ShowEffects();
+        }
+    }
+
+    private void OnEffectDurationKey(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Enter)
+        {
+            CommitTransitionLength();
+            e.Handled = true;
+        }
+    }
+
+    private void OnEffectDurationLeft(object sender, KeyboardFocusChangedEventArgs e) => CommitTransitionLength();
+
+    private bool CommitTransitionLength()
+    {
+        if (EffectsPanel.Duration(EffectDuration.Text) is not { } length)
+        {
+            Message("The duration is a number of seconds above 0, such as 0.5");
+            EffectDuration.Text = EffectsPanel.Seconds(_transitionLength);
+            return false;
+        }
+
+        _transitionLength = length;
+        return true;
+    }
+
+    private void OnCutStripChosen(TimelineCut cut)
+    {
+        if (_document is not { } document)
+        {
+            return;
+        }
+
+        _cut = cut;
+        Seek(FrameMath.NearestFrame(document.View, cut.Time));
+        ShowEffects();
+    }
+
+    // Apply to selected cut, Add to selected layer (or take it off), or Use to come in.
+    private void OnEffectApply(object sender, RoutedEventArgs e) => WhenSaved(() =>
+    {
+        if (_document is not { } document)
+        {
+            return;
+        }
+
+        var project = document.View;
+        var key = _effectKeys[_effectCategory];
+        switch (_effectCategory)
+        {
+            case EffectCategory.Transitions:
+                if (!CommitTransitionLength() || EffectsPanel.Current(TimelineLayout.Lanes(project), _cut, project.Fps) is not { } cut)
+                {
+                    return;
+                }
+
+                var type = EnumNames.Parse<TransitionType>(key, "transition");
+                Seek(FrameMath.NearestFrame(project, cut.Time));
+                Apply(EffectsPanel.Transition(cut, type, _transitionLength, Direction(type), Measurer()));
+                break;
+            case EffectCategory.VideoEffects:
+                if (_selectedLayer is { } id && project.FindLayer(id) is VisualLayer layer)
+                {
+                    var kind = EnumNames.Parse<EffectKind>(key, "effect");
+                    Apply(EffectsPanel.Effect(layer.Id, kind, !EffectsPanel.Has(layer, kind)));
+                }
+
+                break;
+            default:
+                AnimateSelected(project, TitleSide.In);
+                break;
+        }
+    });
+
+    // Apply to every cut of the chosen cut's lane, or Use to go out.
+    private void OnEffectEvery(object sender, RoutedEventArgs e) => WhenSaved(() =>
+    {
+        if (_document is not { } document)
+        {
+            return;
+        }
+
+        var project = document.View;
+        if (_effectCategory != EffectCategory.Transitions)
+        {
+            AnimateSelected(project, TitleSide.Out);
+            return;
+        }
+
+        var lanes = TimelineLayout.Lanes(project);
+        var lane = lanes.FirstOrDefault(l => l.Key == _cut?.Lane) ?? lanes.FirstOrDefault(l => l.Clips.Any(c => c.LayerId == _selectedLayer));
+        if (lane is null || EffectsPanel.Cuts(lane, project.Fps) is not { Count: > 0 } cuts || !CommitTransitionLength())
+        {
+            return;
+        }
+
+        var type = EnumNames.Parse<TransitionType>(_effectKeys[_effectCategory], "transition");
+        Apply(EffectsPanel.Every(cuts, type, _transitionLength, Direction(type), Measurer()));
+    });
+
+    private void AnimateSelected(Project project, TitleSide side)
+    {
+        if (_selectedLayer is { } id && project.FindLayer(id) is VisualLayer layer)
+        {
+            Apply(new TitleAnimationOperation(layer.Id, side, EnumNames.Parse<TitleAnimation>(_effectKeys[EffectCategory.TextAnimations], "animation")));
+        }
+    }
+
+    // The Titles view: the library's styles and templates as cards drawn by the renderer, and the
+    // panel for a new title, the selected text or the chosen template.
+    private void ShowTitles()
+    {
+        if (_document is not { } document)
+        {
+            return;
+        }
+
+        _libraryPictures ??= new LibraryPictures(() => Ffmpeg().Ffmpeg, () => Dispatcher.InvokeAsync(() =>
+        {
+            if (_document is not null && TitlesMode.IsChecked == true)
+            {
+                ShowTitleCards();
+            }
+        }));
+        ShowTitleCards();
+        ShowTitlePanel(document.View);
+    }
+
+    private void ShowTitleCards()
+    {
+        var library = OpenLibrary();
+        var pictures = _libraryPictures!;
+        var styles = LibraryItems<TextStyle>(library, LibraryKind.Style).Select(s => new TitleCard(s.Name, false, TitlesPanel.Detail(s), s.SavedUtc) { Picture = pictures.Style(library, s) }).ToList();
+        var templates = LibraryItems<TemplateFile>(library, LibraryKind.Template).Select(t => new TitleCard(t.Name, true, TitlesPanel.Detail(t), t.SavedUtc) { Picture = pictures.Template(library, t) }).ToList();
+        _rebuilding = true;
+        try
+        {
+            StyleList.ItemsSource = styles;
+            TemplateList.ItemsSource = templates;
+            StyleList.SelectedItem = _titleTemplate ? null : styles.FirstOrDefault(c => c.Name == _titleCard);
+            TemplateList.SelectedItem = _titleTemplate ? templates.FirstOrDefault(c => c.Name == _titleCard) : null;
+        }
+        finally
+        {
+            _rebuilding = false;
+        }
+
+        StyleSection.Visibility = TitlesTemplates.IsChecked == true ? Visibility.Collapsed : Visibility.Visible;
+        TemplateSection.Visibility = TitlesStyles.IsChecked == true ? Visibility.Collapsed : Visibility.Visible;
+        StylesEmpty.Visibility = styles.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        TemplatesEmpty.Visibility = templates.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    // What the library has of a kind; one that can't be read is left out.
+    private static List<T> LibraryItems<T>(Library library, LibraryKind kind) where T : class
+    {
+        var items = new List<T>();
+        foreach (var name in library.Names(kind))
+        {
+            try
+            {
+                items.Add(library.Load<T>(kind, name));
+            }
+            catch (Exception ex) when (ex is ZeyoCutException or IOException or UnauthorizedAccessException or System.Text.Json.JsonException)
+            {
+            }
+        }
+
+        return items;
+    }
+
+    // The style card chosen, as the library has it now.
+    private TextStyle? ChosenStyle()
+    {
+        if (_titleTemplate || _titleCard is not { } name)
+        {
+            return null;
+        }
+
+        try
+        {
+            return OpenLibrary().Load<TextStyle>(LibraryKind.Style, name);
+        }
+        catch (Exception ex) when (ex is ZeyoCutException or IOException or UnauthorizedAccessException or System.Text.Json.JsonException)
+        {
+            return null;
+        }
+    }
+
+    private void ShowTitlePanel(Project project)
+    {
+        var template = _titleTemplate && _titleCard is not null;
+        var text = template ? null : TitlesPanel.Title(project, _selectedLayer);
+        var style = ChosenStyle();
+        TitleFields.Visibility = template ? Visibility.Collapsed : Visibility.Visible;
+        TitleNewButton.Visibility = text is null ? Visibility.Collapsed : Visibility.Visible;
+        TitleAddButton.Visibility = text is null ? Visibility.Visible : Visibility.Collapsed;
+        TitleApplyButton.Visibility = text is null ? Visibility.Collapsed : Visibility.Visible;
+        TitleUpdateButton.Visibility = template ? Visibility.Collapsed : Visibility.Visible;
+        if (template)
+        {
+            var card = TemplateList.Items.OfType<TitleCard>().FirstOrDefault(c => c.Name == _titleCard);
+            TitleHeading.Text = _titleCard;
+            TitleSummary.Text = $"{card?.Detail}. Its layers go into the project as a block from the playhead, on levels above the others.";
+            TitleAddButton.ToolTip = "Adds the template's layers from the playhead, as add_template does";
+            TitleNote.Text = $"Templates are available to Claude too: ask it to add “{_titleCard}” where you want it.";
+            return;
+        }
+
+        var draft = text is null ? _titleDraft : TitlesPanel.Of(project, text);
+        TitleHeading.Text = text is null ? "New title" : $"Selected text · {text.Id}";
+        TitleSummary.Text = text is not null ? "Changes here are saved as you make them, each one an undo step."
+            : style is null ? "Plain text. Pick a style for its look." : $"In the style '{style.Name}'.";
+        Show(TitleLine1, draft.First);
+        Show(TitleLine2, draft.Second);
+        Show(TitleFill, draft.Fill);
+        Show(TitleOutline, draft.Outline);
+        TitleInText.Text = draft.In;
+        TitleOutText.Text = draft.Out;
+        TitleAddButton.ToolTip = $"Adds the title from the playhead for {TitlesPanel.Length} s{(style is null ? "" : $" in the style '{style.Name}'")}, as add_text_layer does";
+        TitleApplyButton.Content = style is null ? "Apply a style" : $"Apply '{style.Name}'";
+        TitleApplyButton.IsEnabled = style is not null;
+        TitleApplyButton.ToolTip = style is null ? "Pick a style first" : $"Gives '{text?.Id}' the style's look; its text, place and timing stay, as apply_style does";
+        TitleUpdateButton.IsEnabled = text is not null && style is not null;
+        TitleUpdateButton.ToolTip = text is null ? "Select a text on the timeline to save its look over a style"
+            : style is null ? "Pick the style to save its look over" : $"Saves '{text.Id}''s look as the style '{style.Name}', in place of the one saved. Not an undo step";
+        TitleNote.Text = style is null ? "Saved styles are available to Claude too: ask it to save a text's look as a style."
+            : $"Saved styles are available to Claude too — ask for “a title in my {style.Name} style”.";
+
+        // A field being typed in keeps what's typed.
+        static void Show(TextBox box, string value)
+        {
+            if (!box.IsKeyboardFocusWithin && box.Text != value)
+            {
+                box.Text = value;
+            }
+        }
+    }
+
+    private void OnTitleFilter(object sender, RoutedEventArgs e)
+    {
+        if (_document is not null && TitlesMode.IsChecked == true)
+        {
+            ShowTitleCards();
+        }
+    }
+
+    private void OnTitleCardsSized(object sender, SizeChangedEventArgs e) => ((FrameworkElement)sender).Tag = Math.Max(1, (int)((e.NewSize.Width + 14) / (220 + 14)));
+
+    private void OnTitleCardChosen(object sender, SelectionChangedEventArgs e)
+    {
+        if (_rebuilding || _document is not { } document || ((ListBox)sender).SelectedItem is not TitleCard card)
+        {
+            return;
+        }
+
+        _titleCard = card.Name;
+        _titleTemplate = card.Template;
+        _rebuilding = true;
+        try
+        {
+            (card.Template ? StyleList : TemplateList).SelectedItem = null;
+        }
+        finally
+        {
+            _rebuilding = false;
+        }
+
+        if (!card.Template && TitlesPanel.Title(document.View, _selectedLayer) is null)
+        {
+            _titleDraft = TitlesPanel.Styled(_titleDraft, ChosenStyle());
+        }
+
+        ShowTitlePanel(document.View);
+    }
+
+    private void OnTitleFieldKey(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Enter)
+        {
+            CommitTitle();
+            e.Handled = true;
+        }
+    }
+
+    private void OnTitleFieldLeft(object sender, KeyboardFocusChangedEventArgs e) => CommitTitle();
+
+    // The fields saved to the selected text as update_layer changes it, or kept for a new title.
+    private void CommitTitle()
+    {
+        if (_document is not { } document)
+        {
+            return;
+        }
+
+        var draft = new TitleDraft(TitleLine1.Text, TitleLine2.Text, TitleFill.Text, TitleOutline.Text,
+            TitleInText.Text, TitleOutText.Text);
+        if (TitlesPanel.Title(document.View, _selectedLayer) is { } text)
+        {
+            if (TitlesPanel.Change(text, draft) is { } change)
+            {
+                Apply(change);
+            }
+        }
+        else
+        {
+            _titleDraft = draft;
+        }
+    }
+
+    private void OnTitleIn(object sender, RoutedEventArgs e) => ChooseAnimation(TitleInButton, TitleInText.Text, TitleSide.In);
+
+    private void OnTitleOut(object sender, RoutedEventArgs e) => ChooseAnimation(TitleOutButton, TitleOutText.Text, TitleSide.Out);
+
+    private void ChooseAnimation(Button button, string shown, TitleSide side)
+    {
+        ShowChoices(button, TitlesPanel.Animations.Select(name => (name, name == shown, (Action)(() => SetTitleAnimation(side, name)))));
+    }
+
+    // A preset put on the selected text, as TitleAnimationOperation puts it, or chosen for a new title.
+    private void SetTitleAnimation(TitleSide side, string name)
+    {
+        if (_document is not { } document)
+        {
+            return;
+        }
+
+        var project = document.View;
+        if (TitlesPanel.Title(project, _selectedLayer) is { } text)
+        {
+            if (TitlesPanel.Animate(project, text, side, name) is { } operation)
+            {
+                Apply(operation);
+            }
+
+            return;
+        }
+
+        _titleDraft = side == TitleSide.In ? _titleDraft with { In = name } : _titleDraft with { Out = name };
+        ShowTitlePanel(project);
+    }
+
+    // The new title from the playhead, as add_text_layer adds it, or the chosen template's layers, as
+    // add_template adds them; then what was added is selected.
+    private void OnTitleAdd(object sender, RoutedEventArgs e) => WhenSaved(() =>
+    {
+        if (_document is not { } document)
+        {
+            return;
+        }
+
+        var project = document.View;
+        var at = FrameMath.TimeOf(project, _frame);
+        var before = project.Layers.Select(l => l.Id).ToHashSet(StringComparer.Ordinal);
+        EditOperation operation;
+        if (_titleTemplate && _titleCard is { } name)
+        {
+            operation = new AddTemplateOperation(name, at, document.Session.Directory, OpenLibrary());
+        }
+        else
+        {
+            CommitTitle();
+            operation = TitlesPanel.Add(project, at, _titleDraft, ChosenStyle(), document.Session.Directory, OpenLibrary(), Measurer());
+        }
+
+        Apply(operation, then: (saved, _) =>
+        {
+            if (saved && _document is { } now && now.View.Layers.FirstOrDefault(l => !before.Contains(l.Id) && l.ParentId is null) is { } added)
+            {
+                SelectLayer(added.Id);
+            }
+        });
+    });
+
+    private void OnTitleApply(object sender, RoutedEventArgs e) => WhenSaved(() =>
+    {
+        if (_document is { } document && ChosenStyle() is { } style && TitlesPanel.Title(document.View, _selectedLayer) is { } text)
+        {
+            Apply(new ApplyStyleOperation(style, text.Id, document.Session.Directory, OpenLibrary(), Measurer()));
+        }
+    });
+
+    // The selected text's look saved over the chosen style, as save_style saves it; not an undo step.
+    private void OnTitleUpdate(object sender, RoutedEventArgs e) => WhenSaved(() =>
+    {
+        if (_document is not { } document || ChosenStyle() is not { } style || TitlesPanel.Title(document.View, _selectedLayer) is not { } text)
+        {
+            return;
+        }
+
+        try
+        {
+            var saved = TextStyles.Save(document.View, document.Session.Directory, OpenLibrary(), text.Id, style.Name, style.CaptionPosition, overwrite: true);
+            Message($"Saved the look of '{text.Id}' as the style '{saved.Name}'");
+        }
+        catch (Exception ex) when (ex is ZeyoCutException or IOException or UnauthorizedAccessException)
+        {
+            Message(ex.Message);
+        }
+
+        ShowTitles();
+    });
+
+    private void OnTitleNew(object sender, RoutedEventArgs e) => SelectLayer(null);
+
     // The Media browser: the shelves (each kind, and the bins, which are the assets' tags), the
     // shelf's media as cards, searched and sorted, and the selected media's details.
     private void ShowBrowser()
@@ -3819,6 +4460,8 @@ public partial class MainWindow : Window
         ExportPage.Visibility = ExportMode.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
         MediaPage.Visibility = MediaMode.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
         SourcePage.Visibility = SourceMode.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
+        TitlesPage.Visibility = TitlesMode.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
+        EffectsPage.Visibility = EffectsMode.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
         if (SourceMode.IsChecked != true)
         {
             _source?.Pause();
@@ -3829,7 +4472,8 @@ public partial class MainWindow : Window
         ShowPage();
     }
 
-    // Brings the Audio, Animate, Captions, Activity, Export, Media or Source view up to date when it is the one showing.
+    // Brings the Audio, Animate, Captions, Activity, Export, Media, Source, Titles or Effects view up to
+    // date when it is the one showing.
     private void ShowPage()
     {
         if (_document is null)
@@ -3864,6 +4508,14 @@ public partial class MainWindow : Window
         else if (SourceMode.IsChecked == true)
         {
             ShowSource();
+        }
+        else if (TitlesMode.IsChecked == true)
+        {
+            ShowTitles();
+        }
+        else if (EffectsMode.IsChecked == true)
+        {
+            ShowEffects();
         }
     }
 

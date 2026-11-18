@@ -1,7 +1,7 @@
 # Editor new screens: plan
 
 - Written 2026-11-18 on `feature/manual-editor` at `88295e8`, after the redesign of the existing screens (REDESIGN.md, phases A–H) was done.
-- Status: S1–S22 decided as recommended (2026-11-18). Phases 1, 2, 3 and 4 done (2026-11-18), phase 5 (2026-11-19); phase 6 waits for a go.
+- Status: S1–S22 decided as recommended (2026-11-18). Phases 1, 2, 3 and 4 done (2026-11-18), phases 5 and 6 (2026-11-19); phase 7 waits for a go.
 - Covers the 15 artboards of the design canvas "ZeyoCut Editor — modern redesign" that have no screen yet, in the order agreed on 2026-11-18. Each phase is one step of that order and ends with a report and a stop.
 - The rules in PLAN.md still hold: no control without real project data and real render output behind it; the UI has no editing logic of its own; a new project property is saved, rendered on export and reachable over MCP; tests pass at every commit; stop and report after each phase. Logic that lives in an MCP tool today moves into Core first, in a commit of its own with no change in behavior (as D9 did for the SRT writer).
 
@@ -142,9 +142,9 @@
 |---|---|---|
 | Categories | Transitions, Video effects, Text animations, Audio effects, Stickers, Favorites, Recently used | Do Transitions and Video effects (blur, shadow, border, tint, as the inspector sets them); Text animations as S18. The rest left out |
 | Transitions | 12 tiles | Do Core's six: Crossfade, Dip to black, Wipe, Slide, Zoom, Whip pan. The other six left out. Tiles are S16 |
-| A cut | Selected on the timeline | Do: clicking where two clips meet on a lane selects the cut |
-| Settings | Duration, direction, easing, motion blur | Do duration and direction, as `add_transition` takes them. Easing and motion blur left out |
-| Apply to selected cut, Apply to every cut | Buttons, or drag a tile onto a cut | Do, through a new `AddTransitionOperation` over `TimelineEditor.AddTransition`, as `add_transition` does. A transition is baked into keyframes, so the panel says undo takes it off |
+| A cut | Selected on the timeline | Do: clicking where two clips meet on a lane selects the cut. It's a click without a drag on either clip's edge (a drag still trims), marked in the accent color; a strip under the tiles shows the lane's cuts, and clicking a mark selects it |
+| Settings | Duration, direction, easing, motion blur | Do duration and direction, as `add_transition` takes them; every type starts at its 0.5 s. Easing and motion blur left out. The preview is the program at the cut |
+| Apply to selected cut, Apply to every cut | Buttons, or drag a tile onto a cut | Do, through a new `AddTransitionOperation` over `TimelineEditor.AddTransition`, as `add_transition` does. A transition is baked into keyframes, so the panel says undo takes it off. Every cut is the chosen cut's lane (or the selected clip's), as one step. Dragging a tile onto a cut left out |
 
 ### 14 · Title templates (phase 6)
 
@@ -152,9 +152,9 @@
 |---|---|---|
 | Your styles | Saved looks drawn as samples | Do: the library's styles (`save_style`), each drawn by the renderer |
 | Templates | Lower third, chapter card, speech bubble, sound-effect pop, two-language subtitle, end screen | S17 |
-| Edit title | Line 1, line 2, colors | Do for the selected text layer |
+| Edit title | Line 1, line 2, colors | Do for the selected text layer that isn't a caption, else a new title's fields. Line 2 is the lines after the first; the colors are fill and outline |
 | Animate in, Animate out | Pop + bounce, Fade | S18 |
-| Add at playhead, Update saved style | Buttons | Do, through `save_style` and `apply_style`'s logic moved into Core |
+| Add at playhead, Update saved style | Buttons | Do, through `save_style` and `apply_style`'s logic moved into Core. A new title is 4 s long (or to the end); with a title selected, Apply style takes the place of Add. A template card's Add at playhead runs `add_template` |
 
 ### 8 · Track & blur (phase 7)
 

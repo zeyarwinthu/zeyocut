@@ -33,6 +33,17 @@
     </Style>
 
     <local:ColorSwatch x:Key="Swatch" />
+    <DataTemplate x:Key="TitleCardTemplate">
+      <StackPanel Margin="2" ToolTip="{Binding Detail}" AutomationProperties.Name="{Binding Name}">
+        <Grid Height="124">
+          <Border CornerRadius="8" Background="{StaticResource ControlBrush}" />
+          <Image Source="{Binding Picture}" Stretch="Uniform" RenderOptions.BitmapScalingMode="HighQuality" />
+        </Grid>
+        <TextBlock Margin="4,7,4,2" TextTrimming="CharacterEllipsis">
+          <Run Text="{Binding Name, Mode=OneWay}" FontWeight="Medium" /><Run Text=" · " Foreground="{StaticResource SecondaryTextBrush}" /><Run Text="{Binding Detail, Mode=OneWay}" Foreground="{StaticResource SecondaryTextBrush}" />
+        </TextBlock>
+      </StackPanel>
+    </DataTemplate>
 
     <Style x:Key="FieldLabel" TargetType="TextBlock">
       <Setter Property="Foreground" Value="{StaticResource SecondaryTextBrush}" />
@@ -1113,6 +1124,8 @@
             <RadioButton x:Name="ExportMode" GroupName="Mode" Visibility="Collapsed" Checked="OnMode" />
             <RadioButton x:Name="MediaMode" GroupName="Mode" Visibility="Collapsed" Checked="OnMode" />
             <RadioButton x:Name="SourceMode" GroupName="Mode" Visibility="Collapsed" Checked="OnMode" />
+            <RadioButton x:Name="TitlesMode" GroupName="Mode" Visibility="Collapsed" Checked="OnMode" />
+            <RadioButton x:Name="EffectsMode" GroupName="Mode" Visibility="Collapsed" Checked="OnMode" />
           </StackPanel>
         </Border>
 
@@ -2183,6 +2196,249 @@
       </DockPanel>
     </Grid>
 
+    <Grid x:Name="EffectsPage" Grid.Row="1" Visibility="Collapsed">
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="220" />
+        <ColumnDefinition Width="*" MinWidth="320" />
+        <ColumnDefinition Width="320" />
+      </Grid.ColumnDefinitions>
+      <Grid.RowDefinitions>
+        <RowDefinition Height="*" />
+        <RowDefinition Height="Auto" />
+      </Grid.RowDefinitions>
+
+      <Border Grid.RowSpan="2" Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,0,1,0">
+        <StackPanel Margin="10,14">
+          <TextBlock Text="CATEGORIES" Style="{StaticResource PanelTitle}" Margin="8,0,8,8" />
+          <StackPanel x:Name="EffectCategories" />
+        </StackPanel>
+      </Border>
+
+      <DockPanel Grid.Column="1" Margin="22,18,22,0">
+        <DockPanel DockPanel.Dock="Top" Margin="0,0,0,10">
+          <Grid DockPanel.Dock="Right" Width="220" Height="34" Margin="10,0,0,0">
+            <TextBox x:Name="EffectSearch" Background="{StaticResource HeaderBrush}" Padding="30,7,8,0" FontSize="13" TextChanged="OnEffectSearch"
+                     AutomationProperties.Name="Search effects" ToolTip="Show the effects with these words in their name" />
+            <local:Icon Data="{StaticResource SearchShape}" Width="14" Height="14" Margin="10,0,0,0" HorizontalAlignment="Left" IsHitTestVisible="False"
+                        Foreground="{StaticResource SecondaryTextBrush}" />
+            <TextBlock x:Name="EffectSearchHint" Text="Search effects" FontSize="13" Margin="31,0,0,0" VerticalAlignment="Center" IsHitTestVisible="False"
+                       Foreground="{StaticResource SecondaryTextBrush}" />
+          </Grid>
+          <TextBlock x:Name="EffectsTitle" FontSize="20" FontWeight="SemiBold" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+        </DockPanel>
+        <TextBlock x:Name="EffectsHint" DockPanel.Dock="Top" Style="{StaticResource Secondary}" FontSize="13" TextWrapping="Wrap" TextTrimming="None" Margin="0,0,0,14" />
+        <Grid>
+          <ListBox x:Name="EffectList" SelectionChanged="OnEffectChosen" SizeChanged="OnEffectsSized" ItemContainerStyle="{StaticResource MediaTile}" Padding="0,0,0,16"
+                   AutomationProperties.Name="Effects">
+            <ListBox.ItemsPanel>
+              <ItemsPanelTemplate>
+                <UniformGrid Columns="{Binding Tag, RelativeSource={RelativeSource AncestorType=ListBox}}" VerticalAlignment="Top" />
+              </ItemsPanelTemplate>
+            </ListBox.ItemsPanel>
+            <ListBox.ItemTemplate>
+              <DataTemplate>
+                <StackPanel ToolTip="{Binding Tip}" Margin="2" AutomationProperties.Name="{Binding Name}">
+                  <local:EffectSketch Kind="{Binding Sketch}" Height="88" />
+                  <DockPanel Margin="2,7,2,2">
+                    <TextBlock DockPanel.Dock="Right" Text="{Binding Meta}" FontSize="11" Foreground="{StaticResource SecondaryTextBrush}" Margin="6,0,0,0" VerticalAlignment="Center" />
+                    <TextBlock Text="{Binding Name}" FontWeight="Medium" TextTrimming="CharacterEllipsis" />
+                  </DockPanel>
+                </StackPanel>
+              </DataTemplate>
+            </ListBox.ItemTemplate>
+          </ListBox>
+          <TextBlock x:Name="EffectsEmpty" Style="{StaticResource Secondary}" FontSize="13" Margin="4,8" VerticalAlignment="Top" Visibility="Collapsed" Text="Nothing here has that name." />
+        </Grid>
+      </DockPanel>
+
+      <Border x:Name="CutPanel" Grid.Row="1" Grid.Column="1" Padding="22,10,22,14" BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,1,0,0">
+        <StackPanel>
+          <TextBlock x:Name="CutTitle" FontSize="12" Foreground="{StaticResource SecondaryTextBrush}" TextTrimming="CharacterEllipsis" />
+          <local:CutStrip x:Name="CutStrip" Margin="0,8,0,0" Chosen="OnCutStripChosen" ToolTip="The cuts of the lane, marked; click a mark to choose that cut" />
+        </StackPanel>
+      </Border>
+
+      <Border Grid.Column="2" Grid.RowSpan="2" Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource DividerBrush}" BorderThickness="1,0,0,0">
+        <DockPanel Margin="16">
+          <StackPanel DockPanel.Dock="Bottom" Margin="0,14,0,0">
+            <Button x:Name="EffectApplyButton" Style="{StaticResource AccentButton}" Height="36" Click="OnEffectApply" Margin="0,0,0,8" />
+            <Button x:Name="EffectEveryButton" Height="36" Click="OnEffectEvery" />
+          </StackPanel>
+          <ScrollViewer VerticalScrollBarVisibility="Auto" Focusable="False">
+            <StackPanel>
+              <TextBlock x:Name="EffectName" FontSize="13" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+              <Grid Height="162" Margin="0,12,0,0">
+                <Border CornerRadius="10" Background="{StaticResource PreviewBrush}" />
+                <Image x:Name="EffectPreview" Margin="4" Stretch="Uniform" RenderOptions.BitmapScalingMode="HighQuality" Source="{Binding Source, ElementName=PreviewImage}" />
+                <Border CornerRadius="4" Background="#CC0A0C10" Padding="6,2" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="8">
+                  <TextBlock x:Name="EffectTarget" FontFamily="Consolas" FontSize="11" />
+                </Border>
+              </Grid>
+              <Grid x:Name="TransitionSettings" Margin="0,14,0,0">
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="88" />
+                  <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                  <RowDefinition Height="Auto" />
+                  <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+                <TextBlock Text="Duration" Foreground="{StaticResource IconTextBrush}" VerticalAlignment="Center" />
+                <DockPanel Grid.Column="1" Height="32">
+                  <TextBlock DockPanel.Dock="Right" Text="s" Style="{StaticResource Secondary}" Margin="8,0,0,0" VerticalAlignment="Center" />
+                  <TextBox x:Name="EffectDuration" Padding="10,0" VerticalContentAlignment="Center" FontFamily="Consolas" KeyDown="OnEffectDurationKey" LostKeyboardFocus="OnEffectDurationLeft"
+                           AutomationProperties.Name="Duration in seconds" ToolTip="How long the transition takes, in seconds" />
+                </DockPanel>
+                <TextBlock Grid.Row="1" Text="Direction" Foreground="{StaticResource IconTextBrush}" VerticalAlignment="Center" Margin="0,10,0,0" />
+                <WrapPanel x:Name="EffectDirections" Grid.Row="1" Grid.Column="1" Margin="0,10,0,0" />
+              </Grid>
+              <Border Background="{StaticResource NoteBrush}" BorderBrush="{StaticResource NoteBorderBrush}" BorderThickness="1" CornerRadius="8" Padding="12,10" Margin="0,16,0,0">
+                <TextBlock x:Name="EffectNote" Foreground="{StaticResource AccentSoftTextBrush}" FontSize="12" TextWrapping="Wrap" LineHeight="18" />
+              </Border>
+            </StackPanel>
+          </ScrollViewer>
+        </DockPanel>
+      </Border>
+    </Grid>
+
+    <Grid x:Name="TitlesPage" Grid.Row="1" Visibility="Collapsed">
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="*" MinWidth="360" />
+        <ColumnDefinition Width="330" />
+      </Grid.ColumnDefinitions>
+
+      <DockPanel Margin="24,20,24,0">
+        <DockPanel DockPanel.Dock="Top" Margin="0,0,0,16">
+          <Border DockPanel.Dock="Right" Background="{StaticResource HeaderBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="8" Padding="3">
+            <StackPanel Orientation="Horizontal">
+              <RadioButton x:Name="TitlesAll" GroupName="TitleFilter" Style="{StaticResource FilterChip}" Content="All" IsChecked="True" Checked="OnTitleFilter" Margin="0" />
+              <RadioButton x:Name="TitlesStyles" GroupName="TitleFilter" Style="{StaticResource FilterChip}" Content="Your styles" Checked="OnTitleFilter" Margin="0" />
+              <RadioButton x:Name="TitlesTemplates" GroupName="TitleFilter" Style="{StaticResource FilterChip}" Content="Templates" Checked="OnTitleFilter" Margin="0" />
+            </StackPanel>
+          </Border>
+          <TextBlock Text="Titles" FontSize="20" FontWeight="SemiBold" VerticalAlignment="Center" />
+        </DockPanel>
+        <ScrollViewer VerticalScrollBarVisibility="Auto" Focusable="False">
+          <StackPanel Margin="0,0,0,16">
+            <StackPanel x:Name="StyleSection">
+              <TextBlock Text="YOUR STYLES" Style="{StaticResource PanelTitle}" Margin="0,0,0,8" HorizontalAlignment="Left" />
+              <ListBox x:Name="StyleList" SelectionChanged="OnTitleCardChosen" SizeChanged="OnTitleCardsSized" ItemContainerStyle="{StaticResource MediaTile}"
+                       ItemTemplate="{StaticResource TitleCardTemplate}" AutomationProperties.Name="Your styles">
+                <ListBox.Template>
+                  <ControlTemplate TargetType="ListBox">
+                    <ItemsPresenter />
+                  </ControlTemplate>
+                </ListBox.Template>
+                <ListBox.ItemsPanel>
+                  <ItemsPanelTemplate>
+                    <UniformGrid Columns="{Binding Tag, RelativeSource={RelativeSource AncestorType=ListBox}}" VerticalAlignment="Top" />
+                  </ItemsPanelTemplate>
+                </ListBox.ItemsPanel>
+              </ListBox>
+              <TextBlock x:Name="StylesEmpty" Style="{StaticResource Secondary}" FontSize="12" TextWrapping="Wrap" TextTrimming="None" Margin="4,0,0,0" Visibility="Collapsed"
+                         Text="No styles in the library yet. Ask Claude to save a text's look as a style (save_style)." />
+            </StackPanel>
+            <StackPanel x:Name="TemplateSection" Margin="0,22,0,0">
+              <TextBlock Text="TEMPLATES" Style="{StaticResource PanelTitle}" Margin="0,0,0,8" HorizontalAlignment="Left" />
+              <ListBox x:Name="TemplateList" SelectionChanged="OnTitleCardChosen" SizeChanged="OnTitleCardsSized" ItemContainerStyle="{StaticResource MediaTile}"
+                       ItemTemplate="{StaticResource TitleCardTemplate}" AutomationProperties.Name="Templates">
+                <ListBox.Template>
+                  <ControlTemplate TargetType="ListBox">
+                    <ItemsPresenter />
+                  </ControlTemplate>
+                </ListBox.Template>
+                <ListBox.ItemsPanel>
+                  <ItemsPanelTemplate>
+                    <UniformGrid Columns="{Binding Tag, RelativeSource={RelativeSource AncestorType=ListBox}}" VerticalAlignment="Top" />
+                  </ItemsPanelTemplate>
+                </ListBox.ItemsPanel>
+              </ListBox>
+              <TextBlock x:Name="TemplatesEmpty" Style="{StaticResource Secondary}" FontSize="12" TextWrapping="Wrap" TextTrimming="None" Margin="4,0,0,0" Visibility="Collapsed"
+                         Text="No templates in the library yet. Ask Claude to save layers as a template (save_template): a lower third, a chapter card, an end screen." />
+            </StackPanel>
+          </StackPanel>
+        </ScrollViewer>
+      </DockPanel>
+
+      <Border Grid.Column="1" Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource DividerBrush}" BorderThickness="1,0,0,0">
+        <DockPanel Margin="16">
+          <StackPanel DockPanel.Dock="Bottom" Margin="0,14,0,0">
+            <Button x:Name="TitleAddButton" Style="{StaticResource AccentButton}" Height="36" Content="Add at playhead" Click="OnTitleAdd" Margin="0,0,0,8" />
+            <Button x:Name="TitleApplyButton" Style="{StaticResource AccentButton}" Height="36" Click="OnTitleApply" Margin="0,0,0,8" />
+            <Button x:Name="TitleUpdateButton" Height="36" Content="Update saved style" Click="OnTitleUpdate" />
+          </StackPanel>
+          <ScrollViewer VerticalScrollBarVisibility="Auto" Focusable="False">
+            <StackPanel>
+              <DockPanel>
+                <Button x:Name="TitleNewButton" DockPanel.Dock="Right" Style="{StaticResource LinkButton}" Content="New title" Click="OnTitleNew" FontSize="12" Margin="8,0,0,0"
+                        ToolTip="Leave the selected text alone and set up a new title" />
+                <TextBlock x:Name="TitleHeading" FontSize="13" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+              </DockPanel>
+              <TextBlock x:Name="TitleSummary" Style="{StaticResource Secondary}" FontSize="12" TextWrapping="Wrap" TextTrimming="None" Margin="0,4,0,0" />
+              <StackPanel x:Name="TitleFields">
+                <TextBlock Text="Line 1" Foreground="{StaticResource IconTextBrush}" FontWeight="Medium" Margin="0,14,0,6" />
+                <TextBox x:Name="TitleLine1" Height="34" Padding="10,0" VerticalContentAlignment="Center" KeyDown="OnTitleFieldKey" LostKeyboardFocus="OnTitleFieldLeft"
+                         AutomationProperties.Name="Line 1" />
+                <TextBlock Text="Line 2" Foreground="{StaticResource IconTextBrush}" FontWeight="Medium" Margin="0,12,0,6" />
+                <TextBox x:Name="TitleLine2" Height="34" Padding="10,0" VerticalContentAlignment="Center" KeyDown="OnTitleFieldKey" LostKeyboardFocus="OnTitleFieldLeft"
+                         AutomationProperties.Name="Line 2" ToolTip="A second line under the first; empty for none" />
+                <TextBlock Text="Colors" Foreground="{StaticResource IconTextBrush}" FontWeight="Medium" Margin="0,14,0,6" />
+                <Grid>
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="8" />
+                    <ColumnDefinition Width="*" />
+                  </Grid.ColumnDefinitions>
+                  <DockPanel ToolTip="The text's color: #RRGGBB, or #RRGGBBAA with opacity">
+                    <Border DockPanel.Dock="Left" Width="30" Height="30" CornerRadius="7" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" Margin="0,0,6,0"
+                            Background="{Binding Text, ElementName=TitleFill, Converter={StaticResource Swatch}}" />
+                    <TextBox x:Name="TitleFill" Height="30" Padding="8,0" VerticalContentAlignment="Center" FontFamily="Consolas" KeyDown="OnTitleFieldKey" LostKeyboardFocus="OnTitleFieldLeft"
+                             AutomationProperties.Name="Fill color" />
+                  </DockPanel>
+                  <DockPanel Grid.Column="2" ToolTip="The outline's color: #RRGGBB; empty for none">
+                    <Border DockPanel.Dock="Left" Width="30" Height="30" CornerRadius="7" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" Margin="0,0,6,0"
+                            Background="{Binding Text, ElementName=TitleOutline, Converter={StaticResource Swatch}}" />
+                    <TextBox x:Name="TitleOutline" Height="30" Padding="8,0" VerticalContentAlignment="Center" FontFamily="Consolas" KeyDown="OnTitleFieldKey" LostKeyboardFocus="OnTitleFieldLeft"
+                             AutomationProperties.Name="Outline color" />
+                  </DockPanel>
+                </Grid>
+                <Grid Margin="0,14,0,0">
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="8" />
+                    <ColumnDefinition Width="*" />
+                  </Grid.ColumnDefinitions>
+                  <StackPanel>
+                    <TextBlock Text="Animate in" Foreground="{StaticResource IconTextBrush}" FontWeight="Medium" Margin="0,0,0,6" />
+                    <Button x:Name="TitleInButton" Style="{StaticResource FieldButton}" Height="34" Click="OnTitleIn" AutomationProperties.Name="Animate in"
+                            ToolTip="How it comes in at its start: keyframes on its opacity, scale and position over half a second">
+                      <DockPanel>
+                        <local:Icon DockPanel.Dock="Right" Data="{StaticResource ChevronDownShape}" Thickness="2.5" Width="10" Height="10" />
+                        <TextBlock x:Name="TitleInText" VerticalAlignment="Center" />
+                      </DockPanel>
+                    </Button>
+                  </StackPanel>
+                  <StackPanel Grid.Column="2">
+                    <TextBlock Text="Animate out" Foreground="{StaticResource IconTextBrush}" FontWeight="Medium" Margin="0,0,0,6" />
+                    <Button x:Name="TitleOutButton" Style="{StaticResource FieldButton}" Height="34" Click="OnTitleOut" AutomationProperties.Name="Animate out"
+                            ToolTip="How it goes out at its end: keyframes on its opacity, scale and position over half a second">
+                      <DockPanel>
+                        <local:Icon DockPanel.Dock="Right" Data="{StaticResource ChevronDownShape}" Thickness="2.5" Width="10" Height="10" />
+                        <TextBlock x:Name="TitleOutText" VerticalAlignment="Center" />
+                      </DockPanel>
+                    </Button>
+                  </StackPanel>
+                </Grid>
+              </StackPanel>
+              <Border Background="{StaticResource NoteBrush}" BorderBrush="{StaticResource NoteBorderBrush}" BorderThickness="1" CornerRadius="8" Padding="12,10" Margin="0,16,0,0">
+                <TextBlock x:Name="TitleNote" Foreground="{StaticResource AccentSoftTextBrush}" FontSize="12" TextWrapping="Wrap" LineHeight="18" />
+              </Border>
+            </StackPanel>
+          </ScrollViewer>
+        </DockPanel>
+      </Border>
+    </Grid>
+
     <Grid x:Name="Workspace" Grid.Row="1" Visibility="Collapsed">
       <Grid.RowDefinitions>
         <RowDefinition Height="*" MinHeight="200" />
@@ -2198,13 +2454,34 @@
       </Grid.ColumnDefinitions>
 
       <DockPanel Background="{StaticResource PanelBrush}">
+        <Border DockPanel.Dock="Left" Width="52" Background="{StaticResource HeaderBrush}" BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,0,1,0">
+          <StackPanel Margin="0,8,0,0">
+            <Button x:Name="MediaBrowserButton" Style="{StaticResource RailButton}" Click="OnMediaBrowser" AutomationProperties.Name="Open the media browser"
+                         ToolTip="The media browser: bins, search, details and the source viewer">
+              <StackPanel>
+                <local:Icon Data="{StaticResource CardsShape}" Width="16" Height="16" />
+                <TextBlock Text="Media" FontSize="10" Margin="0,4,0,0" HorizontalAlignment="Center" />
+              </StackPanel>
+            </Button>
+            <Button x:Name="TitlesButton" Style="{StaticResource RailButton}" Click="OnTitlesView" AutomationProperties.Name="Open the titles"
+                         ToolTip="Titles: the library's styles and templates, and a title's lines, colors and animation">
+              <StackPanel>
+                <local:Icon Data="{StaticResource TitleShape}" Width="16" Height="16" />
+                <TextBlock Text="Titles" FontSize="10" Margin="0,4,0,0" HorizontalAlignment="Center" />
+              </StackPanel>
+            </Button>
+            <Button x:Name="EffectsButton" Style="{StaticResource RailButton}" Click="OnEffectsView" AutomationProperties.Name="Open the effects"
+                         ToolTip="Effects: transitions on cuts, video effects and how titles come in and go out">
+              <StackPanel>
+                <local:Icon Data="{StaticResource EffectsShape}" Width="16" Height="16" />
+                <TextBlock Text="Effects" FontSize="10" Margin="0,4,0,0" HorizontalAlignment="Center" />
+              </StackPanel>
+            </Button>
+          </StackPanel>
+        </Border>
         <Grid DockPanel.Dock="Top" Margin="12,12,12,0">
           <StackPanel Orientation="Horizontal">
             <TextBlock Text="Media" FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center" />
-            <Button x:Name="MediaBrowserButton" Style="{StaticResource IconButton}" Margin="6,0,0,0" VerticalAlignment="Center" Click="OnMediaBrowser"
-                    ToolTip="Open the media browser: bins, search, details and the source viewer" AutomationProperties.Name="Open the media browser">
-              <local:Icon Data="{StaticResource CardsShape}" Width="14" Height="14" />
-            </Button>
           </StackPanel>
           <Button HorizontalAlignment="Right" VerticalAlignment="Center" Padding="10,5" Click="OnImport" ToolTip="Import images, audio, fonts or video (Ctrl+I)">
             <StackPanel Orientation="Horizontal">
@@ -2525,7 +2802,7 @@
             <RowDefinition Height="Auto" />
           </Grid.RowDefinitions>
           <local:TimelineView x:Name="Timeline" Seek="OnSeek" Selected="OnClipSelected" Edit="OnTimelineEdit" ClipMenu="OnClipMenu" ViewChanged="OnTimelineViewChanged"
-                              LaneToggled="OnLaneToggled"
+                              LaneToggled="OnLaneToggled" CutChosen="OnCutChosen"
                               AllowDrop="True" DragOver="OnTimelineDragOver" DragLeave="OnTimelineDragLeave" Drop="OnTimelineDrop" />
           <ScrollBar x:Name="TimelineVertical" Grid.Column="1" Orientation="Vertical" Scroll="OnTimelineScroll" />
           <ScrollBar x:Name="TimelineHorizontal" Grid.Row="1" Orientation="Horizontal" Scroll="OnTimelineScroll" />

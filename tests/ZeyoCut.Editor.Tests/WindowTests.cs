@@ -2381,4 +2381,239 @@ public class WindowTests
         WaitForSaves(window);
         Assert.Equal("-", Text(window, "LoudnessLufs"));
     });
+
+    // A click on the grip where a clip meets the next chooses that cut, and the Effects view puts the
+    // chosen transition on it as add_transition does; Apply to every cut puts it on each cut of the lane
+    // as one undo step. A video effect and a way in and out go on the selected layer.
+    [Fact]
+    public void TheEffectsViewPutsTransitionsOnTheCutsChosenOnTheTimeline() => TestWindow.Run("window-effects", (window, folder) =>
+    {
+        var directory = Saved(folder, "cuts");
+        ProjectSession.Open(directory).Mutate("add_image_layer", p =>
+        {
+            p.Duration = 3;
+            foreach (var (id, start) in new[] { ("a", 0.0), ("b", 1.0), ("c", 2.0) })
+            {
+                ProjectEditor.AddImageLayer(p, new ImageLayerOptions { Drawings = new Dictionary<string, string> { ["normal"] = "logo" }, Id = id, Start = start, End = start + 1, ZIndex = 0 });
+            }
+
+            ProjectEditor.AddTextLayer(p, new TextLayerOptions { Id = "title", Text = "Hi", Start = 0, End = 3, ZIndex = 1 });
+            return 0;
+        });
+        window.OpenProject(directory);
+        TestWindow.Pump();
+        var timeline = (TimelineView)window.FindName("Timeline");
+        var lane = timeline.Lanes.ToList().FindIndex(l => l.Clips.Any(c => c.LayerId == "a"));
+        double X(double time) => TimelineView.HeaderWidth + time * timeline.PixelsPerSecond - timeline.HorizontalOffset;
+        var middle = TimelineView.RulerHeight + timeline.Lanes.Take(lane).Sum(TimelineView.LaneHeight) + 3 + TimelineView.RowHeight(LaneKind.Visual) / 2;
+
+        // A click without a drag on 'a''s end chooses the cut; nothing is saved.
+        var before = ProjectJson(directory);
+        timeline.Press(new Point(X(1) - 2, middle));
+        timeline.Release();
+        WaitForSaves(window);
+        Assert.Equal("a → b", timeline.Cut!.Label);
+        Assert.Equal(before, ProjectJson(directory));
+
+        Click(window, "EffectsButton");
+        TestWindow.Pump();
+        Assert.Equal(Visibility.Visible, Shown(window, "EffectsPage"));
+        Assert.Equal(Visibility.Collapsed, Shown(window, "ModeBar"));
+        Assert.Equal("Effects", ((System.Windows.Documents.Run)window.FindName("CrumbName")).Text);
+        var categories = ((Panel)window.FindName("EffectCategories")).Children.Cast<RadioButton>().ToList();
+        Assert.Equal(["Transitions", "Video effects", "Text animations"], categories.Select(System.Windows.Automation.AutomationProperties.GetName));
+        Assert.Equal(("a → b", "Selected cut · 00:01.00 · Images"), (Text(window, "EffectTarget"), Text(window, "CutTitle")));
+        var apply = (Button)window.FindName("EffectApplyButton");
+        var every = (Button)window.FindName("EffectEveryButton");
+        Assert.Equal(("Apply to selected cut", true, "Apply to every cut (2)"), (apply.Content, apply.IsEnabled, every.Content));
+
+        // Slide from the top for 0.4 s, as add_transition puts it on.
+        var tiles = (ListBox)window.FindName("EffectList");
+        void Choose(string name)
+        {
+            tiles.SelectedItem = tiles.Items.Cast<EffectTile>().Single(t => t.Name == name);
+            TestWindow.Pump();
+        }
+
+        Choose("Slide");
+        var directions = ((Panel)window.FindName("EffectDirections")).Children.Cast<RadioButton>().ToList();
+        Assert.Equal(["From right", "From left", "From bottom", "From top"], directions.Select(System.Windows.Automation.AutomationProperties.GetName));
+        Assert.True(directions[0].IsChecked);
+        directions[3].IsChecked = true;
+        var length = (TextBox)window.FindName("EffectDuration");
+        length.Text = "0.4";
+        TestWindow.Press(length, Key.Enter);
+        var expected = ProjectStore.Load(directory);
+        Click(window, "EffectApplyButton");
+        WaitForSaves(window);
+        new AddTransitionOperation("a", "b", TransitionType.Slide, 0.4, TransitionDirection.Down).Apply(expected);
+        Assert.Equal(WithoutRevision(ZeyoCut.Core.Serialization.ProjectJson.Serialize(expected)), ProjectJson(directory));
+
+        // The clips overlap now, so the cut isn't one; undone, it is again.
+        TestWindow.Pump();
+        Assert.False(apply.IsEnabled);
+        Click(window, "UndoButton");
+        WaitForSaves(window);
+        Assert.Equal(before, ProjectJson(directory));
+        TestWindow.Pump();
+        Assert.True(apply.IsEnabled);
+
+        // A crossfade on both cuts of the lane is one step.
+        Choose("Crossfade");
+        Assert.Equal("None: it has no direction", Assert.IsType<TextBlock>(Assert.Single(((Panel)window.FindName("EffectDirections")).Children)).Text);
+        var revision = ProjectStore.Load(directory).Revision;
+        expected = ProjectStore.Load(directory);
+        Click(window, "EffectEveryButton");
+        WaitForSaves(window);
+        new AddTransitionOperation("a", "b", TransitionType.Crossfade, 0.4).Apply(expected);
+        new AddTransitionOperation("b", "c", TransitionType.Crossfade, 0.4).Apply(expected);
+        Assert.Equal(WithoutRevision(ZeyoCut.Core.Serialization.ProjectJson.Serialize(expected)), ProjectJson(directory));
+        Assert.Equal(revision + 1, ProjectStore.Load(directory).Revision);
+        Click(window, "UndoButton");
+        WaitForSaves(window);
+        Assert.Equal(before, ProjectJson(directory));
+
+        // A shadow on the selected title, then a pop in and out.
+        window.SelectLayer("title");
+        categories[1].IsChecked = true;
+        TestWindow.Pump();
+        Choose("Shadow");
+        Assert.Equal(("title", "Add to selected layer"), (Text(window, "EffectTarget"), apply.Content));
+        expected = ProjectStore.Load(directory);
+        Click(window, "EffectApplyButton");
+        WaitForSaves(window);
+        new SetEffectOperation("title", EffectKind.Shadow, new EffectValues(null, null, null, null, null, null, null)).Apply(expected);
+        Assert.Equal(WithoutRevision(ZeyoCut.Core.Serialization.ProjectJson.Serialize(expected)), ProjectJson(directory));
+        TestWindow.Pump();
+        Assert.Equal("Take the shadow off", apply.Content);
+
+        categories[2].IsChecked = true;
+        TestWindow.Pump();
+        Choose("Pop");
+        Assert.Equal(("Use to come in", "Use to go out"), (apply.Content, every.Content));
+        Click(window, "EffectApplyButton");
+        WaitForSaves(window);
+        Click(window, "EffectEveryButton");
+        WaitForSaves(window);
+        new TitleAnimationOperation("title", TitleSide.In, TitleAnimation.Pop).Apply(expected);
+        new TitleAnimationOperation("title", TitleSide.Out, TitleAnimation.Pop).Apply(expected);
+        Assert.Equal(WithoutRevision(ZeyoCut.Core.Serialization.ProjectJson.Serialize(expected)), ProjectJson(directory));
+        TestWindow.Pump();
+        Assert.Equal("title · in: Pop · out: Pop", Text(window, "EffectTarget"));
+
+        Click(window, "BackToEdit");
+        TestWindow.Pump();
+        Assert.Equal((Visibility.Visible, Visibility.Collapsed), (Shown(window, "Workspace"), Shown(window, "EffectsPage")));
+    });
+
+    // The Titles view shows the library's styles and templates, drawn. Add at playhead adds the fields
+    // in the chosen style with their presets, as add_text_layer adds them; the selected title's fields
+    // and presets change it, Apply puts the style back, Update saved style saves its look over the
+    // style, and a template goes in from the playhead as add_template puts it.
+    [Fact]
+    public void TheTitlesViewAddsTitlesAndTemplatesAsTheirToolsDo() => TestWindow.Run("window-titles", (window, folder) =>
+    {
+        var library = new Library(Path.Combine(folder, "library"));
+        var kitDirectory = Saved(folder, "kit");
+        var kit = ProjectStore.Load(kitDirectory);
+        ProjectEditor.AddTextLayer(kit, new TextLayerOptions { Id = "gold", Text = "Gold", FontSize = 20, Color = "#FFD700", StrokeColor = "#5A3A22", Bold = true });
+        ProjectEditor.AddImageLayer(kit, new ImageLayerOptions { Drawings = new Dictionary<string, string> { ["normal"] = "logo" }, Id = "bar", Start = 0.5, End = 1.5, ZIndex = 2 });
+        ProjectEditor.AddTextLayer(kit, new TextLayerOptions { Id = "name", Text = "Name", ParentId = "bar", Start = 0.5, End = 1.5, ZIndex = 3 });
+        TextStyles.Save(kit, kitDirectory, library, "gold", "Gold", CaptionPosition.Bottom, overwrite: false);
+        Templates.Save(kit, kitDirectory, library, "lower third", ["bar"], null, overwrite: false);
+
+        var directory = Saved(folder, "show");
+        window.OpenProject(directory);
+        TestWindow.Pump();
+        var timeline = (TimelineView)window.FindName("Timeline");
+        timeline.Press(new Point(TimelineView.HeaderWidth + 0.5 * timeline.PixelsPerSecond - timeline.HorizontalOffset, TimelineView.RulerHeight / 2));
+        timeline.Release();
+        TestWindow.Pump();
+
+        Click(window, "TitlesButton");
+        TestWindow.Pump();
+        Assert.Equal(Visibility.Visible, Shown(window, "TitlesPage"));
+        Assert.Equal("Titles", ((System.Windows.Documents.Run)window.FindName("CrumbName")).Text);
+        var styles = (ListBox)window.FindName("StyleList");
+        var templates = (ListBox)window.FindName("TemplateList");
+        TitleCard Card(ListBox list) => Assert.Single(list.Items.Cast<TitleCard>());
+        for (var i = 0; i < 500 && (Card(styles).Picture is null || Card(templates).Picture is null); i++)
+        {
+            TestWindow.Pump(20);
+        }
+
+        Assert.Equal(("Gold", "Segoe UI bold, 20 px"), (Card(styles).Name, Card(styles).Detail));
+        Assert.Equal("lower third", Card(templates).Name);
+        Assert.NotNull(Card(styles).Picture);
+        Assert.NotNull(Card(templates).Picture);
+        ((RadioButton)window.FindName("TitlesTemplates")).IsChecked = true;
+        Assert.Equal((Visibility.Collapsed, Visibility.Visible), (Shown(window, "StyleSection"), Shown(window, "TemplateSection")));
+        ((RadioButton)window.FindName("TitlesAll")).IsChecked = true;
+
+        // A new title in the style Gold, with its colors, popping in and fading out.
+        var (line1, line2, fill) = ((TextBox)window.FindName("TitleLine1"), (TextBox)window.FindName("TitleLine2"), (TextBox)window.FindName("TitleFill"));
+        Assert.Equal(("New title", "Title"), (Text(window, "TitleHeading"), line1.Text));
+        styles.SelectedItem = Card(styles);
+        TestWindow.Pump();
+        Assert.Equal(("#FFD700", "#5A3A22", "Pop", "Fade"), (fill.Text, ((TextBox)window.FindName("TitleOutline")).Text,
+            Text(window, "TitleInText"), Text(window, "TitleOutText")));
+        line1.Text = "Tora Jumps!";
+        line2.Text = "Episode 1";
+        var expected = ProjectStore.Load(directory);
+        var style = library.Load<TextStyle>(LibraryKind.Style, "Gold");
+        Click(window, "TitleAddButton");
+        WaitForSaves(window);
+        using var renderer = new ZeyoCut.Render.FrameRenderer(directory);
+        Func<Project, ITextMeasurer> measurer = p => new ZeyoCut.Render.Text.TextMeasurer(renderer, p);
+        var options = new TextLayerOptions { Text = "Tora Jumps!\nEpisode 1", Start = 0.5, End = 2, Color = "#FFD700", StrokeColor = "#5A3A22", Align = "center" };
+        new AddTitleOperation(options, style, directory, library, TitleAnimation.Pop, TitleAnimation.Fade, measurer).Apply(expected);
+        Assert.Equal(WithoutRevision(ZeyoCut.Core.Serialization.ProjectJson.Serialize(expected)), ProjectJson(directory));
+        var title = expected.Layers.OfType<TextLayer>().Single().Id;
+        TestWindow.Pump();
+        Assert.Equal($"Selected text · {title}", Text(window, "TitleHeading"));
+
+        // Its second line and its way out changed, as update_layer and animateOut change them.
+        line2.Text = "Episode 2";
+        TestWindow.Press(line2, Key.Enter);
+        WaitForSaves(window);
+        Click(window, "TitleOutButton");
+        ChooseInMenu("Slide up");
+        WaitForSaves(window);
+        new UpdateLayerOperation(title, new JsonObject { ["text"] = "Tora Jumps!\nEpisode 2" }).Apply(expected);
+        new TitleAnimationOperation(title, TitleSide.Out, TitleAnimation.SlideUp).Apply(expected);
+        Assert.Equal(WithoutRevision(ZeyoCut.Core.Serialization.ProjectJson.Serialize(expected)), ProjectJson(directory));
+        TestWindow.Pump();
+        Assert.Equal("Slide up", Text(window, "TitleOutText"));
+
+        // Red, then the style applied again as apply_style applies it.
+        fill.Text = "#FF0000";
+        TestWindow.Press(fill, Key.Enter);
+        WaitForSaves(window);
+        new UpdateLayerOperation(title, new JsonObject { ["color"] = "#FF0000" }).Apply(expected);
+        Assert.Equal("Apply 'Gold'", ((Button)window.FindName("TitleApplyButton")).Content);
+        Click(window, "TitleApplyButton");
+        WaitForSaves(window);
+        new ApplyStyleOperation(style, title, directory, library, measurer).Apply(expected);
+        Assert.Equal(WithoutRevision(ZeyoCut.Core.Serialization.ProjectJson.Serialize(expected)), ProjectJson(directory));
+
+        // Green saved over the style; that isn't an edit to the project.
+        fill.Text = "#00FF00";
+        TestWindow.Press(fill, Key.Enter);
+        WaitForSaves(window);
+        var revision = ProjectStore.Load(directory).Revision;
+        Click(window, "TitleUpdateButton");
+        WaitForSaves(window);
+        Assert.Equal(("#00FF00", CaptionPosition.Bottom), (library.Load<TextStyle>(LibraryKind.Style, "Gold").Color, library.Load<TextStyle>(LibraryKind.Style, "Gold").CaptionPosition));
+        Assert.Equal(revision, ProjectStore.Load(directory).Revision);
+
+        // The template's layers from the playhead, as add_template adds them.
+        expected = ProjectStore.Load(directory);
+        templates.SelectedItem = Card(templates);
+        TestWindow.Pump();
+        Assert.Equal(("lower third", Visibility.Collapsed), (Text(window, "TitleHeading"), Shown(window, "TitleFields")));
+        Click(window, "TitleAddButton");
+        WaitForSaves(window);
+        new AddTemplateOperation("lower third", 0.5, directory, library).Apply(expected);
+        Assert.Equal(WithoutRevision(ZeyoCut.Core.Serialization.ProjectJson.Serialize(expected)), ProjectJson(directory));
+    });
 }

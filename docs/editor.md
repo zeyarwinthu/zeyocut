@@ -4,7 +4,7 @@
 
 ![The editor with the Tora Jumps example open: the media on the left, the frame at 0.967 seconds in the middle, the inspector on the right with Tora's position and rotation animated, and the timeline below with the keyframes on Tora's clip](editor-edit.png)
 
-It imports, browses and tags media, plays the edit with its sound, marks the part of a video or sound to use and inserts or overwrites it at the playhead, moves, trims and splits clips on a timeline, places, crops and animates layers with keyframes, retimes and eases keyframes on a dope sheet or as curves, sets effects, color adjustments and face-blur settings, edits captions, changes volumes and a video's speed, mixes the sound roles with volume keyframes and ducking, and exports. Masks, motion paths and transitions stay with the model: ask it for those.
+It imports, browses and tags media, plays the edit with its sound, marks the part of a video or sound to use and inserts or overwrites it at the playhead, moves, trims and splits clips on a timeline, places, crops and animates layers with keyframes, retimes and eases keyframes on a dope sheet or as curves, sets effects, color adjustments and face-blur settings, puts transitions on cuts, adds titles in the library's styles and its templates with a way in and out, edits captions, changes volumes and a video's speed, mixes the sound roles with volume keyframes and ducking, and exports. Masks and motion paths stay with the model: ask it for those.
 
 ## Open a project
 
@@ -25,7 +25,7 @@ When a project opens with files missing (moved or renamed), the **Relink** view 
 
 The first time the editor starts, when it has no settings file yet, the **Welcome** view shows the projects folder and how to connect Claude: the `zeyocut` entry for Claude Desktop's `claude_desktop_config.json`, with the path of the `ZeyoCut.Mcp.exe` next to the editor, to copy, or the bundle to install instead. Its Connect step turns green when a client lists the server's tools after the Welcome opened (the server notes the last one in `connected.json` in its log folder). The last step copies the sample `examples\tora-jump` into the projects folder, unless a project of that name is there already, and opens it. Skip setup, or I'll do this later, goes to Home, and the Welcome doesn't open again.
 
-The header across the top names the project and whether it's saved ("Saved · rev N"). The logo and **Projects** close the project and go back to Home. In the middle, **Edit**, **Audio**, **Animate**, **Captions** and **Activity** switch views; on the right are Undo and Redo, when Claude last saved the project, and **Export**, which opens the Export view (Ctrl+1, Ctrl+2, Ctrl+3, Ctrl+5, Ctrl+6 and Ctrl+E go to Edit, Audio, Animate, Captions, Activity and Export; ? or F1 lists every key). The Media browser and the source viewer, like Export, have Back to edit in place of the views. The status bar at the bottom names the selected clip, counts the layers and lanes, and says what the last change did.
+The header across the top names the project and whether it's saved ("Saved · rev N"). The logo and **Projects** close the project and go back to Home. In the middle, **Edit**, **Audio**, **Animate**, **Captions** and **Activity** switch views; on the right are Undo and Redo, when Claude last saved the project, and **Export**, which opens the Export view (Ctrl+1, Ctrl+2, Ctrl+3, Ctrl+5, Ctrl+6 and Ctrl+E go to Edit, Audio, Animate, Captions, Activity and Export; ? or F1 lists every key). The Media browser, the source viewer, Titles and Effects, like Export, have Back to edit in place of the views. The status bar at the bottom names the selected clip, counts the layers and lanes, and says what the last change did.
 
 ## Media
 
@@ -34,7 +34,7 @@ The media panel shows a tile for each asset: a picture made small, a video's fir
 - Import, above the media list (Ctrl+I), imports images, audio, fonts and video. Video that needs normalizing (variable frame rate, rotation, HDR) is converted first, as `import_video` does, with its progress in the media list. Files you pick yourself can come from any folder; the import folders limit only what the model can read.
 - Drag files from File Explorer onto the window to import them.
 - Drag media from the list onto a lane of the timeline, or right-click it → Add at the playhead. A video or picture dropped on a picture lane is drawn at that lane's level, and anywhere else on a level of its own on top. Sound takes the role of the sound lane it's dropped on, else music.
-- Double-click a video or a sound to open it in the [source viewer](#the-source-viewer), and the button beside the panel's title opens the [Media browser](#the-media-browser).
+- Double-click a video or a sound to open it in the [source viewer](#the-source-viewer). On the rail beside the panel, **Media** opens the [Media browser](#the-media-browser), and **Titles** and **Effects** open the [Titles](#titles) and [Effects](#effects) views.
 
 ### The Media browser
 
@@ -59,6 +59,26 @@ The source viewer shows a video or a sound on its own (its frames drawn by the s
 - **Audio**, for footage, adds the clip with its sound or without it (its sound off, as `update_layer`'s `muted`).
 - **Where it will go** names the lane the clip goes on: the lane of the clip selected on the timeline, else the lowest one with video (Video 1), else the lowest one, else a new track on top; for a sound, its role, Music unless a sound's clip is selected. Click the name to choose another. Under it is the lane around the playhead with the new clip; click it to move the playhead.
 - **Insert at playhead** (,) puts the part there, as `add_video_layer` with `edit` `insert` does: the clip under the playhead on that lane is split, and everything from the playhead on moves later by the part's length, with markers and the camera's keys. **Overwrite** (.) puts it over what the lane has there, cutting it, as `edit` `overwrite` does. Either is one undo step, selects the new clip, and moves the playhead to its end for the next one.
+
+## Titles
+
+![The Titles view with Tora Jumps open: four styles drawn as their names in their looks, the chapter-card and lower-third templates drawn at their first frames, and on the right the title "Tora Jumps! / Episode 1" just added in the Tora style, with its two lines, its white fill and brown outline, Pop in and Fade out](editor-titles.png)
+
+**Titles** on the media panel's rail shows the library's text styles and templates, each drawn by the renderer: a style as its name in its look, on the canvas size it was saved for, and a template as its project at its first frame. **All**, **Your styles** and **Templates** choose what shows. Styles and templates are made by the model (`save_style`, `save_template`), into the library it shares with the editor.
+
+- With no text selected, the panel on the right sets up a **New title**: Line 1, Line 2 (empty for one line), the fill and outline colors (#RRGGBB; the outline empty for none), and **Animate in** and **Animate out** (None, Fade, Pop or Slide up). Click a style first to start from its look and colors. **Add at playhead** adds it for 4 seconds (or to the video's end), centered, as `add_text_layer` with `style`, `animateIn` and `animateOut` does, as one undo step, and selects it.
+- With a title selected (a text that isn't a caption), the fields are its own and each change is saved as you make it: Enter or leaving a field saves the lines or colors as `update_layer` does, and choosing a preset puts its keyframes on, as `add_text_layer`'s presets do, in place of the ones there. A title whose keyframes at its start or end aren't a preset shows Keyframes. **Apply 'Style'** gives it the chosen style's look, keeping its words, place and timing, as `apply_style` does. **Update saved style** saves its look over the chosen style in the library, as `save_style` does; that isn't an undo step. **New title** leaves it and sets up a new one.
+- Click a template to see its layers. **Add at playhead** puts them in from the playhead as a block, as `add_template` does: on levels above the project's, with new ids where the project has them already, and its files brought in (or reused when the project has them).
+
+## Effects
+
+![The Effects view with a demo project open: the six transitions drawn as tiles, Slide chosen, its settings on the right with the program at the cut street → street_2, its duration and direction, and under the tiles the lane with the chosen cut marked at 3 s](editor-transitions.png)
+
+**Effects** on the media panel's rail has three categories on the left, with search over their names.
+
+- **Transitions**: Crossfade, Dip to black, Wipe, Slide, Zoom and Whip pan, as `add_transition` makes them. To choose a cut, click where a clip meets the next on its lane in the timeline (the end of one or the start of the other) without dragging; it's marked in the accent color. The strip under the tiles shows the lane around the cut with each cut marked, and clicking a mark chooses that one. The picture on the right is the program at the cut, so it shows the result once applied. **Duration** is in seconds (0.5 unless typed), and **Direction** is where the new picture comes from (from the right, left, bottom or top), or In and Out for a zoom. **Apply to selected cut** puts it on the chosen cut; **Apply to every cut** puts it on each cut of that lane (or the selected clip's) as one undo step. A transition overlaps the two clips, so the project may get shorter, and its keyframes and fades can be adjusted in Animate; Ctrl+Z takes it off.
+- **Video effects**: Blur, Shadow, Border and Tint go on the selected picture, text or video, or come off it, as the inspector's switches do. Their settings are in the inspector.
+- **Text animations**: Fade, Pop and Slide up, for how the selected title, picture or video comes in at its start (**Use to come in**) or goes out at its end (**Use to go out**), as the Titles view's presets.
 
 ## The preview
 
@@ -260,7 +280,9 @@ The editor reads `FfmpegPath`, `ProjectsRoot`, `LibraryPath` and `VideoEncoder` 
 
 ## What it leaves to the model
 
-- Masks, motion paths and transitions. The Animate view draws a motion path but doesn't move it.
+- Masks and motion paths. The Animate view draws a motion path but doesn't move it.
+- A transition's easing and motion blur as settings: it's keyframes and fades once on, which Animate retimes and eases.
+- Making a style or a template: the model's `save_style` and `save_template` do that, and the Titles view uses them.
 - Saving a custom easing as a preset, and a curve's bezier handles in the graph: type the curve's numbers instead.
 - Closing a gap: deleting a clip leaves one. The model's `remove_range` cuts a stretch of time out of every layer.
 - One clip is selected at a time.

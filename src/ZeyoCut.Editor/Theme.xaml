@@ -72,6 +72,8 @@
   <StreamGeometry x:Key="CardsShape">M4,4 H10 V10 H4 Z M14,4 H20 V10 H14 Z M4,14 H10 V20 H4 Z M14,14 H20 V20 H14 Z</StreamGeometry>
   <StreamGeometry x:Key="ExportShape">M12,15 V3 M7,8 L12,3 L17,8 M5,15 V19 A2,2 0 0 0 7,21 H17 A2,2 0 0 0 19,19 V15</StreamGeometry>
   <StreamGeometry x:Key="RowsShape">M9,6 H20 M9,12 H20 M9,18 H20 M4,6 H5 M4,12 H5 M4,18 H5</StreamGeometry>
+  <StreamGeometry x:Key="TitleShape">M5,5 H19 M12,5 V19 M9,19 H15</StreamGeometry>
+  <StreamGeometry x:Key="EffectsShape">M12,3 L13.8,10.2 L21,12 L13.8,13.8 L12,21 L10.2,13.8 L3,12 L10.2,10.2 Z</StreamGeometry>
   <StreamGeometry x:Key="OnionShape">M4,12 A5,5 0 1 0 14,12 A5,5 0 1 0 4,12 Z M10,12 A5,5 0 1 0 20,12 A5,5 0 1 0 10,12 Z</StreamGeometry>
 
   <Style TargetType="Button">
@@ -305,6 +307,33 @@
             <Trigger Property="IsChecked" Value="True">
               <Setter TargetName="Bd" Property="Background" Value="{StaticResource SelectionBrush}" />
               <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+            </Trigger>
+          </ControlTemplate.Triggers>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+  </Style>
+
+  <Style x:Key="RailButton" TargetType="Button">
+    <Setter Property="Foreground" Value="{StaticResource IconTextBrush}" />
+    <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+    <Setter Property="Margin" Value="4,0,4,4" />
+    <Setter Property="Template">
+      <Setter.Value>
+        <ControlTemplate TargetType="Button">
+          <Border x:Name="Bd" Background="Transparent" BorderBrush="Transparent" BorderThickness="1" CornerRadius="7" Padding="0,7,0,6">
+            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+          </Border>
+          <ControlTemplate.Triggers>
+            <Trigger Property="IsMouseOver" Value="True">
+              <Setter TargetName="Bd" Property="Background" Value="{StaticResource HoverBrush}" />
+              <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+            </Trigger>
+            <Trigger Property="IsKeyboardFocused" Value="True">
+              <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource AccentBrush}" />
+            </Trigger>
+            <Trigger Property="IsPressed" Value="True">
+              <Setter TargetName="Bd" Property="Background" Value="{StaticResource PressedBrush}" />
             </Trigger>
           </ControlTemplate.Triggers>
         </ControlTemplate>

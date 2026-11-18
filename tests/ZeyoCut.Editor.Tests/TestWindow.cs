@@ -15,8 +15,8 @@ public static class TestWindow
 {
     private static readonly Lazy<Dispatcher> Ui = new(Start);
 
-    // Runs test with a new window whose settings, projects folder, log folder and import folder
-    // (media) are in the test's folder, then closes it, which can first finish what it's doing hidden.
+    // Runs test with a new window whose settings, projects folder, log folder, library and import
+    // folder (media) are in the test's folder, then closes it, which can first finish what it's doing hidden.
     // An error nothing in the window caught (one the editor would show in its error dialog) fails the
     // test too. The editor's settings file is there, as it is after the first run, unless firstRun.
     public static void Run(string name, Action<MainWindow, string> test, bool firstRun = false)
@@ -34,7 +34,7 @@ public static class TestWindow
 
             Dispatcher.CurrentDispatcher.UnhandledException += Record;
             var closed = false;
-            var settings = new Settings(null, Path.Combine(folder, "projects"), Path.Combine(folder, "logs"), ImportFolders: [Path.Combine(folder, "media")]);
+            var settings = new Settings(null, Path.Combine(folder, "projects"), Path.Combine(folder, "logs"), LibraryPath: Path.Combine(folder, "library"), ImportFolders: [Path.Combine(folder, "media")]);
             if (!firstRun)
             {
                 File.WriteAllText(Path.Combine(folder, "editor.json"), "{}");
