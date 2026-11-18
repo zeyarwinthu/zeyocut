@@ -1697,7 +1697,7 @@ public class WindowTests
     }
 
     // The keys run from the shortcuts table: each key reaches its command (the Animate view's own in
-    // that view), Ctrl+D duplicates, N turns snapping off, Ctrl+3, Ctrl+5, Ctrl+6, Ctrl+E and Ctrl+1
+    // that view), Ctrl+D duplicates, N turns snapping off, Ctrl+3, Ctrl+2, Ctrl+5, Ctrl+6, Ctrl+E and Ctrl+1
     // switch views, and ? and F1 open the list Esc closes.
     [Fact]
     public void EveryKeyRunsItsCommandFromTheShortcutsTable() => TestWindow.Run("window-keys", (window, folder) =>
@@ -1717,6 +1717,11 @@ public class WindowTests
         Assert.All(animateOnly, c => Assert.True(window.CanRun(c), $"{c} can't run"));
         Assert.True(window.CanRun(Command.Play));
         Assert.False(window.CanRun(Command.Split));
+        Assert.Equal(Command.Audio, window.RunKey(Key.D2, ModifierKeys.Control, inField: false));
+        Assert.Equal(Visibility.Visible, Shown(window, "AudioPage"));
+        Assert.Equal(Visibility.Collapsed, Shown(window, "AnimatePage"));
+        Assert.True(window.CanRun(Command.Play));
+        Assert.False(window.CanRun(Command.Delete));
         Assert.Equal(Command.Edit, window.RunKey(Key.D1, ModifierKeys.Control, inField: false));
 
         // Typing in a field, only Ctrl shortcuts are the window's, and undo isn't.
@@ -1922,4 +1927,249 @@ public class WindowTests
         Assert.Equal($"Opened {Welcome.SampleName}", Text(window, "MessageText"));
         Assert.True(File.Exists(Path.Combine(folder, "editor.json")));
     }, firstRun: true);
+
+    // A project with a sound in each role open in the Audio view.
+    private static string Audio(MainWindow window, string name)
+    {
+        var directory = TestFiles.NewSoundProject(name);
+        window.OpenProject(directory);
+        Assert.Equal(Command.Audio, window.RunKey(Key.D2, ModifierKeys.Control, inField: false));
+        TestWindow.Pump();
+        return directory;
+    }
+
+    private static T Strip<T>(MainWindow window, AudioRole role, string? content = null) where T : FrameworkElement
+    {
+        TestWindow.Pump();
+        return Descendants<T>((ItemsControl)window.FindName("MixerStrips"))
+            .Single(c => c.Tag is MixerStrip strip && strip.Role == role && (content is null || (c as ContentControl)?.Content as string == content));
+    }
+
+    private static void Toggle(System.Windows.Controls.Primitives.ToggleButton button, bool on)
+    {
+        button.IsChecked = on;
+        button.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+    }
+
+    private static void KeyUp(UIElement target, Key key) =>
+        target.RaiseEvent(new KeyEventArgs(Keyboard.PrimaryDevice, PresentationSource.FromVisual(target)!, 0, key) { RoutedEvent = Keyboard.KeyUpEvent });
+
+    // A project.json's text without its revision.
+    private static string WithoutRevision(string json)
+    {
+        var node = JsonNode.Parse(json)!.AsObject();
+        node.Remove("revision");
+        return node.ToJsonString();
+    }
+
+    // The strips' fader, pan and M, the auto-duck switch and the ducking sliders each save one
+    // change, the one update_project makes from the same values; undo takes it back.
+    [Fact]
+    public void TheMixerSavesEachRolesMixAndTheDuckingAsUpdateProjectDoes() => TestWindow.Run("window-audio-mix", (window, folder) =>
+    {
+        var directory = Audio(window, "window-audio-mix-project");
+        var expected = ProjectStore.Load(directory);
+        Assert.Equal(Visibility.Visible, Shown(window, "AudioPage"));
+        Assert.Equal(Visibility.Collapsed, Shown(window, "Workspace"));
+        Assert.Equal(["Voice", "Music", "Sound effects"], ((ItemsControl)window.FindName("MixerStrips")).Items.Cast<MixerStrip>().Select(s => s.Name));
+        Assert.Equal(["Loudness -14", "True-peak limit"], ((ItemsControl)window.FindName("MasterSlots")).Items.Cast<MixerSlot>().Select(s => s.Name));
+        Assert.Equal("Target: YouTube -14 LUFS", ((Button)window.FindName("LoudnessTargetButton")).Content);
+
+        void Same(ProjectOptions options, string change)
+        {
+            WaitForSaves(window);
+            ProjectEditor.UpdateProject(expected, options);
+            Assert.Equal(WithoutRevision(ZeyoCut.Core.Serialization.ProjectJson.Serialize(expected)), ProjectJson(directory));
+            Assert.Contains(change, Text(window, "MessageText"));
+        }
+
+        // The music's fader from 0 down to -6 dB.
+        var fader = Strip<MixerFader>(window, AudioRole.Music);
+        fader.Press(fader.HandleAt(0));
+        fader.MoveTo(fader.HandleAt(-6), pressed: true);
+        fader.Release();
+        Same(new ProjectOptions { Role = AudioRole.Music, Gain = -6 }, "music gain 0 dB → -6 dB");
+        Assert.Equal("-6.0", Strip<MixerFader>(window, AudioRole.Music).Parent is StackPanel strip ? strip.Children.OfType<TextBlock>().Single().Text : null);
+
+        // Its pan half left, the effects muted, a step down on the voice's fader.
+        var pan = Strip<MixerPan>(window, AudioRole.Music);
+        pan.Press(pan.HandleAt(-0.5));
+        pan.Release();
+        Same(new ProjectOptions { Role = AudioRole.Music, Pan = -0.5 }, "music pan center → 50% left");
+        Toggle(Strip<System.Windows.Controls.Primitives.ToggleButton>(window, AudioRole.Effects, "M"), true);
+        Same(new ProjectOptions { Role = AudioRole.Effects, Muted = true }, "effects muted");
+        Assert.True(Strip<System.Windows.Controls.Primitives.ToggleButton>(window, AudioRole.Effects, "M").IsChecked);
+        TestWindow.Press(Strip<MixerFader>(window, AudioRole.Voice), Key.Down);
+        Same(new ProjectOptions { Role = AudioRole.Voice, Gain = -0.5 }, "voice gain 0 dB → -0.5 dB");
+
+        // Ducking off and on, then deeper and slower to come back.
+        var duck = (CheckBox)window.FindName("AutoDuck");
+        Assert.True(duck.IsChecked);
+        duck.IsChecked = false;
+        duck.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+        Same(new ProjectOptions { Ducking = false }, "music ducking off");
+        Assert.False(((Grid)window.FindName("DuckSettings")).IsEnabled);
+        duck.IsChecked = true;
+        duck.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+        Same(new ProjectOptions { Ducking = true }, "music ducking on");
+        var level = (Slider)window.FindName("DuckLevelSlider");
+        level.Value = 18;
+        KeyUp(level, Key.Right);
+        Same(new ProjectOptions { DuckLevel = -18 }, "duck level -12 dB → -18 dB");
+        Assert.Equal("-18 dB", Text(window, "DuckLevelText"));
+        var fadeOut = (Slider)window.FindName("DuckFadeOutSlider");
+        fadeOut.Value = 2.5;
+        KeyUp(fadeOut, Key.Right);
+        Same(new ProjectOptions { DuckFadeOut = 2.5 }, "duck fade out 1.5s → 2.5s");
+
+        // The target from the card's list.
+        Click(window, "LoudnessTargetButton");
+        ChooseInMenu("Podcast");
+        Same(new ProjectOptions { LoudnessTarget = -16 }, "-16 LUFS");
+        Assert.Equal("Target: Podcast -16 LUFS", ((Button)window.FindName("LoudnessTargetButton")).Content);
+
+        // One step back at a time.
+        Click(window, "UndoButton");
+        WaitForSaves(window);
+        Assert.Equal(-14, ProjectStore.Load(directory).Audio.LoudnessTarget);
+        Click(window, "UndoButton");
+        WaitForSaves(window);
+        Assert.Equal(1.5, ProjectStore.Load(directory).Audio.DuckFadeOut);
+        Assert.Equal(1.5, ((Slider)window.FindName("DuckFadeOutSlider")).Value);
+    });
+
+    // Solo is the preview's: the sound plays only the soloed roles, and nothing is saved.
+    [Fact]
+    public void SoloIsHeardInThePreviewAndNeverSaved() => TestWindow.Run("window-audio-solo", (window, folder) =>
+    {
+        var directory = Audio(window, "window-audio-solo-project");
+        var file = Path.Combine(directory, ProjectStore.ProjectFileName);
+        var saved = File.ReadAllText(file);
+        var backups = Directory.Exists(Path.Combine(directory, "backups")) ? Directory.GetFiles(Path.Combine(directory, "backups")).Length : 0;
+        Assert.Same(ProjectStore.Load(directory).GetType(), window.Heard.GetType());
+        Assert.False(window.Heard.Audio.Voice.Muted);
+
+        Toggle(Strip<System.Windows.Controls.Primitives.ToggleButton>(window, AudioRole.Music, "S"), true);
+        WaitForSaves(window);
+        Assert.Equal("The preview plays only music; nothing is saved", Text(window, "MessageText"));
+        Assert.Equal((true, false, true), (window.Heard.Audio.Voice.Muted, window.Heard.Audio.Music.Muted, window.Heard.Audio.Effects.Muted));
+        Assert.True(Strip<System.Windows.Controls.Primitives.ToggleButton>(window, AudioRole.Music, "S").IsChecked);
+        Toggle(Strip<System.Windows.Controls.Primitives.ToggleButton>(window, AudioRole.Voice, "S"), true);
+        Assert.Equal("The preview plays only voice and music; nothing is saved", Text(window, "MessageText"));
+        Assert.Equal((false, false, true), (window.Heard.Audio.Voice.Muted, window.Heard.Audio.Music.Muted, window.Heard.Audio.Effects.Muted));
+
+        // Solo stays while another view shows, and goes with the project.
+        Assert.Equal(Command.Edit, window.RunKey(Key.D1, ModifierKeys.Control, inField: false));
+        Assert.True(window.Heard.Audio.Effects.Muted);
+        Assert.Equal(Command.Audio, window.RunKey(Key.D2, ModifierKeys.Control, inField: false));
+        Assert.True(Strip<System.Windows.Controls.Primitives.ToggleButton>(window, AudioRole.Voice, "S").IsChecked);
+        WaitForSaves(window);
+        Assert.Equal(saved, File.ReadAllText(file));
+        Assert.Equal(backups, Directory.Exists(Path.Combine(directory, "backups")) ? Directory.GetFiles(Path.Combine(directory, "backups")).Length : 0);
+        Assert.False(ProjectStore.Load(directory).Audio.Effects.Muted);
+
+        // Another project opens with every role heard.
+        window.OpenProject(TestFiles.NewSoundProject("window-audio-solo-other"));
+        Assert.False(window.Heard.Audio.Effects.Muted);
+        Assert.Equal(Command.Audio, window.RunKey(Key.D2, ModifierKeys.Control, inField: false));
+        Assert.False(Strip<System.Windows.Controls.Primitives.ToggleButton>(window, AudioRole.Voice, "S").IsChecked);
+    });
+
+    // Pressing a clip's volume line adds a keyframe at the level it has there; dragging a dot moves
+    // it on the fader's scale; Delete takes the selected one away. Each is what set_keyframes,
+    // remove_keyframes and their like make, one step each.
+    [Fact]
+    public void VolumePointsAreAddedDraggedAndDeletedAsKeyframes() => TestWindow.Run("window-audio-volume", (window, folder) =>
+    {
+        var directory = Audio(window, "window-audio-volume-project");
+        var expected = ProjectStore.Load(directory);
+        var lanes = (VolumeView)window.FindName("VolumeLanes");
+        Assert.Equal([["talk"], ["song"], ["boing"]], lanes.Lanes.Select(l => l.Clips.Select(c => c.LayerId).ToArray()));
+        AudioLayer Song() => (AudioLayer)ProjectStore.Load(directory).FindLayer("song")!;
+
+        void Same()
+        {
+            WaitForSaves(window);
+            Assert.Equal(WithoutRevision(ZeyoCut.Core.Serialization.ProjectJson.Serialize(expected)), ProjectJson(directory));
+        }
+
+        // A press on the music's line at 2 s: a keyframe at full volume, so the sound is the same.
+        lanes.Press(lanes.LinePoint("song", 2));
+        lanes.Release();
+        KeyframeEditor.SetKeyframes(expected, [new KeyframeEntry("song", "volume", 2, System.Text.Json.JsonSerializer.SerializeToElement(1.0))]);
+        Same();
+        Assert.Equal(new KeyframeRef("song", "volume", 2), lanes.Selected);
+
+        // Pressed at 3.5 s and dragged down: a second keyframe, quieter, to the half dB.
+        var at = lanes.LinePoint("song", 3.5);
+        lanes.Press(at);
+        lanes.MoveTo(new Point(at.X, at.Y + 14), pressed: true);
+        lanes.Release();
+        WaitForSaves(window);
+        var quieter = Song().Volume.Keyframes.Single(k => k.Time == 3.5);
+        Assert.InRange(quieter.Value, 0.05, 0.9);
+        Assert.Equal(quieter.Value, MixerModel.VolumeAt(MixerModel.LevelPosition(quieter.Value)));
+        KeyframeEditor.SetKeyframes(expected, [new KeyframeEntry("song", "volume", 3.5, System.Text.Json.JsonSerializer.SerializeToElement(quieter.Value))]);
+        Same();
+        Assert.Equal(new KeyframeRef("song", "volume", 3.5), lanes.Selected);
+
+        // The first dot dragged up and a second later: louder, at 3 s.
+        var dot = lanes.KeyPoint("song", 2)!.Value;
+        var perSecond = lanes.LinePoint("song", 3).X - lanes.LinePoint("song", 2).X;
+        lanes.Press(dot);
+        lanes.MoveTo(new Point(dot.X + perSecond, dot.Y - 6), pressed: true);
+        lanes.Release();
+        WaitForSaves(window);
+        var louder = Song().Volume.Keyframes.Single(k => k.Time == 3);
+        Assert.True(louder.Value > 1, $"{louder.Value}");
+        KeyframeEditor.MoveKeyframes(expected, [new KeyframeMove("song", "volume", 2, 3, louder.Value)]);
+        Same();
+        Assert.StartsWith("moved song.volume's keyframe from 2s to 3s", Text(window, "MessageText"));
+
+        // Delete takes the selected one away; undo puts it back.
+        Assert.Equal(Command.Delete, window.RunKey(Key.Delete, ModifierKeys.None, inField: false));
+        KeyframeEditor.RemoveKeyframes(expected, [new KeyframeRef("song", "volume", 3)]);
+        Same();
+        Assert.Equal([3.5], Song().Volume.Keyframes.Select(k => k.Time));
+        Assert.Null(lanes.Selected);
+        Click(window, "UndoButton");
+        WaitForSaves(window);
+        Assert.Equal([3, 3.5], Song().Volume.Keyframes.Select(k => k.Time));
+
+        // A press off the line selects the clip's layer and moves the playhead there.
+        var line = lanes.LinePoint("talk", 2);
+        lanes.Press(new Point(line.X, line.Y + 18));
+        lanes.Release();
+        Assert.Equal(Timecode.Of(60, 30), Text(window, "AudioTimecode"));
+        Assert.Equal(Command.Edit, window.RunKey(Key.D1, ModifierKeys.Control, inField: false));
+        Assert.Equal("talk selected", Text(window, "SelectionText"));
+    });
+
+    // Measure gives audio_levels' loudness of the mix as exported; a change to the mix clears it.
+    [Fact]
+    public void TheLoudnessCardMeasuresTheMixAsAudioLevelsDoes() => TestWindow.Run("window-audio-loudness", (window, folder) =>
+    {
+        var ffmpeg = TestFiles.Ffmpeg();
+        var directory = Audio(window, "window-audio-loudness-project");
+        Assert.Equal("-", Text(window, "LoudnessLufs"));
+        Assert.StartsWith("Every export is normalized to -14 LUFS.", Text(window, "LoudnessText"));
+
+        Click(window, "MeasureButton");
+        for (var i = 0; i < 600 && Text(window, "LoudnessLufs") == "-"; i++)
+        {
+            TestWindow.Pump(50);
+        }
+
+        var report = ZeyoCut.Render.Export.AudioLevels.Measure(ProjectStore.Load(directory), directory, ffmpeg, ZeyoCut.Render.Export.AudioLevels.DefaultSection, null, TestContext.Current.CancellationToken)!;
+        Assert.Equal(report.Lufs.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture), Text(window, "LoudnessLufs"));
+        Assert.Equal(report.PeakDb.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture), Text(window, "LoudnessPeak"));
+        Assert.Equal(MixerModel.LoudnessNote(report, -14), Text(window, "LoudnessText"));
+        Assert.StartsWith("Before normalizing, the mix is ", Text(window, "LoudnessText"));
+        Assert.Equal("Measure", Text(window, "MeasureText"));
+
+        // The music muted: the mix measured is gone.
+        Toggle(Strip<System.Windows.Controls.Primitives.ToggleButton>(window, AudioRole.Music, "M"), true);
+        WaitForSaves(window);
+        Assert.Equal("-", Text(window, "LoudnessLufs"));
+    });
 }

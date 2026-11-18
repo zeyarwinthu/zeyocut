@@ -75,6 +75,60 @@ public static class TestFiles
         return folder;
     }
 
+    // A 4 s project with a sound in each role: the voice 'talk' (1-3 s), the music 'song' (0-4 s) and
+    // the effect 'boing' (2.5-3 s).
+    public static Project Sounds()
+    {
+        var project = Project(duration: 4);
+        foreach (var (id, seconds, start, role) in new[] { ("talk", 2.0, 1.0, "voice"), ("song", 4.0, 0.0, "music"), ("boing", 0.5, 2.5, "effects") })
+        {
+            project.Assets.Add(new Asset { Id = id, Type = AssetType.Audio, File = $"assets/{id}.wav", Duration = seconds });
+            ProjectEditor.AddAudioLayer(project, new AudioLayerOptions { Asset = id, Id = id, Start = start, Role = role });
+        }
+
+        return project;
+    }
+
+    // Sounds() saved in a project folder with a tone for each sound.
+    public static string NewSoundProject(string name)
+    {
+        var project = Sounds();
+        var folder = NewProject(name, project);
+        foreach (var (asset, frequency) in project.Assets.Zip(new[] { 300.0, 1000, 2000 }))
+        {
+            Tone(Path.Combine(folder, asset.File), asset.Duration!.Value, frequency, 0.2);
+        }
+
+        return folder;
+    }
+
+    // A mono 48 kHz WAV of a steady tone.
+    public static string Tone(string path, double seconds, double frequency, double amplitude)
+    {
+        const int Rate = 48000;
+        var samples = (int)Math.Round(seconds * Rate);
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        using var writer = new BinaryWriter(File.Create(path));
+        writer.Write("RIFF"u8);
+        writer.Write(36 + samples * 2);
+        writer.Write("WAVEfmt "u8);
+        writer.Write(16);
+        writer.Write((short)1);
+        writer.Write((short)1);
+        writer.Write(Rate);
+        writer.Write(Rate * 2);
+        writer.Write((short)2);
+        writer.Write((short)16);
+        writer.Write("data"u8);
+        writer.Write(samples * 2);
+        for (var i = 0; i < samples; i++)
+        {
+            writer.Write((short)Math.Round(amplitude * 32767 * Math.Sin(2 * Math.PI * frequency * i / Rate)));
+        }
+
+        return path;
+    }
+
     public static string Png(string path, int width, int height)
     {
         using var bitmap = new SKBitmap(width, height);

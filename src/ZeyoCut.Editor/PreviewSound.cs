@@ -95,6 +95,9 @@ public sealed class PreviewSound : IDisposable
 
     public bool Playing => _playing;
 
+    // The mix file open, while one is.
+    public string? Mix => _open;
+
     // Where the sound is, while it plays.
     public double? Position => Ready && _playing ? _player.Position.TotalSeconds : null;
 

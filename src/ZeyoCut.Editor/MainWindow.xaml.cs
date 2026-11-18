@@ -96,6 +96,19 @@ public partial class MainWindow : Window
     private MediaWaveforms? _waveforms;
     private ProjectThumbnails? _projectPictures;
     private PreviewSound? _sound;
+
+    // The roles soloed in the Audio view: the preview hears only them. Never saved.
+    private readonly HashSet<AudioRole> _solo = [];
+    private (Project From, string Solo, Project Heard)? _heard;
+
+    // The Master meter's peaks of the mix the preview plays, and the mix they're being read from.
+    private (string Path, float[] Peaks)? _meter;
+    private string? _meterWanted;
+
+    // The Audio view's loudness measurement: running, and the last one with the mix it measured.
+    private CancellationTokenSource? _loudness;
+    private (string? Key, AudioLevelsReport? Report, string? Error)? _measured;
+    private bool _settingDuck;
     private FileSystemWatcher? _watcher;
     private WriteableBitmap? _bitmap;
     private FfmpegPaths? _ffmpeg;
@@ -275,6 +288,7 @@ public partial class MainWindow : Window
         SnapToggle.IsChecked = Timeline.Snapping = _prefs.Snapping;
         Timeline.Thumbnail = id => _document?.View.FindAsset(id) is { } asset ? _thumbnails?.Get(asset) : null;
         Timeline.Waveform = id => _document?.View.FindAsset(id) is { } asset ? _waveforms?.Get(asset) : null;
+        VolumeLanes.Waveform = Timeline.Waveform;
         _prefs.PlaybackScale = _prefs.PlaybackScale switch
         {
             1 => 1,
@@ -407,6 +421,8 @@ public partial class MainWindow : Window
 
     private bool Animating => _document is not null && AnimateMode.IsChecked == true;
 
+    private bool Hearing => _document is not null && AudioMode.IsChecked == true;
+
     // Play (Space) runs wherever the focus is in the Edit view, before a focused button or list takes
     // its key.
     protected override void OnPreviewKeyDown(KeyEventArgs e)
@@ -498,7 +514,8 @@ public partial class MainWindow : Window
         var editing = Editing;
         var open = _document is not null;
         var animating = Animating;
-        var playable = editing || animating;
+        var hearing = Hearing;
+        var playable = editing || animating || hearing;
         return command switch
         {
             Command.Play => playable ? TogglePlay : null,
@@ -512,12 +529,12 @@ public partial class MainWindow : Window
             Command.NextEdit => editing ? () => JumpToEdit(next: true) : null,
             Command.FullScreen => editing ? ShowFullScreen : null,
             Command.Split => editing ? SplitSelected : null,
-            Command.Delete => editing ? DeleteSelected : animating && Keyframes.Selection.Count > 0 ? DeleteKeys : null,
+            Command.Delete => editing ? DeleteSelected : animating && Keyframes.Selection.Count > 0 ? DeleteKeys : hearing && VolumeLanes.Selected is not null ? DeleteVolumeKey : null,
             Command.Duplicate => editing ? DuplicateSelected : null,
             Command.Undo => open && !inField ? Undo : null,
             Command.Redo => open && !inField ? Redo : null,
             Command.Import => editing ? ChooseMedia : null,
-            Command.Cancel => editing ? CancelHandler() : animating ? AnimateCancelHandler() : null,
+            Command.Cancel => editing ? CancelHandler() : animating ? AnimateCancelHandler() : hearing && VolumeLanes.Dragging ? VolumeLanes.CancelDrag : null,
             Command.AddMarker => editing ? AddMarker : null,
             Command.Snap => editing ? ToggleSnap : null,
             Command.ZoomIn => editing ? () => Timeline.ZoomBy(1.5) : null,
@@ -531,6 +548,7 @@ public partial class MainWindow : Window
             Command.EaseInOut => animating ? () => SetEasing(Easing.EaseInOut) : null,
             Command.OnionSkin => animating ? ToggleOnion : null,
             Command.Edit => open ? () => TurnOn(EditMode) : null,
+            Command.Audio => open ? () => TurnOn(AudioMode) : null,
             Command.Animate => open ? () => TurnOn(AnimateMode) : null,
             Command.Captions => open ? () => TurnOn(CaptionsMode) : null,
             Command.Activity => open ? () => TurnOn(ActivityMode) : null,
@@ -722,6 +740,11 @@ public partial class MainWindow : Window
         _waveforms = waveforms;
         _sound = new PreviewSound(Ffmpeg, Dispatcher);
         _sound.Changed += OnSoundChanged;
+        _solo.Clear();
+        _heard = null;
+        _meter = null;
+        _meterWanted = null;
+        _measured = null;
         _watcher = Watch(directory);
         _frame = 0;
         _step = 1;
@@ -779,6 +802,8 @@ public partial class MainWindow : Window
 
         _sound!.Changed -= OnSoundChanged;
         _sound.Dispose();
+        _loudness?.Cancel();
+        _loudness = null;
         _thumbnails?.Dispose();
         _thumbnails = null;
         _waveforms?.Dispose();
@@ -995,6 +1020,7 @@ public partial class MainWindow : Window
             _thumbnailsDue = false;
             ShowMedia();
             Timeline.Redraw();
+            VolumeLanes.InvalidateVisual();
         });
     }
 
@@ -1558,6 +1584,11 @@ public partial class MainWindow : Window
         {
             ShowAnimatePosition();
         }
+
+        if (AudioMode.IsChecked == true)
+        {
+            ShowAudioPosition();
+        }
     }
 
     private void OnFrame(PreviewFrame frame)
@@ -1846,8 +1877,8 @@ public partial class MainWindow : Window
         }
 
         _playing = true;
-        PlayIcon.Data = (Geometry)FindResource("PauseShape");
-        PlayButton.ToolTip = "Pause (Space)";
+        PlayIcon.Data = AudioPlayIcon.Data = (Geometry)FindResource("PauseShape");
+        PlayButton.ToolTip = AudioPlayButton.ToolTip = "Pause (Space)";
         PreviewBusy.Visibility = Visibility.Collapsed;
         _drawingSince = null;
         StartPlayback();
@@ -1879,8 +1910,10 @@ public partial class MainWindow : Window
         _clock.Stop();
         _sound?.Pause();
         _preview?.Pause();
-        PlayIcon.Data = (Geometry)FindResource("PlayShape");
-        PlayButton.ToolTip = "Play (Space)";
+        PlayIcon.Data = AudioPlayIcon.Data = (Geometry)FindResource("PlayShape");
+        PlayButton.ToolTip = AudioPlayButton.ToolTip = "Play (Space)";
+        MasterMeter.Level = (double.NegativeInfinity, double.NegativeInfinity);
+        MasterPeak.Text = "-inf";
         RenderText.Text = "";
         RequestFrame();
         UpdateEditButtons();
@@ -1921,6 +1954,11 @@ public partial class MainWindow : Window
         if (_sound.Position is { } heard)
         {
             _clock.Follow(heard);
+        }
+
+        if (AudioMode.IsChecked == true)
+        {
+            ShowMeter(_clock.Now);
         }
 
         var frame = (int)Math.Floor(_clock.Now * fps + 1e-6);
@@ -2003,6 +2041,11 @@ public partial class MainWindow : Window
 
         SoundText.Text = _sound.State;
         SoundText.ToolTip = string.IsNullOrEmpty(_sound.State) ? null : _sound.State;
+        if (AudioMode.IsChecked == true)
+        {
+            RequestMeter();
+        }
+
         if (_playing && _clock.Running && _sound.Ready && !_sound.Playing)
         {
             _sound.Play(_clock.Now, _speed);
@@ -2453,6 +2496,7 @@ public partial class MainWindow : Window
     {
         Workspace.Visibility = Visibility.Collapsed;
         AnimatePage.Visibility = Visibility.Collapsed;
+        AudioPage.Visibility = Visibility.Collapsed;
         CaptionsPage.Visibility = Visibility.Collapsed;
         ActivityPage.Visibility = Visibility.Collapsed;
         ExportPage.Visibility = Visibility.Collapsed;
@@ -3085,7 +3129,7 @@ public partial class MainWindow : Window
 
     private void OnBackToEdit(object sender, RoutedEventArgs e) => EditMode.IsChecked = true;
 
-    // Shows the view the mode switch is on. Playback stops outside the Edit and Animate views.
+    // Shows the view the mode switch is on. Playback stops outside the Edit, Audio and Animate views.
     private void ShowMode()
     {
         if (_document is null)
@@ -3094,13 +3138,14 @@ public partial class MainWindow : Window
         }
 
         var editing = EditMode.IsChecked == true;
-        if (!editing && AnimateMode.IsChecked != true)
+        if (!editing && AnimateMode.IsChecked != true && AudioMode.IsChecked != true)
         {
             Pause();
         }
 
         Workspace.Visibility = editing ? Visibility.Visible : Visibility.Collapsed;
         AnimatePage.Visibility = AnimateMode.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
+        AudioPage.Visibility = AudioMode.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
         CaptionsPage.Visibility = CaptionsMode.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
         ActivityPage.Visibility = ActivityMode.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
         ExportPage.Visibility = ExportMode.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
@@ -3109,7 +3154,7 @@ public partial class MainWindow : Window
         ShowPage();
     }
 
-    // Brings the Animate, Captions, Activity or Export view up to date when it is the one showing.
+    // Brings the Audio, Animate, Captions, Activity or Export view up to date when it is the one showing.
     private void ShowPage()
     {
         if (_document is null)
@@ -3117,7 +3162,11 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (AnimateMode.IsChecked == true)
+        if (AudioMode.IsChecked == true)
+        {
+            ShowAudio();
+        }
+        else if (AnimateMode.IsChecked == true)
         {
             ShowAnimate();
         }
@@ -3165,11 +3214,28 @@ public partial class MainWindow : Window
         return copy;
     }
 
+    // The project as the preview's sound plays it: as shown, with the roles not soloed muted. The
+    // same copy until either changes.
+    public Project Heard
+    {
+        get
+        {
+            var shown = Shown;
+            var solo = string.Join(",", _solo.Order());
+            if (_heard is not { } heard || !ReferenceEquals(heard.From, shown) || heard.Solo != solo)
+            {
+                _heard = heard = (shown, solo, MixerModel.Heard(shown, _solo));
+            }
+
+            return heard.Heard;
+        }
+    }
+
     // The preview and its sound, of the project as shown.
     private void ShowShown()
     {
         var shown = Shown;
-        _sound!.Update(shown, _document!.Session.Directory);
+        _sound!.Update(Heard, _document!.Session.Directory);
         if (_playing)
         {
             _playSource = _preview!.Source(shown, _prefs.PlaybackScale, _step);
@@ -5382,4 +5448,350 @@ public partial class MainWindow : Window
     private void OnKeySelection(object? sender, EventArgs e) => ShowEasing();
 
     private void OnKeyLayer(object? sender, string id) => SelectLayer(id);
+
+    // The Audio view: a strip for each sound role and Master, the loudness, the music's ducking and
+    // the volume lanes, of the project as saved. Solo is the preview's own.
+    private void ShowAudio()
+    {
+        var project = _document!.View;
+        var lanes = MixerModel.Lanes(project);
+        MixerStrips.ItemsSource = MixerModel.Strips(project, _solo);
+        MasterSlots.ItemsSource = MixerModel.MasterSlots(project);
+        LoudnessTargetButton.Content = MixerModel.TargetText(project.Audio.LoudnessTarget);
+        ShowLoudness();
+        _settingDuck = true;
+        try
+        {
+            AutoDuck.IsChecked = project.Audio.Ducking;
+            DuckLevelSlider.Value = -project.Audio.DuckLevel;
+            DuckFadeInSlider.Value = project.Audio.DuckFadeIn;
+            DuckFadeOutSlider.Value = project.Audio.DuckFadeOut;
+        }
+        finally
+        {
+            _settingDuck = false;
+        }
+
+        DuckSettings.IsEnabled = project.Audio.Ducking;
+        ShowDuckTexts();
+        VolumeLanes.Show(project, lanes, MixerModel.Duck(project, lanes), _frames);
+        ShowAudioPosition();
+        RequestMeter();
+    }
+
+    private void ShowAudioPosition()
+    {
+        VolumeLanes.Playhead = _frame;
+        AudioTimecode.Text = Timecode.Of(_frame, _document!.View.Fps);
+        if (!_playing)
+        {
+            MasterMeter.Level = (double.NegativeInfinity, double.NegativeInfinity);
+            MasterPeak.Text = "-inf";
+        }
+    }
+
+    private void ShowDuckTexts()
+    {
+        DuckLevelText.Text = MixerModel.Decibels(-DuckLevelSlider.Value);
+        DuckFadeInText.Text = MixerModel.Seconds(DuckFadeInSlider.Value);
+        DuckFadeOutText.Text = MixerModel.Seconds(DuckFadeOutSlider.Value);
+    }
+
+    // The fader's gain under it while it moves, and the role's gain saved when it's let go.
+    private void OnFaderMoved(object? sender, double gain)
+    {
+        if (sender is MixerFader { Parent: StackPanel strip })
+        {
+            strip.Children.OfType<TextBlock>().Single().Text = MixerModel.GainText(gain);
+        }
+    }
+
+    private void OnFaderCommitted(object? sender, double gain)
+    {
+        if (sender is MixerFader { Tag: MixerStrip strip })
+        {
+            SetMix(new ProjectOptions { Role = strip.Role, Gain = gain });
+        }
+    }
+
+    private void OnPanMoved(object? sender, double pan)
+    {
+        if (sender is MixerPan { Parent: DockPanel row })
+        {
+            row.Children.OfType<TextBlock>().Last().Text = MixerModel.PanLabel(pan);
+        }
+    }
+
+    private void OnPanCommitted(object? sender, double pan)
+    {
+        if (sender is MixerPan { Tag: MixerStrip strip })
+        {
+            SetMix(new ProjectOptions { Role = strip.Role, Pan = pan });
+        }
+    }
+
+    private void OnStripMute(object sender, RoutedEventArgs e)
+    {
+        if (sender is ToggleButton { Tag: MixerStrip strip } button)
+        {
+            SetMix(new ProjectOptions { Role = strip.Role, Muted = button.IsChecked == true });
+        }
+    }
+
+    // Solo: the preview hears only the soloed roles. Nothing is saved.
+    private void OnStripSolo(object sender, RoutedEventArgs e)
+    {
+        if (sender is not ToggleButton { Tag: MixerStrip strip } button || _document is null)
+        {
+            return;
+        }
+
+        if (button.IsChecked == true)
+        {
+            _solo.Add(strip.Role);
+        }
+        else
+        {
+            _solo.Remove(strip.Role);
+        }
+
+        Message(_solo.Count == 0 ? "Every role is heard again" : $"The preview plays only {string.Join(" and ", MixerModel.Roles.Where(_solo.Contains).Select(r => MixerModel.RoleName(r).ToLowerInvariant()))}; nothing is saved");
+        ShowAudio();
+        _sound!.Update(Heard, _document.Session.Directory);
+    }
+
+    // A mixer setting, saved as update_project saves it.
+    private void SetMix(ProjectOptions options)
+    {
+        if (_playing)
+        {
+            Pause();
+        }
+
+        Apply(new UpdateProjectOperation(options));
+    }
+
+    private void OnLoudnessTarget(object sender, RoutedEventArgs e)
+    {
+        if (_document?.View is not { } project)
+        {
+            return;
+        }
+
+        var current = project.Audio.LoudnessTarget;
+        var menu = new ContextMenu { PlacementTarget = LoudnessTargetButton, Placement = PlacementMode.Bottom };
+        var choices = MixerModel.Targets.Select(t => ($"{t.Name} {MixerModel.Number(t.Lufs)} LUFS", (double?)t.Lufs)).ToList();
+        if (current is { } other && MixerModel.Targets.All(t => t.Lufs != other))
+        {
+            choices.Add(($"{MixerModel.Number(other)} LUFS", other));
+        }
+
+        choices.Add(("Off: keep the mix's own loudness", null));
+        foreach (var (name, target) in choices)
+        {
+            var item = new MenuItem { Header = name, IsChecked = current == target };
+            item.Click += (_, _) =>
+            {
+                if (current != target)
+                {
+                    SetMix(new ProjectOptions { LoudnessTarget = target ?? 0 });
+                }
+            };
+            menu.Items.Add(item);
+        }
+
+        menu.IsOpen = true;
+    }
+
+    private void OnAutoDuck(object sender, RoutedEventArgs e) => SetMix(new ProjectOptions { Ducking = AutoDuck.IsChecked == true });
+
+    private void OnDuckSliderMoved(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (!_settingDuck && DuckFadeOutText is not null)
+        {
+            ShowDuckTexts();
+        }
+    }
+
+    private void OnDuckSliderReleased(object sender, MouseButtonEventArgs e) => CommitDuck(sender);
+
+    private void OnDuckSliderKey(object sender, KeyEventArgs e)
+    {
+        if (e.Key is Key.Left or Key.Right or Key.Up or Key.Down or Key.PageUp or Key.PageDown or Key.Home or Key.End)
+        {
+            CommitDuck(sender);
+        }
+    }
+
+    // A ducking slider's value, saved when it changed: the level to the half dB, a fade to the
+    // twentieth of a second.
+    private void CommitDuck(object sender)
+    {
+        if (_document?.View.Audio is not { } audio || sender is not Slider slider)
+        {
+            return;
+        }
+
+        if (slider == DuckLevelSlider && Math.Round(slider.Value * 2) / -2 is var level && level != audio.DuckLevel)
+        {
+            SetMix(new ProjectOptions { DuckLevel = level == 0 ? 0 : level });
+        }
+        else if (slider == DuckFadeInSlider && Math.Round(slider.Value * 20) / 20 is var fadeIn && fadeIn != audio.DuckFadeIn)
+        {
+            SetMix(new ProjectOptions { DuckFadeIn = fadeIn });
+        }
+        else if (slider == DuckFadeOutSlider && Math.Round(slider.Value * 20) / 20 is var fadeOut && fadeOut != audio.DuckFadeOut)
+        {
+            SetMix(new ProjectOptions { DuckFadeOut = fadeOut });
+        }
+    }
+
+    // Delete in the Audio view: the volume keyframe selected on the lanes.
+    private void DeleteVolumeKey() => WhenSaved(() =>
+    {
+        if (_document is not null && VolumeLanes.Selected is { } key)
+        {
+            Apply(new RemoveKeyframesOperation([key]));
+        }
+    });
+
+    // Measure: audio_levels' measurement of the mix as the export makes it, in the background.
+    private void OnMeasure(object sender, RoutedEventArgs e)
+    {
+        if (_document is not { } document || _loudness is not null)
+        {
+            return;
+        }
+
+        var project = ProjectJson.Copy(document.View);
+        var directory = document.Session.Directory;
+        var cancel = new CancellationTokenSource();
+        _loudness = cancel;
+        MeasureText.Text = "Measuring…";
+        MeasureButton.IsEnabled = false;
+        _ = Task.Run(() =>
+        {
+            string? key = null;
+            AudioLevelsReport? report = null;
+            string? error = null;
+            try
+            {
+                key = PreviewAudio.Key(project, directory);
+                report = AudioLevels.Measure(project, directory, Ffmpeg(), AudioLevels.DefaultSection, done => Dispatcher.InvokeAsync(() =>
+                {
+                    if (ReferenceEquals(_loudness, cancel))
+                    {
+                        MeasureText.Text = $"Measuring… {Math.Round(done * 100)}%";
+                    }
+                }), cancel.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
+            catch (Exception ex)
+            {
+                error = ex.Message;
+            }
+
+            Dispatcher.InvokeAsync(() =>
+            {
+                if (!ReferenceEquals(_loudness, cancel))
+                {
+                    return;
+                }
+
+                _loudness = null;
+                _measured = (key, report, error);
+                ShowLoudness();
+            });
+        });
+    }
+
+    // The last measurement while the mix is as it measured it; what Measure does before one.
+    private void ShowLoudness()
+    {
+        var project = _document!.View;
+        if (_loudness is null)
+        {
+            MeasureText.Text = "Measure";
+            MeasureButton.IsEnabled = true;
+        }
+
+        string? key;
+        try
+        {
+            key = PreviewAudio.Key(project, _document.Session.Directory);
+        }
+        catch (Exception ex) when (ex is ZeyoCutException or IOException or UnauthorizedAccessException)
+        {
+            key = null;
+        }
+
+        if (_measured is { } measured && measured.Key == key)
+        {
+            if (measured.Report is { } report)
+            {
+                LoudnessLufs.Text = double.IsFinite(report.Lufs) ? report.Lufs.ToString("0.0", CultureInfo.InvariantCulture) : "-inf";
+                LoudnessPeak.Text = double.IsFinite(report.PeakDb) ? report.PeakDb.ToString("0.0", CultureInfo.InvariantCulture) : "-inf";
+                LoudnessText.Text = MixerModel.LoudnessNote(report, project.Audio.LoudnessTarget);
+                return;
+            }
+
+            LoudnessLufs.Text = LoudnessPeak.Text = "-";
+            LoudnessText.Text = measured.Error is { } error ? $"It can't be measured: {error}" : "Nothing in the project is heard.";
+            return;
+        }
+
+        LoudnessLufs.Text = LoudnessPeak.Text = "-";
+        LoudnessText.Text = project.Audio.LoudnessTarget is { } target
+            ? $"Every export is normalized to {MixerModel.Number(target)} LUFS. Measure reads the mix as the export makes it."
+            : "Normalization is off: exports keep the mix's own loudness. Measure reads it.";
+    }
+
+    // The peaks of the mix the preview plays, read in the background for the Master meter.
+    private void RequestMeter()
+    {
+        if (_sound?.Mix is not { } path || _meter?.Path == path || _meterWanted == path)
+        {
+            return;
+        }
+
+        _meterWanted = path;
+        _ = Task.Run(() =>
+        {
+            float[]? peaks = null;
+            try
+            {
+                peaks = AudioAnalyzer.Peaks(Ffmpeg().Ffmpeg, path, MeterPerSecond, CancellationToken.None, channels: 2);
+            }
+            catch (Exception ex) when (ex is ZeyoCutException or IOException or InvalidOperationException or System.ComponentModel.Win32Exception)
+            {
+            }
+
+            Dispatcher.InvokeAsync(() =>
+            {
+                if (_meterWanted == path)
+                {
+                    _meterWanted = null;
+                    _meter = peaks is null ? null : (path, peaks);
+                }
+            });
+        });
+    }
+
+    private const int MeterPerSecond = 50;
+
+    private void ShowMeter(double seconds)
+    {
+        if (_meter is not { } meter || meter.Path != _sound?.Mix)
+        {
+            return;
+        }
+
+        var level = MixerModel.MeterLevel(meter.Peaks, MeterPerSecond, seconds);
+        MasterMeter.Level = level;
+        var loudest = Math.Max(level.Left, level.Right);
+        MasterPeak.Text = double.IsFinite(loudest) ? loudest.ToString("0.0", CultureInfo.InvariantCulture) : "-inf";
+    }
 }

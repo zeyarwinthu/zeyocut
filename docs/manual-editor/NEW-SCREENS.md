@@ -1,7 +1,7 @@
 # Editor new screens: plan
 
 - Written 2026-11-18 on `feature/manual-editor` at `88295e8`, after the redesign of the existing screens (REDESIGN.md, phases A–H) was done.
-- Status: S1–S22 decided as recommended (2026-11-18). Phases 1, 2 and 3 done (2026-11-18); phase 4 waits for a go.
+- Status: S1–S22 decided as recommended (2026-11-18). Phases 1, 2, 3 and 4 done (2026-11-18); phase 5 waits for a go.
 - Covers the 15 artboards of the design canvas "ZeyoCut Editor — modern redesign" that have no screen yet, in the order agreed on 2026-11-18. Each phase is one step of that order and ends with a report and a stop.
 - The rules in PLAN.md still hold: no control without real project data and real render output behind it; the UI has no editing logic of its own; a new project property is saved, rendered on export and reachable over MCP; tests pass at every commit; stop and report after each phase. Logic that lives in an MCP tool today moves into Core first, in a commit of its own with no change in behavior (as D9 did for the SRT writer).
 
@@ -105,13 +105,13 @@
 | Area | Design | Plan |
 |---|---|---|
 | Tab | Audio | Do (S1) |
-| Strips | Video 1, Video 2, Music, SFX, Master | S10: one strip per sound role (Voice holds videos' own sound, as now), and Master |
+| Strips | Video 1, Video 2, Music, SFX, Master | S10: one strip per sound role (Voice holds videos' own sound, as now), and Master. Master has no fader, pan, M or S: the mix has no master level besides the loudness target |
 | Effect slots | Noise reduction, EQ, Ducking, Limiter, Reverb, Loudness −14, True-peak limit, + Effect | Show the real ones: Ducking on Music, Loudness and True-peak limit on Master. The others and "+ Effect" left out |
 | Pan, fader, M, S | Per strip | S10 |
-| Meters | Per strip | S13 |
-| Loudness | Target, integrated LUFS, true peak, "1.8 dB quieter than the target", Normalize | Do the target (the project's `audio.loudnessTarget`) and a Measure button that runs `audio_levels`. Normalize left out: exports are always normalized to the target, and the card says so |
+| Meters | Per strip | S13: Master only, the peaks of the preview's mix while it plays |
+| Loudness | Target, integrated LUFS, true peak, "1.8 dB quieter than the target", Normalize | Do the target (the project's `audio.loudnessTarget`) and a Measure button that runs `audio_levels`. Normalize left out: exports are always normalized to the target, and the card says so. The second tile is the sample peak in dBFS, which `audio_levels` measures, not the true peak |
 | Music track | Auto-duck under speech, Duck by −12 dB, fade in, fade out | Do the switch (the project's `audio.ducking`); the amount and fades are S12 |
-| Volume automation | Points on a line per clip, ducked stretches shaded | S11; the shading comes from where voice plays, as the mix ducks |
+| Volume automation | Points on a line per clip, ducked stretches shaded | S11; the shading comes from where voice plays, as the mix ducks. Waveforms are drawn for audio files; a video's sound has none yet |
 
 ### 10 · Media browser (phase 5)
 

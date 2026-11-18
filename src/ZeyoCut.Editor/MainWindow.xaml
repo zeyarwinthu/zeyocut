@@ -1021,6 +1021,42 @@
       </Button>
     </DataTemplate>
 
+    <DataTemplate x:Key="MixerSlotTemplate">
+      <Border Height="24" CornerRadius="5" Background="{StaticResource InputBrush}" Padding="8,0" Margin="0,0,0,4" ToolTip="{Binding Tip}">
+        <StackPanel Orientation="Horizontal">
+          <Ellipse Width="6" Height="6" Fill="{Binding Dot}" Margin="0,0,6,0" VerticalAlignment="Center" />
+          <TextBlock Text="{Binding Name}" FontSize="11" Foreground="{StaticResource IconTextBrush}" VerticalAlignment="Center" />
+        </StackPanel>
+      </Border>
+    </DataTemplate>
+
+    <DataTemplate x:Key="MixerStripTemplate">
+      <Border Width="132" CornerRadius="12" Background="{StaticResource HeaderBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" Padding="10" Margin="0,0,10,0">
+        <StackPanel>
+          <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+            <Rectangle Width="4" Height="16" RadiusX="2" RadiusY="2" Fill="{Binding Brush}" Margin="0,0,6,0" />
+            <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+          </StackPanel>
+          <ItemsControl ItemsSource="{Binding Slots}" ItemTemplate="{StaticResource MixerSlotTemplate}" Focusable="False" Height="52" Margin="0,0,0,6" />
+          <DockPanel Margin="0,0,0,10" TextElement.FontSize="11">
+            <TextBlock Text="Pan" Foreground="{StaticResource SecondaryTextBrush}" VerticalAlignment="Center" Margin="0,0,8,0" />
+            <TextBlock DockPanel.Dock="Right" Text="{Binding PanText, Mode=OneTime}" FontFamily="Consolas" Foreground="{StaticResource IconTextBrush}" Width="32" TextAlignment="Right" VerticalAlignment="Center" />
+            <local:MixerPan Height="16" Value="{Binding Pan, Mode=OneTime}" Tag="{Binding}" Moved="OnPanMoved" Committed="OnPanCommitted" AutomationProperties.Name="Pan"
+                            ToolTip="Drag to place the role left or right (Left and Right step 5%; double-click or Home centers it)" />
+          </DockPanel>
+          <local:MixerFader Height="220" Value="{Binding Gain, Mode=OneTime}" Tag="{Binding}" Moved="OnFaderMoved" Committed="OnFaderCommitted" AutomationProperties.Name="Level"
+                            ToolTip="The role's level in dB, on top of each clip's volume (Up and Down step half a dB; double-click or Home for 0 dB)" />
+          <TextBlock Text="{Binding GainText, Mode=OneTime}" HorizontalAlignment="Center" FontFamily="Consolas" FontSize="13" FontWeight="SemiBold" Margin="0,8,0,10" />
+          <UniformGrid Columns="2">
+            <ToggleButton Style="{StaticResource MuteToggle}" Content="M" Margin="0,0,2,0" IsChecked="{Binding Muted, Mode=OneTime}" Tag="{Binding}" Click="OnStripMute"
+                          ToolTip="{Binding MuteTip}" AutomationProperties.Name="Mute" />
+            <ToggleButton Style="{StaticResource SoloToggle}" Content="S" Margin="2,0,0,0" IsChecked="{Binding Soloed, Mode=OneTime}" Tag="{Binding}" Click="OnStripSolo"
+                          ToolTip="{Binding SoloTip}" AutomationProperties.Name="Solo" />
+          </UniformGrid>
+        </StackPanel>
+      </Border>
+    </DataTemplate>
+
     <DataTemplate x:Key="PreviewLanguageTemplate">
       <RadioButton Style="{StaticResource SegmentButton}" GroupName="CaptionPreviewLanguage" Content="{Binding Code}" IsChecked="{Binding Chosen, Mode=OneTime}" Tag="{Binding Language}"
                    FontSize="11" FontWeight="Medium" Checked="OnPreviewLanguage" ToolTip="{Binding Tip}" />
@@ -1066,6 +1102,8 @@
                 Margin="16,0" VerticalAlignment="Center" Visibility="Collapsed">
           <StackPanel Orientation="Horizontal">
             <RadioButton x:Name="EditMode" GroupName="Mode" Style="{StaticResource TabSegment}" Content="Edit" IsChecked="True" Checked="OnMode" ToolTip="The timeline, preview and inspector (Ctrl+1)" />
+            <RadioButton x:Name="AudioMode" GroupName="Mode" Style="{StaticResource TabSegment}" Content="Audio" Checked="OnMode"
+                         ToolTip="Each sound role's level, pan and mute, the loudness, the ducking and volume keyframes (Ctrl+2)" />
             <RadioButton x:Name="AnimateMode" GroupName="Mode" Style="{StaticResource TabSegment}" Content="Animate" Checked="OnMode"
                          ToolTip="Keyframes as a dope sheet or as curves, their easing, and the onion skin (Ctrl+3)" />
             <RadioButton x:Name="CaptionsMode" GroupName="Mode" Style="{StaticResource TabSegment}" Content="Captions" Checked="OnMode"
@@ -1335,6 +1373,132 @@
           <local:KeyframeView x:Name="Keyframes" Seek="OnSeek" Edit="OnTimelineEdit" SelectionChanged="OnKeySelection" LayerChosen="OnKeyLayer" />
         </DockPanel>
       </Border>
+    </Grid>
+
+    <Grid x:Name="AudioPage" Grid.Row="1" Visibility="Collapsed">
+      <Grid.RowDefinitions>
+        <RowDefinition Height="Auto" />
+        <RowDefinition Height="*" MinHeight="140" />
+      </Grid.RowDefinitions>
+      <Border BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,0,0,1">
+        <Grid>
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="360" />
+          </Grid.ColumnDefinitions>
+          <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled" Focusable="False" Padding="16">
+            <StackPanel Orientation="Horizontal">
+              <ItemsControl x:Name="MixerStrips" Focusable="False" ItemTemplate="{StaticResource MixerStripTemplate}">
+                <ItemsControl.ItemsPanel>
+                  <ItemsPanelTemplate>
+                    <StackPanel Orientation="Horizontal" />
+                  </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+              </ItemsControl>
+              <Border Width="132" CornerRadius="12" Background="{StaticResource ChosenCardBrush}" BorderBrush="{StaticResource NoteBorderBrush}" BorderThickness="1" Padding="10">
+                <StackPanel>
+                  <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                    <Rectangle Width="4" Height="16" RadiusX="2" RadiusY="2" Fill="{StaticResource TextBrush}" Margin="0,0,6,0" />
+                    <TextBlock Text="Master" FontWeight="SemiBold" VerticalAlignment="Center" />
+                  </StackPanel>
+                  <ItemsControl x:Name="MasterSlots" ItemTemplate="{StaticResource MixerSlotTemplate}" Focusable="False" Height="52" Margin="0,0,0,6" />
+                  <TextBlock Text="Peak" Foreground="{StaticResource SecondaryTextBrush}" FontSize="11" Height="16" Margin="0,0,0,10" />
+                  <local:MixerMeter x:Name="MasterMeter" Height="220" ToolTip="The loudest of each side of the mix while it plays, in dBFS" />
+                  <TextBlock x:Name="MasterPeak" HorizontalAlignment="Center" FontFamily="Consolas" FontSize="13" FontWeight="SemiBold" Margin="0,8,0,10" />
+                  <TextBlock Text="while playing" Style="{StaticResource Secondary}" HorizontalAlignment="Center" Height="28" Padding="0,7,0,0" />
+                </StackPanel>
+              </Border>
+            </StackPanel>
+          </ScrollViewer>
+
+          <Border Grid.Column="1" Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource DividerBrush}" BorderThickness="1,0,0,0" Padding="16">
+            <StackPanel>
+              <DockPanel Margin="0,0,0,10">
+                <Button x:Name="LoudnessTargetButton" DockPanel.Dock="Right" Style="{StaticResource FieldButton}" Height="26" Padding="10,0" FontSize="11" Click="OnLoudnessTarget"
+                        ToolTip="The loudness every export is normalized to" />
+                <TextBlock Text="Loudness" FontWeight="SemiBold" VerticalAlignment="Center" />
+              </DockPanel>
+              <UniformGrid Columns="2" Margin="0,0,-8,0">
+                <Border CornerRadius="10" Background="{StaticResource InputBrush}" Padding="12" Margin="0,0,8,0">
+                  <StackPanel>
+                    <TextBlock x:Name="LoudnessLufs" FontFamily="Consolas" FontSize="22" FontWeight="SemiBold" />
+                    <TextBlock Text="Integrated LUFS" Style="{StaticResource Secondary}" Margin="0,2,0,0" />
+                  </StackPanel>
+                </Border>
+                <Border CornerRadius="10" Background="{StaticResource InputBrush}" Padding="12" Margin="0,0,8,0">
+                  <StackPanel>
+                    <TextBlock x:Name="LoudnessPeak" FontFamily="Consolas" FontSize="22" FontWeight="SemiBold" />
+                    <TextBlock Text="Peak dBFS" Style="{StaticResource Secondary}" Margin="0,2,0,0" />
+                  </StackPanel>
+                </Border>
+              </UniformGrid>
+              <Border CornerRadius="8" Background="{StaticResource NoteBrush}" BorderBrush="{StaticResource NoteBorderBrush}" BorderThickness="1" Padding="12,10" Margin="0,10,0,0">
+                <DockPanel>
+                  <Button x:Name="MeasureButton" DockPanel.Dock="Right" Style="{StaticResource LinkButton}" Foreground="{StaticResource AccentSoftTextBrush}" Margin="10,0,0,0" VerticalAlignment="Top"
+                          Click="OnMeasure" ToolTip="Mixes the sound as the export would and measures it, as audio_levels does">
+                    <TextBlock x:Name="MeasureText" Text="Measure" FontSize="12" FontWeight="SemiBold" />
+                  </Button>
+                  <TextBlock x:Name="LoudnessText" TextWrapping="Wrap" FontSize="12" LineHeight="18" Foreground="{StaticResource AccentSoftTextBrush}" />
+                </DockPanel>
+              </Border>
+              <Border Height="1" Background="{StaticResource DividerBrush}" Margin="0,18" />
+              <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
+                <Rectangle Width="4" Height="16" RadiusX="2" RadiusY="2" Fill="#A98BFF" Margin="0,0,8,0" />
+                <TextBlock Text="Music track" FontWeight="SemiBold" VerticalAlignment="Center" />
+              </StackPanel>
+              <DockPanel Margin="0,0,0,14">
+                <CheckBox x:Name="AutoDuck" DockPanel.Dock="Right" Style="{StaticResource Switch}" VerticalAlignment="Center" Click="OnAutoDuck" AutomationProperties.Name="Auto-duck" />
+                <StackPanel Margin="0,0,12,0">
+                  <TextBlock Text="Auto-duck under speech" FontWeight="Medium" />
+                  <TextBlock Text="Lowers the music where voice clips play" Style="{StaticResource Secondary}" FontSize="12" Margin="0,2,0,0" />
+                </StackPanel>
+              </DockPanel>
+              <Grid x:Name="DuckSettings" TextElement.FontSize="12">
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="86" />
+                  <ColumnDefinition Width="*" />
+                  <ColumnDefinition Width="60" />
+                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                  <RowDefinition Height="32" />
+                  <RowDefinition Height="32" />
+                  <RowDefinition Height="32" />
+                </Grid.RowDefinitions>
+                <TextBlock Text="Duck by" Foreground="{StaticResource IconTextBrush}" VerticalAlignment="Center" />
+                <Slider x:Name="DuckLevelSlider" Grid.Column="1" Minimum="0" Maximum="40" SmallChange="0.5" LargeChange="3" VerticalAlignment="Center" AutomationProperties.Name="Duck by"
+                        ValueChanged="OnDuckSliderMoved" PreviewMouseLeftButtonDown="OnSliderPressed" PreviewMouseLeftButtonUp="OnDuckSliderReleased" KeyUp="OnDuckSliderKey"
+                        ToolTip="How far the music goes down where voice plays, from 0 to 40 dB" />
+                <TextBlock x:Name="DuckLevelText" Grid.Column="2" FontFamily="Consolas" TextAlignment="Right" VerticalAlignment="Center" />
+                <TextBlock Grid.Row="1" Text="Fade in" Foreground="{StaticResource IconTextBrush}" VerticalAlignment="Center" />
+                <Slider x:Name="DuckFadeInSlider" Grid.Row="1" Grid.Column="1" Minimum="0" Maximum="5" SmallChange="0.05" LargeChange="0.5" VerticalAlignment="Center" AutomationProperties.Name="Duck fade in"
+                        ValueChanged="OnDuckSliderMoved" PreviewMouseLeftButtonDown="OnSliderPressed" PreviewMouseLeftButtonUp="OnDuckSliderReleased" KeyUp="OnDuckSliderKey"
+                        ToolTip="How long the music takes to go down before a voice clip starts" />
+                <TextBlock x:Name="DuckFadeInText" Grid.Row="1" Grid.Column="2" FontFamily="Consolas" TextAlignment="Right" VerticalAlignment="Center" />
+                <TextBlock Grid.Row="2" Text="Fade out" Foreground="{StaticResource IconTextBrush}" VerticalAlignment="Center" />
+                <Slider x:Name="DuckFadeOutSlider" Grid.Row="2" Grid.Column="1" Minimum="0" Maximum="5" SmallChange="0.05" LargeChange="0.5" VerticalAlignment="Center" AutomationProperties.Name="Duck fade out"
+                        ValueChanged="OnDuckSliderMoved" PreviewMouseLeftButtonDown="OnSliderPressed" PreviewMouseLeftButtonUp="OnDuckSliderReleased" KeyUp="OnDuckSliderKey"
+                        ToolTip="How long the music takes to come back up after a voice clip ends" />
+                <TextBlock x:Name="DuckFadeOutText" Grid.Row="2" Grid.Column="2" FontFamily="Consolas" TextAlignment="Right" VerticalAlignment="Center" />
+              </Grid>
+            </StackPanel>
+          </Border>
+        </Grid>
+      </Border>
+
+      <DockPanel Grid.Row="1" Background="{StaticResource PanelBrush}">
+        <Border DockPanel.Dock="Top" Height="40" BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,0,0,1" Padding="12,0">
+          <DockPanel>
+            <TextBlock x:Name="AudioTimecode" DockPanel.Dock="Right" FontFamily="Consolas" FontSize="13" VerticalAlignment="Center" />
+            <Button x:Name="AudioPlayButton" DockPanel.Dock="Right" Style="{StaticResource HeaderIcon}" Margin="0,0,8,0" Click="OnPlay" ToolTip="Play (Space)" AutomationProperties.Name="Play">
+              <local:Icon x:Name="AudioPlayIcon" Data="{StaticResource PlayShape}" Filled="True" Width="14" Height="14" />
+            </Button>
+            <TextBlock Text="Volume automation" FontWeight="SemiBold" VerticalAlignment="Center" />
+            <TextBlock Text="Press a clip's line to add a point · drag a point to change its level · Delete removes it" Style="{StaticResource Secondary}" FontSize="12" Margin="10,0,0,0"
+                       VerticalAlignment="Center" />
+          </DockPanel>
+        </Border>
+        <local:VolumeView x:Name="VolumeLanes" Seek="OnSeek" Edit="OnTimelineEdit" LayerChosen="OnKeyLayer" />
+      </DockPanel>
     </Grid>
 
     <Grid x:Name="CaptionsPage" Grid.Row="1" Visibility="Collapsed">

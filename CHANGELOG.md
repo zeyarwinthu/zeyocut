@@ -16,7 +16,7 @@ when they open.
     length, its languages and Claude's latest edit, with a search box and a list view; Open folder,
     or a folder on the command line, opens any project. A project is open in one editor window at a
     time. The header names the project, whether it's saved and when Claude last saved, with undo,
-    redo, the Edit and Activity views and the way to Export.
+    redo, the views and the way to Export.
   - **New project** (Ctrl+N, or Home's Landscape, Shorts / Reels and Square cards) makes a project
     in the projects folder from a name, a canvas, a frame rate and a background, or from a library
     template, as `create_project` and `new_project_from_template` do, with a preview of the canvas
@@ -82,6 +82,15 @@ when they open.
     writes them), a preview in the chosen language, and a style for all captions: each track's font,
     and the size, position (top, middle or bottom inside the title-safe margin), background (box,
     outline or none) and line width of every track, each as one undo step.
+  - **Audio view** (Ctrl+2): a strip for each sound role (Voice, Music, Sound effects) with a fader
+    (-60 to +6 dB), pan and mute saved as `update_project` saves them, one undo step each, and solo,
+    which only the preview hears and is never saved; Master with a meter of the preview's mix while
+    playing and the export's loudness and true-peak slots. A loudness card with the target (YouTube,
+    Podcast, Broadcast or off) and Measure, which measures the mix as `audio_levels` does. The
+    music's auto-duck switch, depth and fades. A lane per role with each clip's waveform and volume
+    line: pressing the line adds a `volume` keyframe, dragging a point changes its level to the half
+    dB and its time by whole frames, Delete takes it away, and the stretches ducking lowers are
+    shaded.
   - **Animate view:** the animated layers and values in a list with their values at the playhead,
     their keyframes as a dope sheet (with image layers' drawing changes as a row) or as curves drawn
     from the interpolation exports use. Dragging keys retimes them by whole frames with their values

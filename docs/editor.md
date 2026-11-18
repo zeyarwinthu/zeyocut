@@ -4,7 +4,7 @@
 
 ![The editor with the Tora Jumps example open: the media on the left, the frame at 0.967 seconds in the middle, the inspector on the right with Tora's position and rotation animated, and the timeline below with the keyframes on Tora's clip](editor-edit.png)
 
-It imports media, plays the edit with its sound, moves, trims and splits clips on a timeline, places, crops and animates layers with keyframes, retimes and eases keyframes on a dope sheet or as curves, sets effects, color adjustments and face-blur settings, edits captions, changes volumes and a video's speed, and exports. Masks, motion paths and transitions stay with the model: ask it for those.
+It imports media, plays the edit with its sound, moves, trims and splits clips on a timeline, places, crops and animates layers with keyframes, retimes and eases keyframes on a dope sheet or as curves, sets effects, color adjustments and face-blur settings, edits captions, changes volumes and a video's speed, mixes the sound roles with volume keyframes and ducking, and exports. Masks, motion paths and transitions stay with the model: ask it for those.
 
 ## Open a project
 
@@ -124,6 +124,20 @@ To blur seconds 2 to 4, say:
 3. At 3.5 s, press ◇.
 4. At 4 s, type 0.
 
+## Audio
+
+![The Audio view with a demo project open: the Voice, Music and Sound effects strips at +1.5, -6 and -3 dB, the Master meter, the loudness measured at -13.1 LUFS, the music's ducking settings, and below the volume lanes with the music's fade-in and fade-out points and its ducked stretches shaded](editor-audio.png)
+
+**Audio** in the header (Ctrl+2) mixes the sound. The playback keys work here as in the Edit view.
+
+- **A strip for each sound role:** Voice (narration and every video's own sound), Music and Sound effects. Its fader sets the role's level in dB, from -60 to +6, on top of each clip's volume: drag the handle, or press Up and Down for half a dB and Page Up and Page Down for 3; double-click or Home puts it back at 0. **Pan** places the role from left to right (Left and Right step 5%, double-click or Home centers it), and **M** mutes it. Each is saved in the project as `update_project` saves it, and exports and the preview mix it, one undo step each.
+- **S** (solo) plays only the soloed roles in the preview. It's never saved and never changes an export, and it lasts until the project closes.
+- **Master** shows the loudest of each side of the mix while it plays, in dBFS, and the effects every export has: loudness normalization to the target and the true-peak limit.
+- **Loudness:** the target every export is normalized to (YouTube -14, Podcast -16, Broadcast -23 LUFS, or off), and **Measure**, which mixes the sound as the export does and measures it as `audio_levels` does: the loudness, the loudest sample, how far the mix is from the target before normalizing, and what `audio_levels` flags. There's no Normalize button: every export is normalized already.
+- **Music track:** **Auto-duck under speech** lowers the music wherever a voice clip plays, by **Duck by** dB (0 to 40), going down over **Fade in** seconds before the voice starts and back up over **Fade out** seconds after it ends.
+- **Volume automation** has a lane for each role with its clips and their waveforms, and each clip's volume as a line. Press the line to add a point at the level it has there, or press and drag to add it louder or quieter; drag a point to change its level, on the fader's scale to half a dB, and its time by whole frames. Delete takes the selected point away. These are the clip's `volume` keyframes, as `set_keyframes` sets them. Where ducking lowers the music, its clips are shaded, darker the deeper it goes. Clicking a clip off its line selects its layer and moves the playhead there.
+- Equalizing, noise reduction, reverb and other sound effects aren't part of ZeyoCut.
+
 ## Animate
 
 ![The Animate view with Tora Jumps open: the frame with Tora's onion skin and the dashed path of the jump, the eight easing tiles and the custom curve on the right, and below the graph of Tora's Position X, Position Y and Rotation, the key at 1.35 s selected](editor-animate.png)
@@ -199,14 +213,14 @@ Under **Exports folder**, an export running here has its progress and Stop; expo
 | S or Ctrl+B | Split the selected clip at the playhead |
 | B / V | The Blade tool, which splits a clip where it's clicked, and the Select tool |
 | M | Add a chapter marker at the playhead |
-| Delete or Backspace | Delete the selected clip with its child layers; in Animate, the selected keys |
+| Delete or Backspace | Delete the selected clip with its child layers; in Animate, the selected keys; in Audio, the selected volume point |
 | Ctrl+D | Duplicate the selected clip with its child layers |
 | Escape | Close the view open over the window, else cancel a drag, else go back to the Select tool, else clear the selection; in a field, put it back |
 | − / + | Zoom the timeline out and in (also Ctrl+wheel) |
 | Shift+Z | Fit the whole video in the timeline |
 | N | Snapping on and off |
 | Ctrl+Z / Ctrl+Shift+Z or Ctrl+Y | Undo and redo; in a field, the typing there |
-| Ctrl+1 / Ctrl+3 / Ctrl+5 / Ctrl+6 / Ctrl+E | Edit, Animate, Captions, Activity and Export |
+| Ctrl+1 / Ctrl+2 / Ctrl+3 / Ctrl+5 / Ctrl+6 / Ctrl+E | Edit, Audio, Animate, Captions, Activity and Export |
 | Ctrl+N | New project |
 | Ctrl+O | Open a project |
 | Ctrl+I | Import media |
