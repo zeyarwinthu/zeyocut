@@ -62,8 +62,9 @@ public sealed class RedactionRenderTests
         });
     }
 
-    private static RedactionChange Redact(ProjectSession session, string[] tracks, RedactionStyle style, double strength = 50, double padding = 0, double feather = 0, int hold = 0, string color = "#000000") =>
-        session.Mutate("redact", p => RedactionEditor.Apply(p, tracks, new RedactionSettings(style, strength, padding, feather, hold, color)));
+    private static RedactionChange Redact(ProjectSession session, string[] tracks, RedactionStyle style, double strength = 50, double padding = 0, double feather = 0, int hold = 0, string color = "#000000",
+        RedactionShape shape = RedactionShape.Rectangle, bool smooth = false) =>
+        session.Mutate("redact", p => RedactionEditor.Apply(p, tracks, new RedactionSettings(style, strength, padding, feather, hold, color, shape, smooth)));
 
     private static FrameRenderer Renderer(ProjectSession session) => new(session.Directory, () => Ffmpeg.Require().Ffmpeg);
 
@@ -148,6 +149,82 @@ public sealed class RedactionRenderTests
         Assert.Equal(original[160, 35], colors[160, 35]);
         Assert.Equal(original[179, 65], colors[179, 65]);
         Assert.Equal(original[240, 125], colors[240, 125]);
+    }
+
+    // S19's ellipse: inside an 80x80 box only the ellipse in it is hidden; the corners show as they
+    // were, and the middle of each side is hidden. A rectangle hides the corners too.
+    [Fact]
+    public void AnEllipseHidesTheEllipseInsideTheBox()
+    {
+        var session = Square("redact-ellipse");
+        AddTrack(session, "round", "square", Still(60, 100, 20, 80, 80));
+        AddTrack(session, "box", "square", Still(60, 200, 20, 80, 80));
+        using var renderer = Renderer(session);
+        using var before = renderer.RenderImage(session.Snapshot(), 0);
+        Redact(session, ["round"], RedactionStyle.Solid, color: "#FF0000", shape: RedactionShape.Ellipse);
+        Redact(session, ["box"], RedactionStyle.Solid, color: "#FF0000");
+        using var after = renderer.RenderImage(session.Snapshot(), 0);
+        var colors = Colors(after);
+        var original = Colors(before);
+        static bool IsRed(SKColor c) => c.Red > 240 && c.Green < 15 && c.Blue < 15;
+
+        foreach (var (x, y) in new[] { (140, 60), (101, 60), (178, 60), (140, 21), (140, 98), (120, 30), (160, 90) })
+        {
+            Assert.True(IsRed(colors[x, y]), $"ellipse: {x},{y} is {colors[x, y]}");
+        }
+
+        foreach (var (x, y) in new[] { (101, 21), (178, 21), (101, 98), (178, 98), (106, 26), (173, 93) })
+        {
+            Assert.Equal(original[x, y], colors[x, y]);
+        }
+
+        foreach (var (x, y) in new[] { (201, 21), (278, 21), (201, 98), (278, 98), (240, 60) })
+        {
+            Assert.True(IsRed(colors[x, y]), $"rectangle: {x},{y} is {colors[x, y]}");
+        }
+
+        Assert.Equal(original[99, 60], colors[99, 60]);
+        Assert.Equal(original[140, 19], colors[140, 19]);
+    }
+
+    // S19's smoothing: a 60 px box jittering up to 4 px either way, a different amount each frame.
+    // Unsmoothed, the hidden area widens to cover the jitter and changes width; smoothed, it keeps one
+    // width, and its middle moves on steadily, a pixel a frame.
+    [Fact]
+    public void SmoothingKeepsAJitteringBoxSteady()
+    {
+        var session = Square("redact-smooth");
+        List<TrackedFrame> Jittering(double y) => Enumerable.Range(0, 60)
+            .Select(f => new TrackedFrame { Frame = f, X = 100 + f + (f * 7919 + 13) % 9 - 4, Y = y, Width = 60, Height = 60, Confidence = 1 })
+            .ToList();
+        AddTrack(session, "raw", "square", Jittering(5));
+        AddTrack(session, "smooth", "square", Jittering(100));
+        Redact(session, ["raw"], RedactionStyle.Solid, color: "#FF0000", padding: 10);
+        Redact(session, ["smooth"], RedactionStyle.Solid, color: "#FF0000", padding: 10, smooth: true);
+        using var renderer = Renderer(session);
+        var project = session.Snapshot();
+        static bool IsRed(SKColor c) => c.Red > 240 && c.Green < 15 && c.Blue < 15;
+        (int Left, int Right) Edges(SKColor[,] colors, int y)
+        {
+            var red = Enumerable.Range(0, 320).Where(x => IsRed(colors[x, y])).ToList();
+            return (red[0], red[^1]);
+        }
+
+        var raw = new List<(int Left, int Right)>();
+        var smooth = new List<(int Left, int Right)>();
+        for (var frame = 10; frame <= 30; frame++)
+        {
+            using var image = renderer.RenderImage(project, frame);
+            var colors = Colors(image);
+            raw.Add(Edges(colors, 35));
+            smooth.Add(Edges(colors, 130));
+        }
+
+        static int Spread(IEnumerable<int> values) => values.Max() - values.Min();
+        var report = $"unsmoothed {string.Join(" ", raw)}; smoothed {string.Join(" ", smooth)}";
+        Assert.True(Spread(raw.Select(e => e.Right - e.Left)) >= 4, report);
+        Assert.True(Spread(smooth.Select(e => e.Right - e.Left)) <= 1, report);
+        Assert.True(Spread(smooth.Select((e, i) => e.Left + e.Right - 2 * (10 + i))) <= 2, report);
     }
 
     // The spec's test: with the tracker lost for 5 frames, the square stays hidden on every frame.

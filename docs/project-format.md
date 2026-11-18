@@ -35,7 +35,7 @@ Here is the demo project (`ZeyoCut.Mcp.exe demo`) cut down to one asset and one 
 
 ```json
 {
-  "formatVersion": 10,
+  "formatVersion": 11,
   "revision": 2,
   "name": "Tora Jumps",
   "width": 1280,
@@ -98,7 +98,7 @@ Here is the demo project (`ZeyoCut.Mcp.exe demo`) cut down to one asset and one 
 
 | Field | Default | What it is |
 |---|---|---|
-| `formatVersion` | 10 | The format the file was saved in; see [Format versions](#format-versions) |
+| `formatVersion` | 11 | The format the file was saved in; see [Format versions](#format-versions) |
 | `revision` | 0 | How many times the project has been saved. Every save adds 1, whichever program saves it, and it never goes back: undo, redo and `restore_backup` put back older content as a new revision. ZeyoCut sets it; no tool does |
 | `name` | | The project's name |
 | `width`, `height` | 1920, 1080 | The canvas in pixels |
@@ -141,7 +141,7 @@ Image, text and video layers add the anchor (`anchorX`, `anchorY`), `ignoreCamer
 | `video` | `asset`, `trimIn`, `trimOut`, `speed`, `volume` (animated), `muted`, `role`, `fadeIn`, `fadeOut`, a crop (`cropWidth`, `cropHeight` and the animated `cropX`, `cropY`), the color adjustments, and `matte` |
 | `audio` | `asset`, `trimIn`, `trimOut`, `volume` (animated), `role` (`voice`, `music` or `effects`), `fadeIn` and `fadeOut` |
 | `cutout` | Made by `text_behind_subject`: the subject of its `sources` (a clip and the pieces splits made of it) drawn again above the text, cut out with its `matte`. It follows its sources, so only `name`, `zIndex`, `visible` and `opacity` are its own. `captionGroup` names the captions `generate_captions` made it for |
-| `redaction` | Made by `apply_redaction`: hides the boxes of its `tracks` with a `style` (`pixelate`, `blur` or `solid`), `strength`, `paddingPercent`, `feather`, `holdFrames` and `color`. After `tracks_to_keyframes`, `boxes` holds a track's box as keyframes |
+| `redaction` | Made by `apply_redaction`: hides the boxes of its `tracks` with a `style` (`pixelate`, `blur` or `solid`), `strength`, `paddingPercent`, `feather`, `holdFrames` and `color`, as a `shape` (`rectangle`, the whole box, or `ellipse`, the ellipse inside it); `smooth` keeps each box steady, its center and size averaged over 6 frames on each side. After `tracks_to_keyframes`, `boxes` holds a track's box as keyframes |
 
 ### Animated values
 
@@ -192,6 +192,7 @@ A marker has an `id`, a `time`, a `name` and a `kind`, `chapter` or `scene`. `ex
 | 8 | The `cubicBezier` easing and a keyframe's `bezier` |
 | 9 | Each role's mix (`gain`, `pan`, `muted`), the duck level and fades, and `volume` as an animated value |
 | 10 | Asset `tags` |
+| 11 | A redaction's `shape` and `smooth` |
 
 A project saved by an older ZeyoCut opens too: it's updated to the current format as it opens, and the file as it was is kept in `backups\` for good. Every version has added fields, and a field an older file lacks gets its default; version 9 also turned `volume` into an animated value, and a number there still reads as one without keyframes.
 

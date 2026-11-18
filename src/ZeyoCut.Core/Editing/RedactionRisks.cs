@@ -177,7 +177,7 @@ public static class RedactionRisks
             return covered;
         }
 
-        var cover = RedactionCover.Of(data.Frames, asset.FrameCount ?? 0, layer.PaddingPercent, layer.HoldFrames, cuts);
+        var cover = RedactionCover.Of(data.Frames, asset.FrameCount ?? 0, layer.PaddingPercent, layer.HoldFrames, cuts, layer.Smooth);
         foreach (var box in cover.Boxes)
         {
             covered.Add(box.Frame);

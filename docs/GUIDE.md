@@ -1910,7 +1910,7 @@ hid face_1, face_2, face_3, face_4 with 'redaction_1': pixelate, strength 50 (12
 - face_2: frames 0–95 of 'crew' covered (0–3.958s on 'crew'): 93 detected, 3 filled between detections, 0 held
 - face_3: frames 0–95 of 'crew' covered (0–3.958s on 'crew'): 93 detected, 3 filled between detections, 0 held
 - face_4: frames 0–95 of 'crew' covered (0–3.958s on 'crew'): 93 detected, 3 filled between detections, 0 held
-- check it with render_frame; update_layer changes its style, strength, paddingPercent, feather, holdFrames, color and visible; tracks_to_keyframes turns a track's box into keyframes to edit by hand
+- check it with render_frame; update_layer changes its style, strength, paddingPercent, feather, holdFrames, color, shape, smooth and visible; tracks_to_keyframes turns a track's box into keyframes to edit by hand
 ```
 `render_frame` at 2.083 s, while the bar hides `face_3`, shows the other three faces pixelated.
 
@@ -1953,7 +1953,7 @@ hid plate_1, plate_2, plate_3 with 'redaction_1': pixelate, strength 50 (12 bloc
 - plate_1: frames 0–95 of 'vans' covered (0–3.958s on 'vans'): 93 detected, 3 filled between detections, 0 held
 - plate_2: frames 0–95 of 'vans' covered (0–3.958s on 'vans'): 94 detected, 2 filled between detections, 0 held
 - plate_3: frames 0–95 of 'vans' covered (0–3.958s on 'vans'): 92 detected, 4 filled between detections, 0 held
-- check it with render_frame; update_layer changes its style, strength, paddingPercent, feather, holdFrames, color and visible; tracks_to_keyframes turns a track's box into keyframes to edit by hand
+- check it with render_frame; update_layer changes its style, strength, paddingPercent, feather, holdFrames, color, shape, smooth and visible; tracks_to_keyframes turns a track's box into keyframes to edit by hand
 ```
 `render_frame` at 1 s shows the three plates pixelated and the badge as it is.
 
@@ -2088,7 +2088,7 @@ The presenter from [Tracking](#tracking), with `track_1` corrected by `reanchor_
 hid track_1 with 'redaction_1': pixelate, strength 50 (12 blocks across each box), padding 15%, feather 4 px, held 15 frames before and after
 - it hides them on the video frame before a clip is drawn, in every clip that plays the footage ('walk' plays in 'guest'), so moves, effects, the camera and subject cutouts all show it hidden
 - track_1: frames 0–95 of 'walk' covered (0–3.958s on 'guest'): 96 detected, 0 filled between detections, 0 held
-- check it with render_frame; update_layer changes its style, strength, paddingPercent, feather, holdFrames, color and visible; tracks_to_keyframes turns a track's box into keyframes to edit by hand
+- check it with render_frame; update_layer changes its style, strength, paddingPercent, feather, holdFrames, color, shape, smooth and visible; tracks_to_keyframes turns a track's box into keyframes to edit by hand
 ```
 `render_frame` at 1 s shows the face pixelated. At 2.25 s it stays hidden while the walker passes.
 
@@ -2100,7 +2100,7 @@ hid track_1 with 'redaction_1': pixelate, strength 50 (12 blocks across each box
 hid track_2 with 'redaction_2': solid #000000, padding 15%, feather 4 px, held 15 frames before and after
 - it hides them on the video frame before a clip is drawn, in every clip that plays the footage ('walk' plays in 'guest'), so moves, effects, the camera and subject cutouts all show it hidden
 - track_2: frames 0–95 of 'walk' covered (0–3.958s on 'guest'): 96 detected, 0 filled between detections, 0 held
-- check it with render_frame; update_layer changes its style, strength, paddingPercent, feather, holdFrames, color and visible; tracks_to_keyframes turns a track's box into keyframes to edit by hand
+- check it with render_frame; update_layer changes its style, strength, paddingPercent, feather, holdFrames, color, shape, smooth and visible; tracks_to_keyframes turns a track's box into keyframes to edit by hand
 ```
 At 2.25 s the smoothed box is stretched wide over the frames where the box drifted, and the face stays covered.
 
@@ -2110,7 +2110,7 @@ At 2.25 s the smoothed box is stretched wide over the frames where the box drift
 ```
 ```text
 updated layer 'redaction_1'
-{"type":"redaction","id":"redaction_1","name":"redaction_1","start":0,"end":null,"zIndex":0,"parentId":null,"visible":true,"tracks":["track_1"],"style":"blur","strength":70,"paddingPercent":15,"feather":4,"holdFrames":15,"color":"#000000"}
+{"type":"redaction","id":"redaction_1","name":"redaction_1","start":0,"end":null,"zIndex":0,"parentId":null,"visible":true,"tracks":["track_1"],"style":"blur","strength":70,"paddingPercent":15,"feather":4,"holdFrames":15,"color":"#000000","shape":"rectangle","smooth":false}
 ```
 After `split_layer` at 2 s and `set_speed` 0.5 on the second piece, `render_frame` at 3 s still shows the face blurred.
 
@@ -2125,7 +2125,7 @@ hid track_1, track_2 with 'redaction_1': solid #202428, padding 15%, feather 4 p
 - track_2: frames 0–95 of 'walk' covered (0–1.958s on 'guest', 2–5.917s on 'guest_2'): 96 detected, 0 filled between detections, 0 held
 - removed 'redaction_1', which hid only track_1
 - removed 'redaction_2', which hid only track_2
-- check it with render_frame; update_layer changes its style, strength, paddingPercent, feather, holdFrames, color and visible; tracks_to_keyframes turns a track's box into keyframes to edit by hand
+- check it with render_frame; update_layer changes its style, strength, paddingPercent, feather, holdFrames, color, shape, smooth and visible; tracks_to_keyframes turns a track's box into keyframes to edit by hand
 ```
 
 A clip with a hard cut: 2 s of a face, then 2 s of vans, at 24 fps. Before `analyze_video` has run, `face_1`'s box is held 15 frames into the vans' shot, where it pixelates the middle of a van:
@@ -2136,7 +2136,7 @@ A clip with a hard cut: 2 s of a face, then 2 s of vans, at 24 fps. Before `anal
 hid face_1 with 'redaction_1': pixelate, strength 50 (12 blocks across each box), padding 15%, feather 4 px, held 15 frames before and after
 - it hides them on the video frame before a clip is drawn, in every clip that plays the footage ('street' plays in 'street'), so moves, effects, the camera and subject cutouts all show it hidden
 - face_1: frames 0–62 of 'street' covered (0–2.583s on 'street'): 48 detected, 0 filled between detections, 15 held
-- check it with render_frame; update_layer changes its style, strength, paddingPercent, feather, holdFrames, color and visible; tracks_to_keyframes turns a track's box into keyframes to edit by hand
+- check it with render_frame; update_layer changes its style, strength, paddingPercent, feather, holdFrames, color, shape, smooth and visible; tracks_to_keyframes turns a track's box into keyframes to edit by hand
 ```
 After `analyze_video` found the cut at 2 s, the same call ends the hold there, and the van shows:
 ```text
@@ -2144,7 +2144,7 @@ changed how 'redaction_1' hides face_1: pixelate, strength 50 (12 blocks across 
 - it hides them on the video frame before a clip is drawn, in every clip that plays the footage ('street' plays in 'street'), so moves, effects, the camera and subject cutouts all show it hidden
 - face_1: frames 0–48 of 'street' covered (0–2s on 'street'): 48 detected, 0 filled between detections, 1 held
 - face_1: the box isn't held across the scene cut that analyze_video found at 2s on 'street'
-- check it with render_frame; update_layer changes its style, strength, paddingPercent, feather, holdFrames, color and visible; tracks_to_keyframes turns a track's box into keyframes to edit by hand
+- check it with render_frame; update_layer changes its style, strength, paddingPercent, feather, holdFrames, color, shape, smooth and visible; tracks_to_keyframes turns a track's box into keyframes to edit by hand
 ```
 
 Errors:
@@ -2152,7 +2152,7 @@ Errors:
 An error occurred invoking 'apply_redaction': track 'track_9' not found; tracks: track_1, track_2
 ```
 ```text
-An error occurred invoking 'update_layer': 'redaction_1' is a redaction of track_1, track_2: it isn't drawn or placed on the timeline itself, it hides those tracks' boxes in every clip that plays their footage, so make this change on the clips (its own settings are name, visible, style, strength, paddingPercent, feather, holdFrames, color; apply_redaction changes its tracks and tracks_to_keyframes its boxes)
+An error occurred invoking 'update_layer': 'redaction_1' is a redaction of track_1, track_2: it isn't drawn or placed on the timeline itself, it hides those tracks' boxes in every clip that plays their footage, so make this change on the clips (its own settings are name, visible, style, strength, paddingPercent, feather, holdFrames, color, shape, smooth; apply_redaction changes its tracks and tracks_to_keyframes its boxes)
 ```
 
 ### `tracks_to_keyframes`

@@ -6,7 +6,8 @@ using ZeyoCut.Core.Model;
 
 namespace ZeyoCut.Core.Editing;
 
-public sealed record RedactionSettings(RedactionStyle Style, double Strength, double PaddingPercent, double Feather, int HoldFrames, string Color);
+public sealed record RedactionSettings(RedactionStyle Style, double Strength, double PaddingPercent, double Feather, int HoldFrames, string Color,
+    RedactionShape Shape = RedactionShape.Rectangle, bool Smooth = false);
 
 // apply_redaction's result: the redaction that hides the tracks now (made, or the one that already
 // hid exactly those tracks), and notes.
@@ -32,7 +33,7 @@ public static class RedactionEditor
     public const double KeyTolerance = 0.2;
     public const double KeyMargin = 0.5;
 
-    public static readonly IReadOnlyList<string> OwnFields = ["name", "visible", "style", "strength", "paddingPercent", "feather", "holdFrames", "color"];
+    public static readonly IReadOnlyList<string> OwnFields = ["name", "visible", "style", "strength", "paddingPercent", "feather", "holdFrames", "color", "shape", "smooth"];
 
     public static readonly IReadOnlyList<string> BoxProperties = ["x", "y", "width", "height"];
 
@@ -120,6 +121,8 @@ public static class RedactionEditor
             Feather = settings.Feather,
             HoldFrames = settings.HoldFrames,
             Color = settings.Color,
+            Shape = settings.Shape,
+            Smooth = settings.Smooth,
         };
         if (Problems(wanted).FirstOrDefault() is { } problem)
         {
@@ -186,6 +189,8 @@ public static class RedactionEditor
         layer.Feather = wanted.Feather;
         layer.HoldFrames = wanted.HoldFrames;
         layer.Color = wanted.Color;
+        layer.Shape = wanted.Shape;
+        layer.Smooth = wanted.Smooth;
         return new RedactionChange(layer, created, notes);
     }
 
@@ -374,7 +379,8 @@ public static class RedactionEditor
             RedactionStyle.Solid => $"solid {layer.Color}",
             _ => $"{EnumNames.ToName(layer.Style)} strength={Num(layer.Strength)}",
         };
-        return $"{style} padding={Num(layer.PaddingPercent)}% feather={Num(layer.Feather)} hold={layer.HoldFrames}";
+        return $"{style} padding={Num(layer.PaddingPercent)}% feather={Num(layer.Feather)} hold={layer.HoldFrames}"
+            + (layer.Shape == RedactionShape.Ellipse ? " ellipse" : "") + (layer.Smooth ? " smooth" : "");
     }
 
     private static string NewId(Project project)

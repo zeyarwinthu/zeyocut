@@ -288,16 +288,16 @@ public sealed class FrameRenderer : IDisposable
         return Video.GetFrame(layer.Id, file, asset, frame, width, height);
     }
 
-    // A track's fail-safe boxes with a redaction's padding and hold, which ends at the scene cuts
-    // analyze_video found. A track's file never changes (a new version is a new file), so they are
+    // A track's fail-safe boxes with a redaction's padding, hold (which ends at the scene cuts
+    // analyze_video found) and smoothing. A track's file never changes (a new version is a new file), so they are
     // worked out once for each version of the footage's analysis.
     public RedactionCover Cover(Track track, Asset asset, RedactionLayer layer)
     {
         var analysis = new FileInfo(AnalysisFiles.AnalysisPath(ProjectDirectory, asset));
         var cuts = analysis.Exists ? $"{analysis.Length}|{analysis.LastWriteTimeUtc.Ticks}" : "none";
         return _covers.GetOrAdd(
-            $"{track.File}|{asset.FrameCount}|{layer.PaddingPercent}|{layer.HoldFrames}|{cuts}",
-            _ => RedactionCover.Of(TrackFiles.Load(ProjectDirectory, track).Frames, asset.FrameCount ?? 0, layer.PaddingPercent, layer.HoldFrames, RedactionCover.Cuts(ProjectDirectory, asset)));
+            $"{track.File}|{asset.FrameCount}|{layer.PaddingPercent}|{layer.HoldFrames}|{layer.Smooth}|{cuts}",
+            _ => RedactionCover.Of(TrackFiles.Load(ProjectDirectory, track).Frames, asset.FrameCount ?? 0, layer.PaddingPercent, layer.HoldFrames, RedactionCover.Cuts(ProjectDirectory, asset), layer.Smooth));
     }
 
     public void Dispose()

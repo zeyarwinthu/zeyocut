@@ -1817,7 +1817,7 @@ public class McpServerTests
         }
 
         var first = JsonDocument.Parse(File.ReadAllText(projectFile)).RootElement.GetProperty("tracks")[0];
-        Assert.Equal(10, JsonDocument.Parse(File.ReadAllText(projectFile)).RootElement.GetProperty("formatVersion").GetInt32());
+        Assert.Equal(11, JsonDocument.Parse(File.ReadAllText(projectFile)).RootElement.GetProperty("formatVersion").GetInt32());
         var firstFile = first.GetProperty("file").GetString()!;
         Assert.True(File.Exists(Path.Combine(root, "projects", "tracking", firstFile)));
 
@@ -2020,7 +2020,7 @@ public class McpServerTests
             "hid track_1 with 'redaction_1': pixelate, strength 50 (12 blocks across each box), padding 15%, feather 4 px, held 15 frames before and after"
             + "\n- it hides them on the video frame before a clip is drawn, in every clip that plays the footage ('square' plays in 'clip'), so moves, effects, the camera and subject cutouts all show it hidden"
             + "\n- track_1: frames 0–59 of 'square' covered (0–1.967s on 'clip'): 60 detected, 0 filled between detections, 0 held"
-            + "\n- check it with render_frame; update_layer changes its style, strength, paddingPercent, feather, holdFrames, color and visible; tracks_to_keyframes turns a track's box into keyframes to edit by hand",
+            + "\n- check it with render_frame; update_layer changes its style, strength, paddingPercent, feather, holdFrames, color, shape, smooth and visible; tracks_to_keyframes turns a track's box into keyframes to edit by hand",
             applied);
         var pixelated = await Square(1);
         Assert.True(pixelated.Zip(original).Count(p => p.First != p.Second) > pixelated.Length / 2, "the square isn't pixelated");
@@ -2032,6 +2032,26 @@ public class McpServerTests
         await CallOk(client, "split_layer", new() { ["layerId"] = "clip", ["time"] = 0.5 }, ct);
         Assert.All(await Square(1.5), c => Assert.True(c.Red < 12 && c.Green < 12 && c.Blue < 12, $"{c}"));
         Assert.Contains("redaction_1 [redaction]  hides=track_1  solid #000000 padding=15% feather=4 hold=15", await CallOk(client, "list_layers", new(), ct));
+
+        // An ellipse, smoothed: the square's corners show and its middle is hidden; update_layer goes
+        // back to the whole box.
+        static bool Black(SKColor c) => c.Red < 12 && c.Green < 12 && c.Blue < 12;
+        var ellipse = await CallOk(client, "apply_redaction", new() { ["trackIds"] = new[] { "track_1" }, ["style"] = "solid", ["feather"] = 0, ["shape"] = "ellipse", ["smooth"] = true }, ct);
+        Assert.StartsWith("changed how 'redaction_1' hides track_1: solid #000000, padding 15%, feather 0 px, held 15 frames before and after, the ellipse inside each box, its motion smoothed\n", ellipse);
+        Assert.Contains("redaction_1 [redaction]  hides=track_1  solid #000000 padding=15% feather=0 hold=15 ellipse smooth", await CallOk(client, "list_layers", new(), ct));
+        var round = await Square(1.5);
+        Assert.True(Black(round[20 * 40 + 20]), $"{round[20 * 40 + 20]}");
+        Assert.False(Black(round[0]), $"{round[0]}");
+        Assert.False(Black(round[39 * 40 + 39]), $"{round[39 * 40 + 39]}");
+        await CallOk(client, "update_layer", new() { ["layerId"] = "redaction_1", ["changes"] = new Dictionary<string, object?> { ["shape"] = "rectangle", ["feather"] = 4, ["smooth"] = false } }, ct);
+        Assert.All(await Square(1.5), c => Assert.True(Black(c), $"{c}"));
+        Assert.Contains("unknown shape 'circle'; valid values: rectangle, ellipse", Text(await Call(client, "apply_redaction", new() { ["trackIds"] = new[] { "track_1" }, ["shape"] = "circle" }, ct)));
+        Assert.Contains("undid: update_layer redaction_1", await CallOk(client, "undo", new(), ct));
+        Assert.Contains("undid: apply_redaction track_1", await CallOk(client, "undo", new(), ct));
+        var restored = await CallOk(client, "list_layers", new(), ct);
+        Assert.Contains("redaction_1 [redaction]  hides=track_1  solid #000000 padding=15% feather=4 hold=15", restored);
+        Assert.DoesNotContain("ellipse", restored);
+        Assert.DoesNotContain("smooth", restored);
 
         var keyed = await CallOk(client, "tracks_to_keyframes", new() { ["trackId"] = "track_1" }, ct);
         Assert.Matches(@"^made track_1's box on 'redaction_1' keyframes: x \d+, y \d+, width \d+, height \d+ over frames 0–59 of 'square' \(source 0–1\.967s; 0–0\.467s on 'clip', 0\.5–1\.967s on 'clip_2'\)\n- the times are the footage's own seconds", keyed);
@@ -2900,10 +2920,10 @@ public class McpServerTests
         await using var client = await StartServer(root, projects, Path.Combine(root, "logs"), ct);
 
         var opened = await CallOk(client, "open_project", new() { ["nameOrPath"] = "tora" }, ct);
-        Assert.Matches(@"\nupdated project\.json from format 1 \(saved by an older ZeyoCut\) to 10; the file as it was is kept as backups\\project-v1-\d{8}-\d{6}\.json\n", opened);
+        Assert.Matches(@"\nupdated project\.json from format 1 \(saved by an older ZeyoCut\) to 11; the file as it was is kept as backups\\project-v1-\d{8}-\d{6}\.json\n", opened);
         Assert.Contains("tora_head", opened);
         Assert.Single(Directory.GetFiles(Path.Combine(projects, "tora", "backups"), "project-v1-*.json"));
-        Assert.Matches("\"formatVersion\": 10,\r?\n  \"revision\": 1,", await CallOk(client, "get_project", new(), ct));
+        Assert.Matches("\"formatVersion\": 11,\r?\n  \"revision\": 1,", await CallOk(client, "get_project", new(), ct));
 
         Assert.DoesNotContain("updated project.json", await CallOk(client, "open_project", new() { ["nameOrPath"] = "tora" }, ct));
     }

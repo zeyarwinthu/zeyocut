@@ -35,6 +35,8 @@ public static class ProjectMigrations
         new(9, _ => { }),
         // 10: asset tags.
         new(10, _ => { }),
+        // 11: a redaction's shape and smoothing.
+        new(11, _ => { }),
     ];
 
     private static readonly JsonNodeOptions NodeOptions = new() { PropertyNameCaseInsensitive = true };

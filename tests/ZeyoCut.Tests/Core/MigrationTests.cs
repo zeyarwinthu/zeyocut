@@ -17,7 +17,7 @@ public class MigrationTests
     [Fact]
     public void EveryEarlierFormatHasAStep()
     {
-        Assert.Equal(10, Project.CurrentFormatVersion);
+        Assert.Equal(11, Project.CurrentFormatVersion);
         Assert.Equal(Enumerable.Range(2, Project.CurrentFormatVersion - 1), ProjectMigrations.Steps.Select(s => s.To));
     }
 
@@ -31,6 +31,7 @@ public class MigrationTests
     [InlineData(7)]
     [InlineData(8)]
     [InlineData(9)]
+    [InlineData(10)]
     public void ProjectsSavedByEachEarlierFormatMigrateWithoutLosingAnything(int version)
     {
         var original = File.ReadAllText(TestFixtures.OldProject(version));
@@ -105,10 +106,10 @@ public class MigrationTests
         Assert.Same(unversioned, ProjectMigrations.Migrate(unversioned, out savedVersion));
         Assert.Equal(Project.CurrentFormatVersion, savedVersion);
 
-        const string newer = """{ "formatVersion": 11, "name": "from the future", "width": 320, "height": 240 }""";
+        const string newer = """{ "formatVersion": 12, "name": "from the future", "width": 320, "height": 240 }""";
         Assert.Same(newer, ProjectMigrations.Migrate(newer, out savedVersion));
-        Assert.Equal(11, savedVersion);
-        Assert.Contains("formatVersion 11 is newer than this version of ZeyoCut supports (10)", ProjectValidator.Validate(ProjectJson.Deserialize(newer)));
+        Assert.Equal(12, savedVersion);
+        Assert.Contains("formatVersion 12 is newer than this version of ZeyoCut supports (11)", ProjectValidator.Validate(ProjectJson.Deserialize(newer)));
 
         const string broken = """{ "formatVersion": 2, "name": """;
         Assert.Same(broken, ProjectMigrations.Migrate(broken, out savedVersion));
