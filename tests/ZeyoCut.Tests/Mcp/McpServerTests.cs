@@ -654,6 +654,49 @@ public class McpServerTests
         Assert.Equal(TestProjects.WithoutRevision(before), TestProjects.WithoutRevision(File.ReadAllText(file)));
     }
 
+    // add_transition makes the project the editor's AddTransitionOperation makes, on one cut, and on
+    // every cut of a lane in turn as the Effects view's Apply to every cut does in one step.
+    [Fact]
+    public async Task ServerAddsTransitionsAsTheEditorDoes()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var root = TestPaths.NewDirectory("mcp-transitions");
+        var card = TestImages.Solid(Path.Combine(root, "card.png"), 20, 10, SKColors.Blue);
+        var file = Path.Combine(root, "projects", "cuts", "project.json");
+        await using var client = await StartServer(root, Path.Combine(root, "projects"), Path.Combine(root, "logs"), ct);
+        await CallOk(client, "create_project", new() { ["name"] = "cuts", ["width"] = 320, ["height"] = 180, ["fps"] = 10, ["duration"] = 6.0 }, ct);
+        await CallOk(client, "import_asset", new() { ["path"] = card }, ct);
+        foreach (var (id, start) in new[] { ("one", 0.0), ("two", 2.0), ("three", 4.0) })
+        {
+            await CallOk(client, "add_image_layer", new() { ["asset"] = "card", ["id"] = id, ["start"] = start, ["end"] = start + 2, ["zIndex"] = 0 }, ct);
+        }
+
+        var before = File.ReadAllText(file);
+        void Same(Project editor)
+        {
+            editor.Revision = ProjectJson.Deserialize(File.ReadAllText(file)).Revision;
+            Assert.Equal(TestProjects.WithoutRevision(File.ReadAllText(file)), TestProjects.WithoutRevision(ProjectJson.Serialize(editor)));
+        }
+
+        var slid = await CallOk(client, "add_transition", new() { ["layerA"] = "one", ["layerB"] = "two", ["type"] = "slide", ["duration"] = 0.6, ["direction"] = "up" }, ct);
+        var editor = ProjectJson.Deserialize(before);
+        var summary = new AddTransitionOperation("one", "two", TransitionType.Slide, 0.6, TransitionDirection.Up).Apply(editor);
+        Assert.Equal(slid.ReplaceLineEndings("\n").Split('\n')[0], summary.Split("; the project is")[0]);
+        Same(editor);
+        Assert.StartsWith("undid: add_transition one two", await CallOk(client, "undo", new(), ct));
+
+        await CallOk(client, "add_transition", new() { ["layerA"] = "one", ["layerB"] = "two", ["duration"] = 0.4 }, ct);
+        await CallOk(client, "add_transition", new() { ["layerA"] = "two", ["layerB"] = "three", ["duration"] = 0.4 }, ct);
+        editor = ProjectJson.Deserialize(before);
+        var every = new BatchOperation("add_transition (2 cuts)", [
+            new AddTransitionOperation("one", "two", TransitionType.Crossfade, 0.4),
+            new AddTransitionOperation("two", "three", TransitionType.Crossfade, 0.4)]);
+        Assert.Equal(["one", "two", "three"], every.Layers);
+        every.Apply(editor);
+        Same(editor);
+        Assert.True(editor.FindLayer("three")!.Start < 4);
+    }
+
     [Fact]
     public async Task ServerAppliesDeliveryPresets()
     {

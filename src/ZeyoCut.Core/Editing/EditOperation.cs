@@ -207,6 +207,23 @@ public sealed record SetSpeedOperation(string LayerId, double Speed) : EditOpera
     }
 }
 
+// A transition from LayerA to LayerB, as add_transition adds it (TimelineEditor.AddTransition):
+// baked into keyframes and fades, a crossfade overlapping the clips and moving later layers left
+// for what their unused source doesn't cover. Measurer measures text in the project it's applied to.
+public sealed record AddTransitionOperation(string LayerA, string LayerB, TransitionType Type, double Duration, TransitionDirection? Direction = null, Func<Project, ITextMeasurer>? Measurer = null) : EditOperation
+{
+    public override string Label => $"add_transition {LayerA} {LayerB}";
+
+    public override IReadOnlyList<string> Layers => [LayerA, LayerB];
+
+    public override string Apply(Project project)
+    {
+        var change = TimelineEditor.AddTransition(project, LayerA, LayerB, Type, Duration, Direction, Measurer?.Invoke(project));
+        var longer = Math.Abs(change.NewDuration - change.OldDuration) > 1e-9 ? $"; the project is {Num(change.NewDuration)}s long (was {Num(change.OldDuration)}s)" : "";
+        return change.Summary + longer + string.Concat(change.Warnings.Select(w => $"; {w}"));
+    }
+}
+
 // The project's settings, as update_project changes them: the Audio view's mixer, ducking and loudness.
 public sealed record UpdateProjectOperation(ProjectOptions Options) : EditOperation
 {
