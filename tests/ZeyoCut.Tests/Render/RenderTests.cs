@@ -52,7 +52,7 @@ public class RenderTests
         Directory.CreateDirectory(Path.Combine(directory, "old"));
         var moved = TestImages.Solid(Path.Combine(directory, "art", "clouds.png"), 20, 20, SKColors.Lime);
         TestImages.Solid(Path.Combine(directory, "old", "clouds.png"), 30, 20, SKColors.Blue);
-        var matches = AssetRelinker.Matches(session.Snapshot(), clouds, [directory], new AssetProbe());
+        var matches = AssetRelinker.Matches(session.Snapshot(), clouds, [directory], new AssetProbe(), TestContext.Current.CancellationToken);
         Assert.Equal([new RelinkMatch(moved, "same size 20x20 px")], matches);
 
         var prepared = AssetImporter.Prepare(directory, moved, new AssetProbe(), AssetType.Image);

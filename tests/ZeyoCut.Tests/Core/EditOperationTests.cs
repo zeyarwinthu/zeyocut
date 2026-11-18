@@ -493,18 +493,18 @@ public class EditOperationTests
 
         var project = TestProjects.Footage();
         var music = project.FindAsset("music")!;
-        var matches = AssetRelinker.Matches(project, music, [root, Path.Combine(root, "missing folder"), other, root], new LengthProbe());
+        var matches = AssetRelinker.Matches(project, music, [root, Path.Combine(root, "missing folder"), other, root], new LengthProbe(), TestContext.Current.CancellationToken);
         Assert.Equal([(deep, "same length 20s"), (near, "same length 20s"), (picked, "same length 20s")],
             matches.Select(m => (m.Path, m.Reason)).OrderBy(m => m.Path == picked).ThenBy(m => m.Path, StringComparer.OrdinalIgnoreCase));
 
         // An asset with no length on record matches by name and kind alone.
         music.Duration = null;
-        Assert.Equal(4, AssetRelinker.Matches(project, music, [root, other], new LengthProbe()).Count(m => m.Reason == "same name"));
+        Assert.Equal(4, AssetRelinker.Matches(project, music, [root, other], new LengthProbe(), TestContext.Current.CancellationToken).Count(m => m.Reason == "same name"));
 
         // A file the probe can't read is passed over; cancelling stops the search.
         Lengths.Remove(near);
         music.Duration = 20;
-        Assert.DoesNotContain(near, AssetRelinker.Matches(project, music, [root], new LengthProbe()).Select(m => m.Path));
+        Assert.DoesNotContain(near, AssetRelinker.Matches(project, music, [root], new LengthProbe(), TestContext.Current.CancellationToken).Select(m => m.Path));
         Assert.Throws<OperationCanceledException>(() => AssetRelinker.Matches(project, music, [root], new LengthProbe(), new CancellationToken(true)));
     }
 
