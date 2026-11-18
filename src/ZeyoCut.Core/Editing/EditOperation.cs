@@ -360,6 +360,16 @@ public sealed record DuplicateLayerOperation(string LayerId) : EditOperation
         "copied " + string.Join(", ", ProjectEditor.DuplicateLayer(project, new DuplicateOptions { LayerId = LayerId }).Select(kv => $"'{kv.Key}' -> '{kv.Value}'"));
 }
 
+// Tags added to assets and taken off them, as tag_assets does.
+public sealed record TagAssetsOperation(IReadOnlyList<string> AssetIds, IReadOnlyList<string> Add, IReadOnlyList<string> Remove) : EditOperation
+{
+    public override string Label => $"tag_assets {string.Join(" ", AssetIds)}";
+
+    public override IReadOnlyList<string> Layers => [];
+
+    public override string Apply(Project project) => AssetTags.Tag(project, AssetIds, Add, Remove);
+}
+
 // An asset pointed at a file Prepare copied into assets\, as relink_asset does: Relink.
 public sealed record RelinkAssetOperation(string AssetId, PreparedAsset Asset) : EditOperation
 {

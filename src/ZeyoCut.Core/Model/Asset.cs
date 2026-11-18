@@ -48,4 +48,8 @@ public sealed class Asset
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? Normalized { get; set; }
+
+    // Names grouping it with other assets, as bins do (AssetTags).
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public List<string>? Tags { get; set; }
 }

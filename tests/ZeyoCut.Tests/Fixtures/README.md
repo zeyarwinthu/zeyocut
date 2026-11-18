@@ -12,7 +12,7 @@ The tests only check how many faces and plates are found and where. Nothing iden
 
 ## Old projects
 
-`project-v1.json` to `project-v8.json` are `project.json` files as earlier versions of ZeyoCut saved them, for the migration tests. Their assets aren't included; the tests only read the files.
+`project-v1.json` to `project-v9.json` are `project.json` files as earlier versions of ZeyoCut saved them, for the migration tests. Their assets aren't included; the tests only read the files.
 
 | File | Format | Saved by | What's in it |
 |---|---|---|---|
@@ -24,3 +24,4 @@ The tests only check how many faces and plates are found and where. Nothing iden
 | `project-v6.json` | 6 | ZeyoCut 0.1.0's code, before format 7 | the comic-panels example (captions in English, Japanese and Burmese with language tags) plus three markers added with `add_markers`' code |
 | `project-v7.json` | 7 | The manual editor's code, before format 8 | the tora-jump example: a cat rig with drawings, keyframes eased `linear`, `easeIn`, `easeOut`, `easeInOut` and `easeOutBack`, text and two sound effects |
 | `project-v8.json` | 8 | The manual editor's Animate view, before format 9 | the tora-jump example with two of Tora's Position Y keyframes given a `cubicBezier` easing, and two sound effects whose volume is a number |
+| `project-v9.json` | 9 | The manual editor's Audio view, before format 10 | the comic-panels example with each role's gain, pan and mute, a duck level and fades, and a sound effect's volume keyframes |

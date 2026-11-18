@@ -3,7 +3,7 @@
 
 # Tool reference
 
-The `zeyocut` server has 93 tools and 4 [workflow prompts](#workflow-prompts). Each is listed here as the server describes it to the model, with its parameters. The [guide](GUIDE.md) shows how they work together, with an example call and the real response for each. One more tool, `describe_clip`, appears only when a clip describer is configured (see the [guide](GUIDE.md#optional-describe_clip)).
+The `zeyocut` server has 94 tools and 4 [workflow prompts](#workflow-prompts). Each is listed here as the server describes it to the model, with its parameters. The [guide](GUIDE.md) shows how they work together, with an example call and the real response for each. One more tool, `describe_clip`, appears only when a clip describer is configured (see the [guide](GUIDE.md#optional-describe_clip)).
 
 | Tool | What it does |
 |---|---|
@@ -51,7 +51,7 @@ The `zeyocut` server has 93 tools and 4 [workflow prompts](#workflow-prompts). E
 | [`import_folder`](#import_folder) | Import every image, audio, font and video file in a folder (not its subfolders) whose name matches pattern, in order: by name with numbers in order (panel_2 before panel_10), or by date, oldest first. |
 | [`import_srt`](#import_srt) | Import a .srt subtitle file as the caption track of its language, as add_caption_track does with srt: text layers under a null layer captions_&lt;language&gt;, replacing that language's track if there is one (one undo step). |
 | [`import_video`](#import_video) | Import a video file (mp4/mov/m4v/mkv/webm/avi) as a video asset. |
-| [`list_assets`](#list_assets) | List the project's assets with their ids, types, sizes or durations, and which layers use them. |
+| [`list_assets`](#list_assets) | List the project's assets with their ids, types, sizes or durations, their tags, and which layers use them. |
 | [`list_layers`](#list_layers) | Show the layers as a parent/child tree with type, zIndex, time range, language, anchor and keyframed properties. |
 | [`list_library`](#list_library) | List what is in the shared library: rigs, actions, styles and templates, with a short description of each. |
 | [`list_projects`](#list_projects) | List the projects in the projects root folder. |
@@ -91,6 +91,7 @@ The `zeyocut` server has 93 tools and 4 [workflow prompts](#workflow-prompts). E
 | [`split_layer`](#split_layer) | Split a layer (and its children) at a timeline time into two layers that play exactly as before. |
 | [`start_export`](#start_export) | Start exporting the open project to exports/&lt;fileName&gt; as H.264 MP4 (yuv420p) with all audio layers mixed: music ducked under voice and the mix loudness-normalized (two-pass loudnorm, -14 LUFS by default; see update_project). |
 | [`system_check`](#system_check) | Report this computer: whether FFmpeg (needed for video and every export) and whisper (for transcripts) are installed, with how to install them; the folders ZeyoCut uses; and for the AI features the CPU, RAM, GPU, the ONNX Runtime version, which AI models are downloaded and the device each one runs on (DirectML on the GPU, or the CPU). |
+| [`tag_assets`](#tag_assets) | Add tags to assets and take tags off them. |
 | [`text_behind_subject`](#text_behind_subject) | Put text behind the subject of a clip or picture, like a title behind a presenter (one undo step): the text stays in front of the background, and the subject is drawn again above it, cut out. |
 | [`text_occlusion`](#text_occlusion) | Measure how much of a text layer is covered by what is drawn above it (a subject cutout from text_behind_subject, or any other layer), frame by frame: the min, max and average share of the text hidden, and the frames in runs of equal values (every frame is saved to renders/text_occlusion_&lt;id&gt;_&lt;first&gt;-&lt;last&gt;.json). |
 | [`track_object`](#track_object) | Follow an object through a video clip with OpenCV and save its box on every frame as a track (one undo step). |
@@ -645,7 +646,7 @@ Import a video file (mp4/mov/m4v/mkv/webm/avi) as a video asset. A constant-fram
 
 ### `list_assets`
 
-List the project's assets with their ids, types, sizes or durations, and which layers use them.
+List the project's assets with their ids, types, sizes or durations, their tags, and which layers use them.
 
 No parameters.
 
@@ -1058,6 +1059,16 @@ Start exporting the open project to exports/&lt;fileName&gt; as H.264 MP4 (yuv42
 Report this computer: whether FFmpeg (needed for video and every export) and whisper (for transcripts) are installed, with how to install them; the folders ZeyoCut uses; and for the AI features the CPU, RAM, GPU, the ONNX Runtime version, which AI models are downloaded and the device each one runs on (DirectML on the GPU, or the CPU). Then it benchmarks every downloaded model on the CPU and on DirectML, and 1080p decoding, in the background (syscheck_N, usually under a minute): the result gives each AI feature's time per minute of 1080p video (per image for aiImage). The results are saved (library\benchmark.json): AI jobs estimate their time from them, and AiDevice=auto (the default) runs a model on DirectML only where it worked and took at most 80% of the CPU's time. DirectML is tried in a separate process, stopped after 60 s, so a GPU driver that hangs can't hang the server. Run it again after installing models or changing hardware.
 
 No parameters.
+
+### `tag_assets`
+
+Add tags to assets and take tags off them. Tags group assets the way bins do (a character's parts, backgrounds, sound effects), and the editor's Media browser lists each tag as a bin. A tag is up to 40 characters; tags that differ only in case are the same tag. list_assets shows each asset's tags.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `assetIds` | array of strings, required | The assets to tag. |
+| `add` | array of strings | Tags to add, e.g. ["SFX"]. |
+| `remove` | array of strings | Tags to take off. |
 
 ### `text_behind_subject`
 

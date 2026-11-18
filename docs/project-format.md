@@ -35,7 +35,7 @@ Here is the demo project (`ZeyoCut.Mcp.exe demo`) cut down to one asset and one 
 
 ```json
 {
-  "formatVersion": 9,
+  "formatVersion": 10,
   "revision": 2,
   "name": "Tora Jumps",
   "width": 1280,
@@ -98,7 +98,7 @@ Here is the demo project (`ZeyoCut.Mcp.exe demo`) cut down to one asset and one 
 
 | Field | Default | What it is |
 |---|---|---|
-| `formatVersion` | 9 | The format the file was saved in; see [Format versions](#format-versions) |
+| `formatVersion` | 10 | The format the file was saved in; see [Format versions](#format-versions) |
 | `revision` | 0 | How many times the project has been saved. Every save adds 1, whichever program saves it, and it never goes back: undo, redo and `restore_backup` put back older content as a new revision. ZeyoCut sets it; no tool does |
 | `name` | | The project's name |
 | `width`, `height` | 1920, 1080 | The canvas in pixels |
@@ -114,7 +114,7 @@ Here is the demo project (`ZeyoCut.Mcp.exe demo`) cut down to one asset and one 
 
 ### Assets
 
-Each asset has an `id`, which layers refer to it by, a `type` (`image`, `audio`, `font` or `video`) and a `file`. The file is always `assets/<file name>`; one that points anywhere else is an error. The rest is what was found when the file was imported: `width` and `height`, `duration`, `frameRate`, `frameCount`, `hasAudio`, `codec` and, for fonts, `fontFamily`. A video that was transcoded on import keeps the file the user imported in `originalFile` and the reason in `normalized`.
+Each asset has an `id`, which layers refer to it by, a `type` (`image`, `audio`, `font` or `video`) and a `file`. The file is always `assets/<file name>`; one that points anywhere else is an error. The rest is what was found when the file was imported: `width` and `height`, `duration`, `frameRate`, `frameCount`, `hasAudio`, `codec` and, for fonts, `fontFamily`. A video that was transcoded on import keeps the file the user imported in `originalFile` and the reason in `normalized`. `tags` (optional) names the groups the asset is in, as bins do, such as `["Tora rig"]`: up to 40 characters each, and tags that differ only in case are the same tag. `tag_assets` sets them, and the editor's Media browser lists each tag as a bin.
 
 ### Layers
 
@@ -191,6 +191,7 @@ A marker has an `id`, a `time`, a `name` and a `kind`, `chapter` or `scene`. `ex
 | 7 | `revision`, the count of saves |
 | 8 | The `cubicBezier` easing and a keyframe's `bezier` |
 | 9 | Each role's mix (`gain`, `pan`, `muted`), the duck level and fades, and `volume` as an animated value |
+| 10 | Asset `tags` |
 
 A project saved by an older ZeyoCut opens too: it's updated to the current format as it opens, and the file as it was is kept in `backups\` for good. Every version has added fields, and a field an older file lacks gets its default; version 9 also turned `volume` into an animated value, and a number there still reads as one without keyframes.
 

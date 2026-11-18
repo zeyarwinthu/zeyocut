@@ -33,6 +33,8 @@ public static class ProjectMigrations
         // 9: each role's mix, the duck level and fades, and volume keyframes. A volume written as a
         // number reads as a value without keyframes.
         new(9, _ => { }),
+        // 10: asset tags.
+        new(10, _ => { }),
     ];
 
     private static readonly JsonNodeOptions NodeOptions = new() { PropertyNameCaseInsensitive = true };

@@ -19,7 +19,7 @@ public class McpServerTests
     private static readonly string[] ExpectedTools =
     [
         "create_project", "open_project", "update_project", "get_project", "list_projects", "undo", "redo", "restore_backup",
-        "import_asset", "import_folder", "list_assets", "relink_asset",
+        "import_asset", "import_folder", "list_assets", "relink_asset", "tag_assets",
         "add_image_layer", "add_text_layer", "add_audio_layer", "update_layer", "remove_layer", "duplicate_layer", "list_layers",
         "set_keyframes", "remove_keyframes", "clear_keyframes",
         "render_frame", "render_contact_sheet", "preview_server",
@@ -907,6 +907,44 @@ public class McpServerTests
     }
 
     [Fact]
+    public async Task ServerTagsAssetsAndListsTheirTags()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var root = TestPaths.NewDirectory("mcp-tags");
+        var body = TestImages.Solid(Path.Combine(root, "tora_body.png"), 22, 24, SKColors.Orange);
+        var head = TestImages.Solid(Path.Combine(root, "tora_head.png"), 24, 20, SKColors.Orange);
+        var boing = Path.Combine(root, "boing.wav");
+        ZeyoCut.Mcp.Demo.ToneGenerator.WriteTone(boing, 440, 0.6, 0.1);
+
+        await using var client = await StartServer(root, Path.Combine(root, "projects"), Path.Combine(root, "logs"), ct);
+        await CallOk(client, "create_project", new() { ["name"] = "tags", ["width"] = 320, ["height"] = 180, ["fps"] = 10, ["duration"] = 1.0 }, ct);
+        foreach (var file in new[] { body, head, boing })
+        {
+            await CallOk(client, "import_asset", new() { ["path"] = file }, ct);
+        }
+
+        await CallOk(client, "add_image_layer", new() { ["asset"] = "tora_body", ["id"] = "tora" }, ct);
+        Assert.Equal("'tora_body' tags: none → Tora rig; 'tora_head' tags: none → Tora rig",
+            await CallOk(client, "tag_assets", new() { ["assetIds"] = new[] { "tora_body", "tora_head" }, ["add"] = new[] { "Tora rig" } }, ct));
+        Assert.Equal("'boing' tags: none → SFX, Cartoon",
+            await CallOk(client, "tag_assets", new() { ["assetIds"] = new[] { "boing" }, ["add"] = new[] { "SFX", "Cartoon" } }, ct));
+        Assert.Equal(
+            "- tora_body [image] assets/tora_body.png (22x24 px); tags: Tora rig; used by: tora\n"
+            + "- tora_head [image] assets/tora_head.png (24x20 px); tags: Tora rig; used by: (none)\n"
+            + "- boing [audio] assets/boing.wav (0.6s); tags: SFX, Cartoon; used by: (none)",
+            (await CallOk(client, "list_assets", new(), ct)).ReplaceLineEndings("\n"));
+
+        var unchanged = await Call(client, "tag_assets", new() { ["assetIds"] = new[] { "boing" }, ["add"] = new[] { "sfx" } }, ct);
+        Assert.True(unchanged.IsError);
+        Assert.Contains("nothing changed; 'boing' has tags: SFX, Cartoon", Text(unchanged));
+        Assert.Equal("'boing' tags: SFX, Cartoon → SFX",
+            await CallOk(client, "tag_assets", new() { ["assetIds"] = new[] { "boing" }, ["remove"] = new[] { "cartoon" } }, ct));
+        Assert.Contains("\"tags\": [\n        \"SFX\"\n      ]", File.ReadAllText(Path.Combine(root, "projects", "tags", "project.json")).Replace("\r\n", "\n"));
+        Assert.StartsWith("undid: tag_assets boing", await CallOk(client, "undo", new(), ct));
+        Assert.Contains("tags: SFX, Cartoon", await CallOk(client, "list_assets", new(), ct));
+    }
+
+    [Fact]
     public async Task ServerAddsSoundEffectsFindsBeatsAndFlapsAMouth()
     {
         var ct = TestContext.Current.CancellationToken;
@@ -1585,7 +1623,7 @@ public class McpServerTests
         }
 
         var first = JsonDocument.Parse(File.ReadAllText(projectFile)).RootElement.GetProperty("tracks")[0];
-        Assert.Equal(9, JsonDocument.Parse(File.ReadAllText(projectFile)).RootElement.GetProperty("formatVersion").GetInt32());
+        Assert.Equal(10, JsonDocument.Parse(File.ReadAllText(projectFile)).RootElement.GetProperty("formatVersion").GetInt32());
         var firstFile = first.GetProperty("file").GetString()!;
         Assert.True(File.Exists(Path.Combine(root, "projects", "tracking", firstFile)));
 
@@ -2668,10 +2706,10 @@ public class McpServerTests
         await using var client = await StartServer(root, projects, Path.Combine(root, "logs"), ct);
 
         var opened = await CallOk(client, "open_project", new() { ["nameOrPath"] = "tora" }, ct);
-        Assert.Matches(@"\nupdated project\.json from format 1 \(saved by an older ZeyoCut\) to 9; the file as it was is kept as backups\\project-v1-\d{8}-\d{6}\.json\n", opened);
+        Assert.Matches(@"\nupdated project\.json from format 1 \(saved by an older ZeyoCut\) to 10; the file as it was is kept as backups\\project-v1-\d{8}-\d{6}\.json\n", opened);
         Assert.Contains("tora_head", opened);
         Assert.Single(Directory.GetFiles(Path.Combine(projects, "tora", "backups"), "project-v1-*.json"));
-        Assert.Matches("\"formatVersion\": 9,\r?\n  \"revision\": 1,", await CallOk(client, "get_project", new(), ct));
+        Assert.Matches("\"formatVersion\": 10,\r?\n  \"revision\": 1,", await CallOk(client, "get_project", new(), ct));
 
         Assert.DoesNotContain("updated project.json", await CallOk(client, "open_project", new() { ["nameOrPath"] = "tora" }, ct));
     }

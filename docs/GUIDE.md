@@ -1,6 +1,6 @@
 # ZeyoCut tool guide
 
-The `zeyocut` server has 93 tools, plus [`describe_clip`](#optional-describe_clip) when a clip describer is configured, and 4 [workflow prompts](#workflow-prompts). Every example below was run against the real server; paths are shortened to `C:\Users\you\...` and `C:\videos\...`.
+The `zeyocut` server has 94 tools, plus [`describe_clip`](#optional-describe_clip) when a clip describer is configured, and 4 [workflow prompts](#workflow-prompts). Every example below was run against the real server; paths are shortened to `C:\Users\you\...` and `C:\videos\...`.
 
 ## Conventions
 
@@ -563,6 +563,29 @@ Warnings:
 ```
 ```text
 An error occurred invoking 'relink_asset': 'tone.wav' is an audio file, and asset 'clouds' needs an image
+```
+
+### `tag_assets`
+
+Adds tags to assets and takes tags off them. Tags group assets the way bins do, such as a character's parts or the sound effects, and the editor's Media browser lists each tag as a bin. A tag is up to 40 characters, and tags that differ only in case are the same tag. `list_assets` shows each asset's tags.
+
+| Parameter | Type | Notes |
+|---|---|---|
+| `assetIds` | string[] | The assets to tag |
+| `add` | string[] | Tags to add |
+| `remove` | string[] | Tags to take off |
+
+```json
+{ "assetIds": ["tora_body", "tora_head"], "add": ["Tora rig"] }
+```
+```text
+'tora_body' tags: none → Tora rig; 'tora_head' tags: none → Tora rig
+```
+```json
+{ "assetIds": ["boing"], "add": ["sfx"] }
+```
+```text
+An error occurred invoking 'tag_assets': nothing changed; 'boing' has tags: SFX, Cartoon
 ```
 
 ---

@@ -53,6 +53,15 @@ public static class AssetTools
         return WithWarnings($"relinked {Describe(relinked.Asset)}", relinked.Warnings);
     });
 
+    [McpServerTool(Name = "tag_assets")]
+    [Description("Add tags to assets and take tags off them. Tags group assets the way bins do (a character's parts, backgrounds, sound effects), and the editor's Media browser lists each tag as a bin. A tag is up to 40 characters; tags that differ only in case are the same tag. list_assets shows each asset's tags.")]
+    public static string TagAssets(
+        EditorState state,
+        [Description("The assets to tag.")] string[] assetIds,
+        [Description("Tags to add, e.g. [\"SFX\"].")] string[]? add = null,
+        [Description("Tags to take off.")] string[]? remove = null) => Guard(() =>
+        state.Session.Mutate($"tag_assets {string.Join(" ", assetIds)}", p => AssetTags.Tag(p, assetIds, add, remove)));
+
     [McpServerTool(Name = "import_folder")]
     [Description("Import every image, audio, font and video file in a folder (not its subfolders) whose name matches pattern, in order: by name with numbers in order (panel_2 before panel_10), or by date, oldest first. Images, audio, fonts and videos that need no normalizing are imported at once, as one undo step. Videos that do (variable frame rate, rotated, HDR, ...) are normalized one after another in one background job (import_N) and added as each finishes; poll get_job_status. Asset ids come from the file names. The reply lists the assets in order, the files of other types it skipped and any file it couldn't read. At most 500 files.")]
     public static string ImportFolder(
@@ -218,7 +227,7 @@ public static class AssetTools
     }
 
     [McpServerTool(Name = "list_assets")]
-    [Description("List the project's assets with their ids, types, sizes or durations, and which layers use them.")]
+    [Description("List the project's assets with their ids, types, sizes or durations, their tags, and which layers use them.")]
     public static string ListAssets(EditorState state) => Guard(() =>
     {
         var project = state.Session.Snapshot();
@@ -231,7 +240,8 @@ public static class AssetTools
         foreach (var asset in project.Assets)
         {
             var users = project.Layers.Where(l => Uses(l, asset.Id)).Select(l => l.Id).ToList();
-            builder.AppendLine($"- {Describe(asset)}; used by: {Ids.List(users)}");
+            var tags = asset.Tags is { Count: > 0 } list ? $"; tags: {AssetTags.Text(list)}" : "";
+            builder.AppendLine($"- {Describe(asset)}{tags}; used by: {Ids.List(users)}");
         }
 
         return builder.ToString().TrimEnd();

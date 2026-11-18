@@ -48,6 +48,11 @@ public static class ProjectValidator
                 errors.Add($"asset '{asset.Id}': file '{asset.File}' must be a file in the project's {ProjectStore.AssetsFolder} folder");
             }
 
+            if (AssetTags.Problem(asset) is { } tags)
+            {
+                errors.Add(tags);
+            }
+
             if (asset.Type == AssetType.Video)
             {
                 ValidateVideoAsset(asset, errors);

@@ -153,6 +153,10 @@ when they open.
   (`duckLevel`, `duckFadeIn`, `duckFadeOut`). A sound's `volume`, and a video's, is an animated
   value, keyframed with `set_keyframes` property `volume`; a number there still reads. Older
   projects update as they open.
+- **Asset tags (project format 10):** an asset's `tags` group it with others, as bins do.
+  `tag_assets` adds and takes them off, `list_assets` shows them, and the editor's Media browser
+  lists each tag as a bin. Tags that differ only in case are the same tag. Older projects update as
+  they open.
 
 ### Changed
 
