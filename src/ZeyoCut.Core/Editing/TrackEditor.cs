@@ -242,6 +242,23 @@ public static class TrackEditor
         return new TrackBox { Frame = frame, X = left, Y = top, Width = right - left, Height = bottom - top };
     }
 
+    // Where a box in the clip's source pixels is on the canvas at 'time': its four corners (top-left,
+    // top-right, bottom-right, bottom-left) through the crop, the clip's placement, parents and the
+    // camera, as SourceBox maps them back. Null while the clip isn't on the timeline then.
+    public static IReadOnlyList<(double X, double Y)>? CanvasCorners(Project project, VideoLayer layer, Asset asset, double time, double x, double y, double width, double height)
+    {
+        if (!SceneEvaluator.IsActive(layer, time, project.Duration)
+            || SceneEvaluator.Evaluate(project, time).FirstOrDefault(e => e.Cutout is null && e.Layer.Id == layer.Id) is not { } placed)
+        {
+            return null;
+        }
+
+        var crop = VideoTiming.Crop(layer, asset, time);
+        return new[] { (x, y), (x + width, y), (x + width, y + height), (x, y + height) }
+            .Select(c => placed.World.Apply(c.Item1 - crop.X, c.Item2 - crop.Y))
+            .ToList();
+    }
+
     // An id for a new track: the one asked for, or <prefix>_N, never one in use or reserved.
     public static string NewId(Project project, string? id, Func<string, bool> reserved, string prefix = DefaultPrefix)
     {

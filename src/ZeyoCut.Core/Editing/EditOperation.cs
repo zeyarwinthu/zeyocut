@@ -485,6 +485,22 @@ public sealed record SaveTrackOperation(Track Track, string? Replacing, string T
     }
 }
 
+// apply_redaction: the tracks hidden by one redaction with these settings (RedactionEditor.Apply).
+public sealed record ApplyRedactionOperation(IReadOnlyList<string> TrackIds, RedactionSettings Settings) : EditOperation
+{
+    public override string Label => $"apply_redaction {string.Join(",", TrackIds)}";
+
+    public override IReadOnlyList<string> Layers => [];
+
+    public override string Apply(Project project)
+    {
+        var change = RedactionEditor.Apply(project, TrackIds, Settings);
+        var layer = change.Layer;
+        return (change.Created ? $"hid {Ids.List(layer.Tracks)} with '{layer.Id}'" : $"changed how '{layer.Id}' hides {Ids.List(layer.Tracks)}")
+            + $": {RedactionEditor.Describe(layer)}";
+    }
+}
+
 // An asset pointed at a file Prepare copied into assets\, as relink_asset does: Relink.
 public sealed record RelinkAssetOperation(string AssetId, PreparedAsset Asset) : EditOperation
 {

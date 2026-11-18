@@ -2695,6 +2695,71 @@ public class McpServerTests
         Assert.Contains("こんにちは、世界。", File.ReadAllText(Path.Combine(projects, "tracks", "exports", "talk_ja.srt")));
     }
 
+    // The editor's Track & blur view tracks a drawn box, corrects it and hides it as track_object,
+    // reanchor_track and apply_redaction do: the same project, track files and redaction.
+    [Fact]
+    public async Task TheEditorTracksCorrectsAndHidesAsTheToolsDo()
+    {
+        var ffmpeg = Ffmpeg.Require();
+        var ct = TestContext.Current.CancellationToken;
+        var root = TestPaths.NewDirectory("mcp-tracking-editor");
+        var projects = Path.Combine(root, "projects");
+        var square = TestVideos.MovingSquare(Path.Combine(root, "square.mp4"), cover: (30, 35, 100, 75));
+        await using var client = await StartServer(root, projects, Path.Combine(root, "logs"), ct);
+        await CallOk(client, "create_project", new() { ["name"] = "tracking", ["width"] = 640, ["height"] = 360, ["fps"] = 30, ["duration"] = 2.0 }, ct);
+        var imported = await CallOk(client, "import_video", new() { ["path"] = square, ["id"] = "square" }, ct);
+        if (imported.Contains("in the background as "))
+        {
+            var job = imported.Split("in the background as ")[1].Split([' ', ';', ',', '\n'])[0];
+            var deadline = DateTime.UtcNow.AddSeconds(180);
+            while ((await CallOk(client, "get_job_status", new() { ["jobId"] = job }, ct)).Contains("running") && DateTime.UtcNow < deadline)
+            {
+                await Task.Delay(250, ct);
+            }
+        }
+
+        await CallOk(client, "add_video_layer", new() { ["id"] = "clip", ["assetId"] = "square" }, ct);
+        var server = Path.Combine(projects, "tracking");
+        var editor = Path.Combine(root, "editor");
+        foreach (var file in Directory.GetFiles(Path.Combine(server, "assets")).Append(Path.Combine(server, "project.json")))
+        {
+            var copy = Path.Combine(editor, Path.GetRelativePath(server, file));
+            Directory.CreateDirectory(Path.GetDirectoryName(copy)!);
+            File.Copy(file, copy);
+        }
+
+        var document = EditorDocument.Open(editor);
+        Dictionary<string, object?> Box(double x, double y, double width, double height) => new() { ["x"] = x, ["y"] = y, ["width"] = width, ["height"] = height };
+        void Track(TrackPlan plan, TrackData? old, string tool)
+        {
+            TrackRunner.Run(ffmpeg.Ffmpeg, editor, TrackRunner.SourceFile(editor, plan.Asset), plan, old, null, ct);
+            Assert.True(document.Apply(new SaveTrackOperation(plan.Track, plan.Replacing, tool)), document.Status);
+        }
+
+        void Same()
+        {
+            Assert.Equal(TestProjects.WithoutRevision(File.ReadAllText(Path.Combine(server, "project.json"))), TestProjects.WithoutRevision(File.ReadAllText(Path.Combine(editor, "project.json"))));
+            var file = document.View.Tracks[0].File;
+            Assert.Equal(File.ReadAllText(Path.Combine(server, file)), File.ReadAllText(Path.Combine(editor, file)));
+        }
+
+        await CallOk(client, "track_object", new() { ["layerId"] = "clip", ["time"] = 0.0, ["box"] = Box(40, 120, 80, 80) }, ct);
+        Track(TrackEditor.Plan(document.View, "clip", 0, 40, 120, 80, 80, TrackDirection.Forward, TrackMethod.Csrt, null, _ => false), null, "track_object");
+        Assert.Equal("tracked track_1: frames 0–59 of 'square'", document.Summary);
+        Same();
+
+        await CallOk(client, "reanchor_track", new() { ["trackId"] = "track_1", ["time"] = 4 / 3.0, ["box"] = Box(280, 200, 80, 80) }, ct);
+        var old = TrackFiles.Load(editor, document.View.FindTrack("track_1")!);
+        Track(TrackEditor.PlanCorrection(document.View, "track_1", 4 / 3.0, 280, 200, 80, 80, null), old, "reanchor_track");
+        Assert.Equal("corrected track_1: frames 0–59 of 'square'", document.Summary);
+        Same();
+
+        await CallOk(client, "apply_redaction", new() { ["trackIds"] = new[] { "track_1" }, ["style"] = "blur", ["strength"] = 70, ["shape"] = "ellipse", ["smooth"] = true }, ct);
+        Assert.True(document.Apply(new ApplyRedactionOperation(["track_1"], new RedactionSettings(RedactionStyle.Blur, 70, 15, 4, 15, "#000000", RedactionShape.Ellipse, true))), document.Status);
+        Assert.Equal("hid track_1 with 'redaction_1': blur strength=70 padding=15% feather=4 hold=15 ellipse smooth", document.Summary);
+        Same();
+    }
+
     // The editor's Import .srt (ImportSrtOperation, measuring text as the editor does) makes the track import_srt makes.
     [Fact]
     public async Task TheEditorsSrtImportMakesTheTrackImportSrtMakes()

@@ -82,6 +82,46 @@ public class TrackTests
         AssertBox(Map(crop, 0, 230, 180, 40, 20), 0, 100, 95, 30, 20);
     }
 
+    // The editor draws a track's box where SourceBox would map it back from: on the canvas through the
+    // clip's placement, the camera and the crop.
+    [Fact]
+    public void ASourceBoxIsDrawnOnTheCanvasWhereItMapsBackFrom()
+    {
+        static void RoundTrip(Project project, double time, double x, double y, double width, double height)
+        {
+            var (layer, asset) = TrackEditor.Clip(project, "clip");
+            var corners = TrackEditor.CanvasCorners(project, layer, asset, time, x, y, width, height)!;
+            Assert.Equal(4, corners.Count);
+            var (left, top) = (corners.Min(c => c.X), corners.Min(c => c.Y));
+            AssertBox(Map(project, time, left, top, corners.Max(c => c.X) - left, corners.Max(c => c.Y) - top), (int)Math.Round(time * 30), x, y, width, height);
+        }
+
+        var fit = Canvas();
+        var (clip, square) = TrackEditor.Clip(fit, "clip");
+        Assert.Equal([(40.0, 120.0), (120.0, 120.0), (120.0, 200.0), (40.0, 200.0)], TrackEditor.CanvasCorners(fit, clip, square, 0, 20, 60, 40, 40)!);
+        RoundTrip(fit, 1, 50, 100, 40, 30);
+        CameraEditor.Set(fit, 320, 180, 2, null, reset: false);
+        RoundTrip(fit, 0, 160, 90, 20, 20);
+
+        var crop = Canvas(scale: 1);
+        var cropped = (VideoLayer)crop.FindLayer("clip")!;
+        (cropped.CropWidth, cropped.CropHeight, cropped.CropX.Value, cropped.CropY.Value) = (160, 90, 100, 50);
+        (cropped.AnchorX, cropped.AnchorY) = (80, 45);
+        RoundTrip(crop, 0, 160, 85, 40, 20);
+
+        // Turned a quarter: the corners turn with it.
+        var turned = Canvas(scale: 1);
+        var turning = (VideoLayer)turned.FindLayer("clip")!;
+        turning.Rotation.Value = 90;
+        var corners = TrackEditor.CanvasCorners(turned, turning, square, 0, 0, 0, 40, 20)!;
+        Assert.Equal((corners[0].X, corners[0].Y + 40), (Math.Round(corners[1].X, 6), Math.Round(corners[1].Y, 6)));
+        Assert.Equal((corners[0].X - 20, corners[0].Y), (Math.Round(corners[3].X, 6), Math.Round(corners[3].Y, 6)));
+
+        // Off the timeline there is nothing to draw.
+        turned.Duration = 4;
+        Assert.Null(TrackEditor.CanvasCorners(turned, turning, square, 3, 0, 0, 40, 20));
+    }
+
     [Fact]
     public void BoxesOutsideThePictureOrTimeOutsideTheClipAreRefused()
     {
