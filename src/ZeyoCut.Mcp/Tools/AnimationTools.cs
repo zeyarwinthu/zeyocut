@@ -41,7 +41,7 @@ public static class AnimationTools
     public static string ClearKeyframes(
         EditorState state,
         [Description("Layer id, or \"camera\".")] string layerId,
-        [Description("x, y, rotation, scaleX, scaleY, opacity, brightness, contrast, saturation, cropX, cropY, volume, drawing, or an effect or mask property such as shadow.x or mask.width; for the camera x, y, zoom, rotation, shakeX, shakeY or shakeRotation; for a redaction a track id. Omit for all.")] string? property = null) => Guard(() =>
+        [Description("x, y, rotation, scaleX, scaleY, opacity, brightness, contrast, saturation, cropX, cropY, volume, drawing, or a grade, effect or mask property such as grade.exposure, shadow.x or mask.width; for the camera x, y, zoom, rotation, shakeX, shakeY or shakeRotation; for a redaction a track id. Omit for all.")] string? property = null) => Guard(() =>
     {
         var target = layerId + (property is null ? "" : "." + property);
         var count = state.Session.Mutate($"clear_keyframes {target}", p =>

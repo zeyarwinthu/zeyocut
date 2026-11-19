@@ -35,7 +35,7 @@ Here is the demo project (`ZeyoCut.Mcp.exe demo`) cut down to one asset and one 
 
 ```json
 {
-  "formatVersion": 11,
+  "formatVersion": 12,
   "revision": 2,
   "name": "Tora Jumps",
   "width": 1280,
@@ -98,7 +98,7 @@ Here is the demo project (`ZeyoCut.Mcp.exe demo`) cut down to one asset and one 
 
 | Field | Default | What it is |
 |---|---|---|
-| `formatVersion` | 11 | The format the file was saved in; see [Format versions](#format-versions) |
+| `formatVersion` | 12 | The format the file was saved in; see [Format versions](#format-versions) |
 | `revision` | 0 | How many times the project has been saved. Every save adds 1, whichever program saves it, and it never goes back: undo, redo and `restore_backup` put back older content as a new revision. ZeyoCut sets it; no tool does |
 | `name` | | The project's name |
 | `width`, `height` | 1920, 1080 | The canvas in pixels |
@@ -136,9 +136,9 @@ Image, text and video layers add the anchor (`anchorX`, `anchorY`), `ignoreCamer
 
 | Type | Its own fields |
 |---|---|
-| `image` | `drawings` (drawing name → image asset id), `drawing` (which drawing shows, animated), `flipX`, the animated color adjustments `brightness`, `contrast` and `saturation`, and `matte` (background removal). An image layer without drawings is a null layer |
+| `image` | `drawings` (drawing name → image asset id), `drawing` (which drawing shows, animated), `flipX`, the animated color adjustments `brightness`, `contrast` and `saturation`, a `grade`, and `matte` (background removal). An image layer without drawings is a null layer |
 | `text` | `text`, `fontFamily` or `fontAsset`, `fontSize`, `bold`, `color`, `strokeColor`, `strokeWidth`, `align`, `maxWidth`, `lineHeight`, and `box` (`color`, `padding`, `cornerRadius`) |
-| `video` | `asset`, `trimIn`, `trimOut`, `speed`, `volume` (animated), `muted`, `role`, `fadeIn`, `fadeOut`, a crop (`cropWidth`, `cropHeight` and the animated `cropX`, `cropY`), the color adjustments, and `matte` |
+| `video` | `asset`, `trimIn`, `trimOut`, `speed`, `volume` (animated), `muted`, `role`, `fadeIn`, `fadeOut`, a crop (`cropWidth`, `cropHeight` and the animated `cropX`, `cropY`), the color adjustments and `grade`, and `matte` |
 | `audio` | `asset`, `trimIn`, `trimOut`, `volume` (animated), `role` (`voice`, `music` or `effects`), `fadeIn` and `fadeOut` |
 | `cutout` | Made by `text_behind_subject`: the subject of its `sources` (a clip and the pieces splits made of it) drawn again above the text, cut out with its `matte`. It follows its sources, so only `name`, `zIndex`, `visible` and `opacity` are its own. `captionGroup` names the captions `generate_captions` made it for |
 | `redaction` | Made by `apply_redaction`: hides the boxes of its `tracks` with a `style` (`pixelate`, `blur` or `solid`), `strength`, `paddingPercent`, `feather`, `holdFrames` and `color`, as a `shape` (`rectangle`, the whole box, or `ellipse`, the ellipse inside it); `smooth` keeps each box steady, its center and size averaged over 6 frames on each side. After `tracks_to_keyframes`, `boxes` holds a track's box as keyframes |
@@ -193,6 +193,7 @@ A marker has an `id`, a `time`, a `name` and a `kind`, `chapter` or `scene`. `ex
 | 9 | Each role's mix (`gain`, `pan`, `muted`), the duck level and fades, and `volume` as an animated value |
 | 10 | Asset `tags` |
 | 11 | A redaction's `shape` and `smooth` |
+| 12 | A clip's color `grade` |
 
 A project saved by an older ZeyoCut opens too: it's updated to the current format as it opens, and the file as it was is kept in `backups\` for good. Every version has added fields, and a field an older file lacks gets its default; version 9 also turned `volume` into an animated value, and a number there still reads as one without keyframes.
 
@@ -231,7 +232,8 @@ ZeyoCut 0.1.0 doesn't know about `project.lock` and never re-reads `project.json
 - `flipX` mirrors a layer's own pixels around `anchorX`. Its children are not flipped.
 
 ## Animation
-- Animatable properties are `x`, `y`, `rotation`, `scaleX`, `scaleY` and `opacity`, plus `drawing` on image layers, `brightness`, `contrast` and `saturation` on image and video layers, and `cropX`/`cropY` on cropped video layers.
+- Animatable properties are `x`, `y`, `rotation`, `scaleX`, `scaleY` and `opacity`, plus `drawing` on image layers, `brightness`, `contrast` and `saturation` on image and video layers, `grade.exposure`, `grade.highlights`, `grade.shadows`, `grade.temperature` and `grade.tint` on graded ones, and `cropX`/`cropY` on cropped video layers.
+- An image or video layer's `grade` (`set_color`) has `exposure` (stops, -3 to 3), `highlights`, `shadows`, `temperature` and `tint` (-1 to 1), each animated and 0 as shot. It is drawn before the layer's saturation, contrast and brightness. A layer as shot has no `grade`.
 - A keyframe's easing shapes the segment that *starts* at that keyframe: `linear`, `hold`, `easeIn`, `easeOut`, `easeInOut`, `easeOutBack`, `easeOutBounce`, `easeOutElastic` or `cubicBezier`.
 - A `cubicBezier` keyframe's `bezier` is its curve as CSS's `cubic-bezier()` takes it: `[x1, y1, x2, y2]`, the handles of a curve from (0, 0) to (1, 1) across the segment, with time across and the change up. `x1` and `x2` are from 0 to 1; `y1` and `y2` can go past 0 and 1 to overshoot. `bezier` is written only with that easing.
 - Before the first keyframe and after the last, a property holds that keyframe's value. Once a property has keyframes, its static value is ignored.

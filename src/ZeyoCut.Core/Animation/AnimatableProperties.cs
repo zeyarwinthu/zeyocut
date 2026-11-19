@@ -17,6 +17,7 @@ public static class AnimatableProperties
     public static readonly IReadOnlyList<string> NumericNames =
     [
         "x", "y", "rotation", "scaleX", "scaleY", "opacity", "brightness", "contrast", "saturation", "cropX", "cropY", Volume,
+        "grade.exposure", "grade.highlights", "grade.shadows", "grade.temperature", "grade.tint",
         "shadow.x", "shadow.y", "shadow.blur", "shadow.opacity", "outline.width", "blur.x", "blur.y", "tint.amount",
         "mask.x", "mask.y", "mask.width", "mask.height", "mask.feather", Path,
     ];
@@ -28,6 +29,7 @@ public static class AnimatableProperties
 
     public static string Describe() =>
         "x, y, rotation, scaleX, scaleY, opacity; brightness, contrast, saturation (image and video layers); cropX, cropY (video layers); drawing (image layers); "
+        + "grade.exposure, grade.highlights, grade.shadows, grade.temperature, grade.tint (image and video layers with a grade, see set_color); "
         + "volume (audio layers and video layers' own sound, 1 as recorded, 0 silent, up to 10); "
         + "shadow.x, shadow.y, shadow.blur, shadow.opacity, outline.width, blur.x, blur.y, tint.amount (layers with that effect, see set_effect); "
         + "mask.x, mask.y, mask.width, mask.height, mask.feather (layers with a mask, see set_mask)";
@@ -64,6 +66,14 @@ public static class AnimatableProperties
             yield return ("brightness", color.Brightness);
             yield return ("contrast", color.Contrast);
             yield return ("saturation", color.Saturation);
+            if (color.Grade is { } grade)
+            {
+                yield return ("grade.exposure", grade.Exposure);
+                yield return ("grade.highlights", grade.Highlights);
+                yield return ("grade.shadows", grade.Shadows);
+                yield return ("grade.temperature", grade.Temperature);
+                yield return ("grade.tint", grade.Tint);
+            }
         }
 
         if (layer is VideoLayer video)
@@ -168,6 +178,13 @@ public static class AnimatableProperties
         if (canonicalName == Path)
         {
             throw new ZeyoCutException($"'{layer.Id}' has no motion path; set_motion_path adds one");
+        }
+
+        if (canonicalName.StartsWith("grade.", StringComparison.Ordinal))
+        {
+            throw new ZeyoCutException(layer is IColorAdjustable
+                ? $"'{layer.Id}' has no grade; set_color gives it one"
+                : $"'{canonicalName}' is only on image and video layers; '{layer.Id}' is a {layer.TypeName} layer");
         }
 
         if (canonicalName.Split('.') is [var owner, _])

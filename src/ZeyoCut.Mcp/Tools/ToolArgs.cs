@@ -13,7 +13,7 @@ public sealed class KeyframeArg
     public string LayerId { get; set; } = "";
 
     [JsonPropertyName("property")]
-    [Description("x, y, rotation, scaleX, scaleY, opacity; brightness, contrast, saturation (image and video layers); cropX, cropY (video layers); drawing (image layers); shadow.x, shadow.y, shadow.blur, shadow.opacity, outline.width, blur.x, blur.y, tint.amount (after set_effect); mask.x, mask.y, mask.width, mask.height, mask.feather (after set_mask). Camera: x, y (the scene point at the frame's center), zoom, rotation, shakeX, shakeY, shakeRotation.")]
+    [Description("x, y, rotation, scaleX, scaleY, opacity; brightness, contrast, saturation (image and video layers); grade.exposure, grade.highlights, grade.shadows, grade.temperature, grade.tint (after set_color); cropX, cropY (video layers); drawing (image layers); shadow.x, shadow.y, shadow.blur, shadow.opacity, outline.width, blur.x, blur.y, tint.amount (after set_effect); mask.x, mask.y, mask.width, mask.height, mask.feather (after set_mask). Camera: x, y (the scene point at the frame's center), zoom, rotation, shakeX, shakeY, shakeRotation.")]
     public string Property { get; set; } = "";
 
     [JsonPropertyName("time")]
@@ -116,7 +116,7 @@ public sealed class KeyframeRefArg
     public string LayerId { get; set; } = "";
 
     [JsonPropertyName("property")]
-    [Description("x, y, rotation, scaleX, scaleY, opacity, brightness, contrast, saturation, cropX, cropY, drawing, or an effect or mask property such as shadow.x or mask.width; for the camera x, y, zoom, rotation, shakeX, shakeY or shakeRotation.")]
+    [Description("x, y, rotation, scaleX, scaleY, opacity, brightness, contrast, saturation, cropX, cropY, drawing, or a grade, effect or mask property such as grade.exposure, shadow.x or mask.width; for the camera x, y, zoom, rotation, shakeX, shakeY or shakeRotation.")]
     public string Property { get; set; } = "";
 
     [JsonPropertyName("time")]

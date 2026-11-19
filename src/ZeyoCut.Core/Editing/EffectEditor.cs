@@ -359,6 +359,11 @@ public static class EffectEditor
             effects.Add(MatteEditor.Short(matte));
         }
 
+        if (layer is IColorAdjustable { Grade: not null } graded)
+        {
+            effects.Add($"grade({ColorEditor.Describe(graded, grade: true)})");
+        }
+
         return effects;
     }
 

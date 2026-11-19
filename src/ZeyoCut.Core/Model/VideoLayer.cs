@@ -9,6 +9,9 @@ public interface IColorAdjustable
     AnimatedValue Brightness { get; set; }
     AnimatedValue Contrast { get; set; }
     AnimatedValue Saturation { get; set; }
+
+    // Exposure, white balance, highlights and shadows (set_color); null when there's no grade.
+    ColorGrade? Grade { get; set; }
 }
 
 public sealed class VideoLayer : VisualLayer, IColorAdjustable, IMattable
@@ -39,6 +42,10 @@ public sealed class VideoLayer : VisualLayer, IColorAdjustable, IMattable
 
     [JsonPropertyOrder(11)]
     public AnimatedValue Saturation { get; set; } = new(1);
+
+    [JsonPropertyOrder(11)]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public ColorGrade? Grade { get; set; }
 
     [JsonPropertyOrder(12)]
     public AnimatedValue CropX { get; set; } = new(0);

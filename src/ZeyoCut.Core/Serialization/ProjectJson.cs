@@ -145,6 +145,14 @@ public static class ProjectJson
             color.Brightness = NormalizeValue(color.Brightness, 0);
             color.Contrast = NormalizeValue(color.Contrast, 1);
             color.Saturation = NormalizeValue(color.Saturation, 1);
+            if (color.Grade is { } grade)
+            {
+                grade.Exposure = NormalizeValue(grade.Exposure, 0);
+                grade.Highlights = NormalizeValue(grade.Highlights, 0);
+                grade.Shadows = NormalizeValue(grade.Shadows, 0);
+                grade.Temperature = NormalizeValue(grade.Temperature, 0);
+                grade.Tint = NormalizeValue(grade.Tint, 0);
+            }
         }
 
         switch (layer)

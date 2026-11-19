@@ -170,12 +170,15 @@ public static class ValueEditor
         }
 
         return AnimatableProperties.Numeric(layer).Where(p => p.Name == property).Select(p => p.Value).FirstOrDefault()
-            ?? throw new ZeyoCutException(property.Contains('.')
+            ?? throw new ZeyoCutException(property.StartsWith("grade.", StringComparison.Ordinal)
+                ? $"'{layer.Id}' has no grade; set its color first"
+                : property.Contains('.')
                 ? $"'{layer.Id}' has no {property[..property.IndexOf('.')]} effect; switch it on first"
                 : $"'{layer.Id}' has no value '{property}'");
     }
 
-    // Static values: the layer's own as update_layer sets them, an effect's as set_effect does.
+    // Static values: the layer's own as update_layer sets them, an effect's as set_effect does and a
+    // grade's as set_color does.
     private static List<EditOperation> Statics(string layerId, IReadOnlyDictionary<string, double> values)
     {
         var operations = new List<EditOperation>();
@@ -190,7 +193,13 @@ public static class ValueEditor
             operations.Add(new UpdateLayerOperation(layerId, own));
         }
 
-        foreach (var effect in values.Where(v => v.Key.Contains('.')).GroupBy(v => v.Key[..v.Key.IndexOf('.')]))
+        var graded = values.Where(v => v.Key.StartsWith("grade.", StringComparison.Ordinal)).ToDictionary(v => v.Key["grade.".Length..], v => v.Value);
+        if (graded.Count > 0)
+        {
+            operations.Add(new SetColorOperation(layerId, new ColorChange(graded)));
+        }
+
+        foreach (var effect in values.Where(v => v.Key.Contains('.') && !v.Key.StartsWith("grade.", StringComparison.Ordinal)).GroupBy(v => v.Key[..v.Key.IndexOf('.')]))
         {
             double? Field(string name) => effect.FirstOrDefault(v => v.Key == $"{effect.Key}.{name}") is { Key: not null } found ? found.Value : null;
             var kind = EffectNames[effect.Key];

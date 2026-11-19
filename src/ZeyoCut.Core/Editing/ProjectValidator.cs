@@ -558,6 +558,14 @@ public static class ProjectValidator
 
     private static void ValidateEffects(VisualLayer layer, string prefix, Dictionary<string, Asset> assets, List<string> errors)
     {
+        if (layer is IColorAdjustable { Grade: { } grade })
+        {
+            foreach (var control in ColorEditor.Controls.Where(c => c.Graded))
+            {
+                ValidateRange(ColorEditor.Value(grade, control.Name), control.Min, control.Max, $"{prefix}: {control.Property}", errors);
+            }
+        }
+
         if (layer.Shadow is { } shadow)
         {
             ValidateColor(shadow.Color, $"{prefix}: shadow.color", errors);

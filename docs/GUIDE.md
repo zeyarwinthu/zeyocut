@@ -1,12 +1,12 @@
 # ZeyoCut tool guide
 
-The `zeyocut` server has 95 tools, plus [`describe_clip`](#optional-describe_clip) when a clip describer is configured, and 4 [workflow prompts](#workflow-prompts). Every example below was run against the real server; paths are shortened to `C:\Users\you\...` and `C:\videos\...`.
+The `zeyocut` server has 96 tools, plus [`describe_clip`](#optional-describe_clip) when a clip describer is configured, and 4 [workflow prompts](#workflow-prompts). Every example below was run against the real server; paths are shortened to `C:\Users\you\...` and `C:\videos\...`.
 
 ## Conventions
 
 - **One project is open at a time.** Call `create_project` or `open_project` first. Every other tool works on the open project.
 - **Every editing tool saves `project.json` immediately and adds one undo step.** Edits are all-or-nothing: if any part of a call is invalid, nothing changes.
-    - Editing tools: `update_project`, `restore_backup`, `import_asset`, `import_folder`, `import_video`, `add_*_layer`, `update_layer`, `remove_layer`, `duplicate_layer`, `set_keyframes`, `remove_keyframes`, `clear_keyframes`, `split_layer`, `remove_range`, `move_layer`, `trim_layer`, `set_speed`, `add_transition`, `add_markers`, `remove_markers`, `remove_silences`, `cut_by_transcript`, `generate_captions`, `add_caption_track`, `import_srt`, `reframe_to_vertical`, `add_rig`, `apply_action`, `apply_style`, `add_sfx`, `auto_lip_flap`, `set_camera`, `camera_shake`, `set_effect`, `set_mask`, `set_motion_path`, `remove_background`, `refine_matte`, `text_behind_subject`, `track_object`, `reanchor_track`, `detect_and_track`, `attach_to_track`, `apply_redaction`, `tracks_to_keyframes`.
+    - Editing tools: `update_project`, `restore_backup`, `import_asset`, `import_folder`, `import_video`, `add_*_layer`, `update_layer`, `remove_layer`, `duplicate_layer`, `set_keyframes`, `remove_keyframes`, `clear_keyframes`, `split_layer`, `remove_range`, `move_layer`, `trim_layer`, `set_speed`, `add_transition`, `add_markers`, `remove_markers`, `remove_silences`, `cut_by_transcript`, `generate_captions`, `add_caption_track`, `import_srt`, `reframe_to_vertical`, `add_rig`, `apply_action`, `apply_style`, `add_sfx`, `auto_lip_flap`, `set_camera`, `camera_shake`, `set_effect`, `set_color`, `set_mask`, `set_motion_path`, `remove_background`, `refine_matte`, `text_behind_subject`, `track_object`, `reanchor_track`, `detect_and_track`, `attach_to_track`, `apply_redaction`, `tracks_to_keyframes`.
     - `build_from_script` creates a project, and its build is one undo step on top of the empty project.
     - Library saves (`save_rig`, `save_action`, `save_style`, `save_template`) write to the shared library and don't change the project, so they aren't undo steps.
 - **Another program may save the open project too,** such as a second server or the ZeyoCut editor. Before each tool runs, the server takes the newer `project.json`, and the reply starts with a note that lists what changed. Edits are made on top of the other program's, never over them, and undo takes back only this server's own changes. See [`undo` / `redo`](#undo-redo) for an example, and [Saving alongside another program](project-format.md#saving-alongside-another-program).
@@ -29,7 +29,7 @@ Contents:
 - [Layers](#layers): `add_image_layer`, `add_text_layer`, `add_audio_layer`, `update_layer`, `remove_layer`, `duplicate_layer`, `list_layers`
 - [Animation](#animation): `set_keyframes`, `remove_keyframes`, `clear_keyframes`
 - [Camera](#camera): `set_camera`, `camera_shake`
-- [Effects and motion](#effects-and-motion): `set_effect`, `set_mask`, `set_motion_path`
+- [Effects and motion](#effects-and-motion): `set_effect`, `set_color`, `set_mask`, `set_motion_path`
 - [System check](#system-check): `system_check`, `get_logs`
 - [Background removal](#background-removal): `remove_background`, `refine_matte`
 - [Text behind the subject](#text-behind-the-subject): `text_behind_subject`, `text_occlusion`
@@ -828,6 +828,7 @@ Properties are `x`, `y`, `rotation`, `scaleX`, `scaleY` and `opacity`, plus:
 
 - `drawing` on image layers
 - `brightness` (-1 to 1, 0 = unchanged, -1 = black), `contrast` and `saturation` (0 to 4, 1 = unchanged) on image and video layers
+- `grade.exposure`, `grade.highlights`, `grade.shadows`, `grade.temperature`, `grade.tint` on image and video layers with a grade (see [`set_color`](#set_color))
 - `cropX`, `cropY` on video layers with a crop (source pixels), for example to follow a subject after `reframe_to_vertical`
 - `volume` on audio layers and on video layers' own sound (1 as recorded, 0 silent, up to 10), to ride a level by hand: an audio layer has only this one
 - `shadow.x`, `shadow.y`, `shadow.blur`, `shadow.opacity`, `outline.width`, `blur.x`, `blur.y`, `tint.amount` on layers with that effect, and `mask.x`, `mask.y`, `mask.width`, `mask.height`, `mask.feather` on layers with a mask (see [Effects and motion](#effects-and-motion))
@@ -1120,6 +1121,95 @@ An error occurred invoking 'set_effect': outline takes color, width; x is not fo
 ```
 ```text
 An error occurred invoking 'set_effect': a new tint needs a color, e.g. #FF0000
+```
+
+### `set_color`
+
+Grades an image or video clip: the controls of a color panel, as one undo step. Values you leave out keep theirs.
+
+| Control | Range (as shot) | What it does |
+|---|---|---|
+| `exposure` | -3 to 3 (0) | Stops of light: 1 doubles it, -1 halves it |
+| `contrast` | 0 to 4 (1) | Around mid gray; 0 is flat gray |
+| `highlights` | -1 to 1 (0) | Darkens or brightens the light parts, most at two thirds of the way up |
+| `shadows` | -1 to 1 (0) | Deepens or lifts the dark parts, most at a third of the way up |
+| `temperature` | -1 to 1 (0) | Bluer to warmer: red and blue go half a stop each way at 1 |
+| `tint` | -1 to 1 (0) | Greener to more magenta: green goes half a stop at 1 |
+| `saturation` | 0 to 4 (1) | 0 is black and white |
+
+- **Order:** exposure and the white balance work on the light itself, then the highlights and shadows curves, which keep black and white where they are, then saturation, contrast and the layer's `brightness`. Brightness isn't part of the color here; `update_layer` sets it.
+- **The grade:** exposure, highlights, shadows, temperature and tint are kept in the layer's `grade`, which a clip has only while one of them isn't 0. `set_keyframes` animates them as `grade.exposure`, `grade.highlights`, `grade.shadows`, `grade.temperature` and `grade.tint` once the clip has one.
+- **`from`** copies another clip's color: contrast, saturation and grade, as fixed values. A clip whose color has keyframes can't be copied.
+- **`sameFootage`** then gives every other clip of the same video (or of the same picture) the clip's color, and takes their color keyframes away.
+- **`reset`** puts the clip back as shot first: contrast and saturation 1, no grade.
+- The editor's Color view sets the same values.
+
+| Parameter | Default |
+|---|---|
+| `layerId` | required |
+| `exposure`, `contrast`, `highlights`, `shadows`, `temperature`, `tint`, `saturation` | unchanged |
+| `from` | none |
+| `reset`, `sameFootage` | false |
+
+```json
+{ "layerId": "street_b", "exposure": 0.3, "contrast": 1.12, "highlights": -0.2, "shadows": 0.18, "temperature": 0.35, "saturation": 1.2 }
+```
+```text
+color of 'street_b': exposure 0.3, contrast 1.12, highlights -0.2, shadows 0.18, temperature 0.35, saturation 1.2
+```
+```json
+{ "layerId": "street_b", "sameFootage": true }
+```
+```text
+color of 'street_b': exposure 0.3, contrast 1.12, highlights -0.2, shadows 0.18, temperature 0.35, saturation 1.2; the same on street, street_2 (every clip of 'street')
+```
+`list_layers` then shows each clip's grade:
+```text
+street_2 [video]  z=0  t=3–6  asset=street source=3–6s speed=1  volume=1  anchor=(640,360)  effects: grade(exposure 0.3, highlights -0.2, shadows 0.18, temperature 0.35)  tracks=track_3
+```
+Warming the first clip in over two seconds (`set_keyframes`), then setting a value that the keyframes hide:
+```json
+{ "entries": [
+  { "layerId": "street", "property": "grade.temperature", "time": 0, "value": 0 },
+  { "layerId": "street", "property": "grade.temperature", "time": 2, "value": 0.35, "easing": "easeInOut" }
+] }
+```
+```text
+set 2 keyframe(s) (2 added, 0 replaced) on street.grade.temperature
+```
+```json
+{ "layerId": "street", "temperature": 0.5 }
+```
+```text
+color of 'street': exposure 0.3, contrast 1.12, highlights -0.2, shadows 0.18, temperature animated (2 keyframes), saturation 1.2
+Warnings:
+- grade.temperature has 2 keyframe(s), so the value you set is only used after clear_keyframes
+```
+```json
+{ "layerId": "street_2", "from": "street" }
+```
+```text
+An error occurred invoking 'set_color': 'street' animates its temperature with keyframes; its color is copied as fixed values, so clear_keyframes first
+```
+```json
+{ "layerId": "street_2", "exposure": 4 }
+```
+```text
+An error occurred invoking 'set_color': exposure must be between -3 and 3 (got 4)
+```
+```json
+{ "layerId": "title", "exposure": 1 }
+```
+```text
+An error occurred invoking 'set_color': 'title' is a text layer; color is for image and video layers
+```
+```json
+{ "layerId": "street", "reset": true }
+```
+```text
+put the color of 'street' back as shot
+Warnings:
+- the keyframes of 'street''s temperature were taken away
 ```
 
 ### `set_mask`

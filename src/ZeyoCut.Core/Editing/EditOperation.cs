@@ -168,6 +168,21 @@ public sealed record SetEffectOperation(string LayerId, EffectKind Kind, EffectV
     }
 }
 
+// A clip's color set, copied from another clip, put back as shot or given to every clip of its
+// footage, as set_color does (ColorEditor.SetColor).
+public sealed record SetColorOperation(string LayerId, ColorChange Change) : EditOperation
+{
+    public override string Label => $"set_color {LayerId}";
+
+    public override IReadOnlyList<string> Layers => Change.From is { } from ? [LayerId, from] : [LayerId];
+
+    public override string Apply(Project project)
+    {
+        var result = ColorEditor.SetColor(project, LayerId, Change);
+        return result.Summary + string.Concat(result.Warnings.Select(w => $"; {w}"));
+    }
+}
+
 // Layers moved by X, Y pixels at every moment (PlacementEditor.Shift), such as every caption of a
 // track when one of them is dragged.
 public sealed record ShiftLayersOperation(string Name, IReadOnlyList<string> LayerIds, double X, double Y) : EditOperation

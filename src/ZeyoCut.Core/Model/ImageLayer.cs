@@ -25,6 +25,10 @@ public sealed class ImageLayer : VisualLayer, IColorAdjustable, IMattable
     [JsonPropertyOrder(11)]
     public AnimatedValue Saturation { get; set; } = new(1);
 
+    [JsonPropertyOrder(11)]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public ColorGrade? Grade { get; set; }
+
     [JsonPropertyOrder(12)]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public Matte? Matte { get; set; }

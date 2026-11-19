@@ -3,7 +3,7 @@
 
 # Tool reference
 
-The `zeyocut` server has 95 tools and 4 [workflow prompts](#workflow-prompts). Each is listed here as the server describes it to the model, with its parameters. The [guide](GUIDE.md) shows how they work together, with an example call and the real response for each. One more tool, `describe_clip`, appears only when a clip describer is configured (see the [guide](GUIDE.md#optional-describe_clip)).
+The `zeyocut` server has 96 tools and 4 [workflow prompts](#workflow-prompts). Each is listed here as the server describes it to the model, with its parameters. The [guide](GUIDE.md) shows how they work together, with an example call and the real response for each. One more tool, `describe_clip`, appears only when a clip describer is configured (see the [guide](GUIDE.md#optional-describe_clip)).
 
 | Tool | What it does |
 |---|---|
@@ -84,6 +84,7 @@ The `zeyocut` server has 95 tools and 4 [workflow prompts](#workflow-prompts). E
 | [`save_style`](#save_style) | Save a text layer's look (font, bold, size, color, outline, alignment, line height, background box) as a named style in the library. |
 | [`save_template`](#save_template) | Save layers of the open project (intro, outro, end screen, watermark, fixed layers) with the canvas, frame rate and audio settings as a template in the library, with their asset files. |
 | [`set_camera`](#set_camera) | Set the project camera's fixed values (one undo step). |
+| [`set_color`](#set_color) | Grade an image or video clip (one undo step): exposure in stops (-3 to 3; 1 doubles the light), contrast and saturation (0 to 4, 1 as shot), highlights and shadows (-1 to 1: darken or brighten the light or the dark parts; black and white stay), temperature (-1 bluer to 1 warmer) and tint (-1 greener to 1 more magenta); 0 leaves each of those as shot. |
 | [`set_effect`](#set_effect) | Add, change or remove one effect on a visual layer (one undo step). |
 | [`set_keyframes`](#set_keyframes) | Add or replace many keyframes in one call (one undo step; all-or-nothing). |
 | [`set_mask`](#set_mask) | Add, change or remove the layer's mask (one undo step): the layer shows only inside a rectangle, an ellipse or an image's opaque pixels, or only outside with invert=true. |
@@ -413,7 +414,7 @@ Remove all keyframes of one property, or of every property of a layer when prope
 | Parameter | Type | Description |
 |---|---|---|
 | `layerId` | string, required | Layer id, or "camera". |
-| `property` | string | x, y, rotation, scaleX, scaleY, opacity, brightness, contrast, saturation, cropX, cropY, volume, drawing, or an effect or mask property such as shadow.x or mask.width; for the camera x, y, zoom, rotation, shakeX, shakeY or shakeRotation; for a redaction a track id. Omit for all. |
+| `property` | string | x, y, rotation, scaleX, scaleY, opacity, brightness, contrast, saturation, cropX, cropY, volume, drawing, or a grade, effect or mask property such as grade.exposure, shadow.x or mask.width; for the camera x, y, zoom, rotation, shakeX, shakeY or shakeRotation; for a redaction a track id. Omit for all. |
 
 ### `create_project`
 
@@ -827,7 +828,7 @@ Remove specific keyframes (all-or-nothing).
 |---|---|---|
 | `entries` | array of objects, required | Keyframes to remove: [{layerId, property, time}]. |
 | `entries[].layerId` | string | Layer id, or "camera". |
-| `entries[].property` | string | x, y, rotation, scaleX, scaleY, opacity, brightness, contrast, saturation, cropX, cropY, drawing, or an effect or mask property such as shadow.x or mask.width; for the camera x, y, zoom, rotation, shakeX, shakeY or shakeRotation. |
+| `entries[].property` | string | x, y, rotation, scaleX, scaleY, opacity, brightness, contrast, saturation, cropX, cropY, drawing, or a grade, effect or mask property such as grade.exposure, shadow.x or mask.width; for the camera x, y, zoom, rotation, shakeX, shakeY or shakeRotation. |
 | `entries[].time` | number | Time of the keyframe to remove, in seconds. |
 
 ### `remove_layer`
@@ -974,6 +975,24 @@ Set the project camera's fixed values (one undo step). The camera moves the whol
 | `rotation` | number | Degrees, clockwise camera roll. |
 | `reset` | boolean, default `false` | Remove the camera (and its keyframes) first. |
 
+### `set_color`
+
+Grade an image or video clip (one undo step): exposure in stops (-3 to 3; 1 doubles the light), contrast and saturation (0 to 4, 1 as shot), highlights and shadows (-1 to 1: darken or brighten the light or the dark parts; black and white stay), temperature (-1 bluer to 1 warmer) and tint (-1 greener to 1 more magenta); 0 leaves each of those as shot. Values you leave out keep theirs. from copies another clip's color as fixed values (a clip whose color has keyframes can't be copied); reset=true puts the clip back as shot first; sameFootage=true then gives every other clip of the same video (or picture) this clip's color, and takes their color keyframes away. Once a clip has a grade, set_keyframes animates grade.exposure, grade.highlights, grade.shadows, grade.temperature and grade.tint; contrast and saturation are animatable as ever. Brightness isn't part of the color here: update_layer sets it.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `layerId` | string, required | Image or video layer id. |
+| `exposure` | number | Stops of light, -3 to 3. |
+| `contrast` | number | 0 to 4, 1 as shot; 0 is flat gray. |
+| `highlights` | number | -1 to 1: darkens (below 0) or brightens the light parts. |
+| `shadows` | number | -1 to 1: deepens (below 0) or lifts the dark parts. |
+| `temperature` | number | -1 (bluer) to 1 (warmer). |
+| `tint` | number | -1 (greener) to 1 (more magenta). |
+| `saturation` | number | 0 to 4, 1 as shot; 0 is black and white. |
+| `from` | string | Another clip to copy the color of. |
+| `reset` | boolean, default `false` | Put the clip's color back as shot first: contrast and saturation 1, no grade. |
+| `sameFootage` | boolean, default `false` | Then give every other clip of the same footage this clip's color. |
+
 ### `set_effect`
 
 Add, change or remove one effect on a visual layer (one undo step). The effect is on that layer only, not its children. shadow (color, x, y, blur, opacity; default #000000, 8, 8, 6, 0.5): a soft copy behind the layer, offset right/down. outline (color, width; default #FFFFFF, 4): a border around the layer's shape. blur (x, y; default 4, 4): softens the layer, x and y separately (x alone gives a horizontal motion blur). tint (color, amount; color required): mixes the layer toward a color, amount 1 paints it solid in it. Sizes are in pixels at the layer's scale and grow with it and the camera; blur sizes are the Gaussian's standard deviation. Numbers are animatable with set_keyframes as shadow.x, shadow.y, shadow.blur, shadow.opacity, outline.width, blur.x, blur.y, tint.amount; colors are fixed. Fields you leave out keep their value. remove=true removes the effect with its keyframes.
@@ -999,7 +1018,7 @@ Add or replace many keyframes in one call (one undo step; all-or-nothing). A key
 |---|---|---|
 | `entries` | array of objects, required | Keyframes: [{layerId, property, time, value, easing, bezier}]. |
 | `entries[].layerId` | string | Layer id, or "camera" for the project camera. |
-| `entries[].property` | string | x, y, rotation, scaleX, scaleY, opacity; brightness, contrast, saturation (image and video layers); cropX, cropY (video layers); drawing (image layers); shadow.x, shadow.y, shadow.blur, shadow.opacity, outline.width, blur.x, blur.y, tint.amount (after set_effect); mask.x, mask.y, mask.width, mask.height, mask.feather (after set_mask). Camera: x, y (the scene point at the frame's center), zoom, rotation, shakeX, shakeY, shakeRotation. |
+| `entries[].property` | string | x, y, rotation, scaleX, scaleY, opacity; brightness, contrast, saturation (image and video layers); grade.exposure, grade.highlights, grade.shadows, grade.temperature, grade.tint (after set_color); cropX, cropY (video layers); drawing (image layers); shadow.x, shadow.y, shadow.blur, shadow.opacity, outline.width, blur.x, blur.y, tint.amount (after set_effect); mask.x, mask.y, mask.width, mask.height, mask.feather (after set_mask). Camera: x, y (the scene point at the frame's center), zoom, rotation, shakeX, shakeY, shakeRotation. |
 | `entries[].time` | number | Time in seconds. |
 | `entries[].value` | any | A number, or a drawing name (string) for the drawing property. |
 | `entries[].easing` | string | Easing of the segment that STARTS at this keyframe: linear (default), hold, easeIn, easeOut, easeInOut, easeOutBack, easeOutBounce, easeOutElastic, or cubicBezier with bezier. Ignored for drawing (always hold). |

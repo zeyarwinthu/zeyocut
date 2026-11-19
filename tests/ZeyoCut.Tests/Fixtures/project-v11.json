@@ -1,0 +1,900 @@
+{
+  "formatVersion": 11,
+  "revision": 50,
+  "name": "timeline-demo",
+  "width": 1280,
+  "height": 720,
+  "fps": 30,
+  "duration": 12.233334,
+  "backgroundColor": "#FFFFFF",
+  "audio": {
+    "loudnessTarget": -14,
+    "truePeak": -1,
+    "ducking": true,
+    "duckLevel": -12,
+    "duckFadeIn": 0.5,
+    "duckFadeOut": 1.5,
+    "voice": {
+      "gain": 0,
+      "pan": 0,
+      "muted": false
+    },
+    "music": {
+      "gain": 0,
+      "pan": 0,
+      "muted": false
+    },
+    "effects": {
+      "gain": 0,
+      "pan": 0,
+      "muted": false
+    }
+  },
+  "assets": [
+    {
+      "id": "street",
+      "type": "video",
+      "file": "assets/street.mp4",
+      "width": 1280,
+      "height": 720,
+      "duration": 6,
+      "frameRate": "30",
+      "frameCount": 180,
+      "hasAudio": true,
+      "codec": "h264"
+    },
+    {
+      "id": "logo",
+      "type": "image",
+      "file": "assets/logo.png",
+      "width": 256,
+      "height": 256
+    },
+    {
+      "id": "music",
+      "type": "audio",
+      "file": "assets/music.wav",
+      "duration": 12
+    },
+    {
+      "id": "tone",
+      "type": "audio",
+      "file": "assets/tone.wav",
+      "duration": 3
+    }
+  ],
+  "layers": [
+    {
+      "type": "video",
+      "id": "street",
+      "name": "street",
+      "start": 0,
+      "zIndex": 0,
+      "parentId": null,
+      "visible": true,
+      "anchorX": 440,
+      "anchorY": 360,
+      "asset": "street",
+      "trimIn": 0,
+      "trimOut": 3,
+      "speed": 1,
+      "volume": {
+        "value": 1
+      },
+      "muted": false,
+      "role": "voice",
+      "fadeIn": 0,
+      "fadeOut": 0,
+      "cropWidth": 1080,
+      "cropHeight": 720,
+      "x": {
+        "value": 640
+      },
+      "y": {
+        "value": 360
+      },
+      "rotation": {
+        "value": 0
+      },
+      "scaleX": {
+        "value": 1
+      },
+      "scaleY": {
+        "value": 1
+      },
+      "opacity": {
+        "value": 1
+      },
+      "brightness": {
+        "value": 0,
+        "keyframes": [
+          {
+            "time": 0,
+            "value": 0,
+            "easing": "linear"
+          }
+        ]
+      },
+      "contrast": {
+        "value": 1
+      },
+      "saturation": {
+        "value": 0
+      },
+      "cropX": {
+        "value": 200
+      },
+      "cropY": {
+        "value": 0
+      },
+      "shadow": {
+        "color": "#000000",
+        "x": {
+          "value": 8
+        },
+        "y": {
+          "value": 8
+        },
+        "blur": {
+          "value": 6
+        },
+        "opacity": {
+          "value": 0.5
+        }
+      }
+    },
+    {
+      "type": "video",
+      "id": "street_2",
+      "name": "street_2",
+      "start": 3,
+      "zIndex": 0,
+      "parentId": null,
+      "visible": true,
+      "anchorX": 640,
+      "anchorY": 360,
+      "asset": "street",
+      "trimIn": 3,
+      "trimOut": 6,
+      "speed": 1,
+      "volume": {
+        "value": 1
+      },
+      "muted": false,
+      "role": "voice",
+      "fadeIn": 0,
+      "fadeOut": 0,
+      "cropWidth": null,
+      "cropHeight": null,
+      "x": {
+        "value": 640
+      },
+      "y": {
+        "value": 360
+      },
+      "rotation": {
+        "value": 0
+      },
+      "scaleX": {
+        "value": 1
+      },
+      "scaleY": {
+        "value": 1
+      },
+      "opacity": {
+        "value": 1
+      },
+      "brightness": {
+        "value": 0
+      },
+      "contrast": {
+        "value": 1
+      },
+      "saturation": {
+        "value": 1
+      },
+      "cropX": {
+        "value": 0
+      },
+      "cropY": {
+        "value": 0
+      }
+    },
+    {
+      "type": "video",
+      "id": "street_b",
+      "name": "street_b",
+      "start": 6,
+      "zIndex": 1,
+      "parentId": null,
+      "visible": true,
+      "anchorX": 640,
+      "anchorY": 360,
+      "asset": "street",
+      "trimIn": 1,
+      "trimOut": 5,
+      "speed": 1,
+      "volume": {
+        "value": 1
+      },
+      "muted": false,
+      "role": "voice",
+      "fadeIn": 0,
+      "fadeOut": 0,
+      "cropWidth": null,
+      "cropHeight": null,
+      "x": {
+        "value": 640
+      },
+      "y": {
+        "value": 360
+      },
+      "rotation": {
+        "value": 0
+      },
+      "scaleX": {
+        "value": 1
+      },
+      "scaleY": {
+        "value": 1
+      },
+      "opacity": {
+        "value": 1
+      },
+      "brightness": {
+        "value": 0
+      },
+      "contrast": {
+        "value": 1
+      },
+      "saturation": {
+        "value": 1
+      },
+      "cropX": {
+        "value": 0
+      },
+      "cropY": {
+        "value": 0
+      }
+    },
+    {
+      "type": "image",
+      "id": "logo",
+      "name": "logo",
+      "start": 6,
+      "end": 10,
+      "zIndex": 2,
+      "parentId": "street_b",
+      "visible": true,
+      "anchorX": 128,
+      "anchorY": 128,
+      "flipX": false,
+      "drawings": {
+        "normal": "logo"
+      },
+      "drawing": {
+        "value": "normal"
+      },
+      "x": {
+        "value": 1041.39
+      },
+      "y": {
+        "value": 192.41
+      },
+      "rotation": {
+        "value": 0
+      },
+      "scaleX": {
+        "value": 0.5
+      },
+      "scaleY": {
+        "value": 0.5
+      },
+      "opacity": {
+        "value": 1
+      },
+      "brightness": {
+        "value": 0
+      },
+      "contrast": {
+        "value": 1
+      },
+      "saturation": {
+        "value": 1
+      }
+    },
+    {
+      "type": "text",
+      "id": "title",
+      "name": "title",
+      "start": 0,
+      "end": 4,
+      "zIndex": 3,
+      "parentId": null,
+      "visible": true,
+      "anchorX": 198.703125,
+      "anchorY": 47.8828125,
+      "text": "Street Demo",
+      "fontFamily": "Segoe UI",
+      "fontAsset": null,
+      "bold": false,
+      "fontSize": 72,
+      "color": "#000000",
+      "strokeColor": null,
+      "strokeWidth": 0,
+      "align": "left",
+      "maxWidth": null,
+      "lineHeight": 1,
+      "box": null,
+      "x": {
+        "value": 757.22
+      },
+      "y": {
+        "value": 560,
+        "keyframes": [
+          {
+            "time": 0,
+            "value": 407.59,
+            "easing": "easeOut"
+          },
+          {
+            "time": 2,
+            "value": 560,
+            "easing": "linear"
+          }
+        ]
+      },
+      "rotation": {
+        "value": 0,
+        "keyframes": [
+          {
+            "time": 0,
+            "value": 0,
+            "easing": "linear"
+          },
+          {
+            "time": 1.1333333333333333,
+            "value": 15,
+            "easing": "linear"
+          }
+        ]
+      },
+      "scaleX": {
+        "value": 1
+      },
+      "scaleY": {
+        "value": 1
+      },
+      "opacity": {
+        "value": 1
+      }
+    },
+    {
+      "type": "text",
+      "id": "part_two",
+      "name": "part_two",
+      "start": 6,
+      "end": 9,
+      "zIndex": 3,
+      "parentId": null,
+      "visible": true,
+      "anchorX": 109.39453125,
+      "anchorY": 39.90234375,
+      "text": "Part two",
+      "fontFamily": "Segoe UI",
+      "fontAsset": null,
+      "bold": false,
+      "fontSize": 60,
+      "color": "#000000",
+      "strokeColor": null,
+      "strokeWidth": 0,
+      "align": "left",
+      "maxWidth": null,
+      "lineHeight": 1,
+      "box": null,
+      "x": {
+        "value": 640
+      },
+      "y": {
+        "value": 560
+      },
+      "rotation": {
+        "value": 0
+      },
+      "scaleX": {
+        "value": 1
+      },
+      "scaleY": {
+        "value": 1
+      },
+      "opacity": {
+        "value": 1
+      }
+    },
+    {
+      "type": "image",
+      "id": "captions_en",
+      "name": "captions (en)",
+      "start": 0,
+      "end": null,
+      "zIndex": 13,
+      "parentId": null,
+      "visible": true,
+      "language": "en",
+      "anchorX": 0,
+      "anchorY": 0,
+      "ignoreCamera": true,
+      "flipX": false,
+      "drawings": {},
+      "drawing": {
+        "value": ""
+      },
+      "x": {
+        "value": 0
+      },
+      "y": {
+        "value": 0
+      },
+      "rotation": {
+        "value": 0
+      },
+      "scaleX": {
+        "value": 1
+      },
+      "scaleY": {
+        "value": 1
+      },
+      "opacity": {
+        "value": 1
+      },
+      "brightness": {
+        "value": 0
+      },
+      "contrast": {
+        "value": 1
+      },
+      "saturation": {
+        "value": 1
+      }
+    },
+    {
+      "type": "text",
+      "id": "captions_en_1",
+      "name": "Here's the street",
+      "start": 0,
+      "end": 2,
+      "zIndex": 13,
+      "parentId": "captions_en",
+      "visible": true,
+      "anchorX": 550.4000244140625,
+      "anchorY": 46.818748474121094,
+      "text": "Here's the street",
+      "fontFamily": "Segoe UI",
+      "fontAsset": null,
+      "bold": false,
+      "fontSize": 32,
+      "color": "#FFFFFF",
+      "strokeColor": null,
+      "strokeWidth": 0,
+      "align": "center",
+      "maxWidth": 1100.8,
+      "lineHeight": 1.1,
+      "box": {
+        "color": "#000000B3",
+        "padding": 10,
+        "cornerRadius": 6
+      },
+      "x": {
+        "value": 640
+      },
+      "y": {
+        "value": 590.99
+      },
+      "rotation": {
+        "value": 0
+      },
+      "scaleX": {
+        "value": 1
+      },
+      "scaleY": {
+        "value": 1
+      },
+      "opacity": {
+        "value": 1
+      }
+    },
+    {
+      "type": "text",
+      "id": "captions_en_2",
+      "name": "Cars go by",
+      "start": 2,
+      "end": 4.5,
+      "zIndex": 13,
+      "parentId": "captions_en",
+      "visible": true,
+      "anchorX": 550.4000244140625,
+      "anchorY": 46.818748474121094,
+      "text": "Cars go by",
+      "fontFamily": "Segoe UI",
+      "fontAsset": null,
+      "bold": false,
+      "fontSize": 32,
+      "color": "#FFFFFF",
+      "strokeColor": null,
+      "strokeWidth": 0,
+      "align": "center",
+      "maxWidth": 1100.8,
+      "lineHeight": 1.1,
+      "box": {
+        "color": "#000000B3",
+        "padding": 10,
+        "cornerRadius": 6
+      },
+      "x": {
+        "value": 640
+      },
+      "y": {
+        "value": 590.99
+      },
+      "rotation": {
+        "value": 0
+      },
+      "scaleX": {
+        "value": 1
+      },
+      "scaleY": {
+        "value": 1
+      },
+      "opacity": {
+        "value": 1
+      }
+    },
+    {
+      "type": "text",
+      "id": "captions_en_3",
+      "name": "Then the logo",
+      "start": 6,
+      "end": 8,
+      "zIndex": 13,
+      "parentId": "captions_en",
+      "visible": true,
+      "anchorX": 550.4000244140625,
+      "anchorY": 46.818748474121094,
+      "text": "Then the logo",
+      "fontFamily": "Segoe UI",
+      "fontAsset": null,
+      "bold": false,
+      "fontSize": 32,
+      "color": "#FFFFFF",
+      "strokeColor": null,
+      "strokeWidth": 0,
+      "align": "center",
+      "maxWidth": 1100.8,
+      "lineHeight": 1.1,
+      "box": {
+        "color": "#000000B3",
+        "padding": 10,
+        "cornerRadius": 6
+      },
+      "x": {
+        "value": 640
+      },
+      "y": {
+        "value": 590.99
+      },
+      "rotation": {
+        "value": 0
+      },
+      "scaleX": {
+        "value": 1
+      },
+      "scaleY": {
+        "value": 1
+      },
+      "opacity": {
+        "value": 1
+      }
+    },
+    {
+      "type": "text",
+      "id": "captions_en_4",
+      "name": "That's it",
+      "start": 8,
+      "end": 10,
+      "zIndex": 13,
+      "parentId": "captions_en",
+      "visible": true,
+      "anchorX": 550.4000244140625,
+      "anchorY": 46.818748474121094,
+      "text": "That's it",
+      "fontFamily": "Segoe UI",
+      "fontAsset": null,
+      "bold": false,
+      "fontSize": 32,
+      "color": "#FFFFFF",
+      "strokeColor": null,
+      "strokeWidth": 0,
+      "align": "center",
+      "maxWidth": 1100.8,
+      "lineHeight": 1.1,
+      "box": {
+        "color": "#000000B3",
+        "padding": 10,
+        "cornerRadius": 6
+      },
+      "x": {
+        "value": 640
+      },
+      "y": {
+        "value": 590.99
+      },
+      "rotation": {
+        "value": 0
+      },
+      "scaleX": {
+        "value": 1
+      },
+      "scaleY": {
+        "value": 1
+      },
+      "opacity": {
+        "value": 1
+      }
+    },
+    {
+      "type": "audio",
+      "id": "music",
+      "name": "music",
+      "start": 0,
+      "end": null,
+      "zIndex": 0,
+      "parentId": null,
+      "visible": true,
+      "asset": "music",
+      "trimIn": 0,
+      "trimOut": null,
+      "volume": {
+        "value": 0.4
+      },
+      "role": "music",
+      "fadeIn": 0,
+      "fadeOut": 1
+    },
+    {
+      "type": "audio",
+      "id": "beep",
+      "name": "beep",
+      "start": 5,
+      "end": 6,
+      "zIndex": 0,
+      "parentId": null,
+      "visible": true,
+      "asset": "tone",
+      "trimIn": 0,
+      "trimOut": null,
+      "volume": {
+        "value": 1
+      },
+      "role": "effects",
+      "fadeIn": 0,
+      "fadeOut": 0
+    },
+    {
+      "type": "image",
+      "id": "logo_2",
+      "name": "logo_2",
+      "start": 7.233333333333333,
+      "end": 12.233333333333334,
+      "zIndex": 0,
+      "parentId": null,
+      "visible": true,
+      "anchorX": 128,
+      "anchorY": 128,
+      "flipX": false,
+      "drawings": {
+        "normal": "logo"
+      },
+      "drawing": {
+        "value": "normal"
+      },
+      "x": {
+        "value": 640
+      },
+      "y": {
+        "value": 360
+      },
+      "rotation": {
+        "value": 0
+      },
+      "scaleX": {
+        "value": 1
+      },
+      "scaleY": {
+        "value": 1
+      },
+      "opacity": {
+        "value": 1
+      },
+      "brightness": {
+        "value": 0
+      },
+      "contrast": {
+        "value": 1
+      },
+      "saturation": {
+        "value": 1
+      }
+    },
+    {
+      "type": "audio",
+      "id": "tone",
+      "name": "tone",
+      "start": 0,
+      "end": null,
+      "zIndex": 0,
+      "parentId": null,
+      "visible": false,
+      "asset": "tone",
+      "trimIn": 0,
+      "trimOut": null,
+      "volume": {
+        "value": 1
+      },
+      "role": "effects",
+      "fadeIn": 0,
+      "fadeOut": 0
+    },
+    {
+      "type": "redaction",
+      "id": "redaction_1",
+      "name": "redaction_1",
+      "start": 0,
+      "end": null,
+      "zIndex": 0,
+      "parentId": null,
+      "visible": true,
+      "tracks": [
+        "track_1"
+      ],
+      "style": "solid",
+      "strength": 50,
+      "paddingPercent": 15,
+      "feather": 4,
+      "holdFrames": 15,
+      "color": "#000000",
+      "shape": "rectangle",
+      "smooth": false
+    },
+    {
+      "type": "redaction",
+      "id": "redaction_2",
+      "name": "redaction_2",
+      "start": 0,
+      "end": null,
+      "zIndex": 0,
+      "parentId": null,
+      "visible": true,
+      "tracks": [
+        "track_2"
+      ],
+      "style": "blur",
+      "strength": 90,
+      "paddingPercent": 15,
+      "feather": 4,
+      "holdFrames": 15,
+      "color": "#000000",
+      "shape": "rectangle",
+      "smooth": false
+    },
+    {
+      "type": "redaction",
+      "id": "redaction_3",
+      "name": "redaction_3",
+      "start": 0,
+      "end": null,
+      "zIndex": 0,
+      "parentId": null,
+      "visible": true,
+      "tracks": [
+        "track_3"
+      ],
+      "style": "pixelate",
+      "strength": 50,
+      "paddingPercent": 15,
+      "feather": 4,
+      "holdFrames": 15,
+      "color": "#000000",
+      "shape": "ellipse",
+      "smooth": false
+    }
+  ],
+  "tracks": [
+    {
+      "id": "track_1",
+      "asset": "street",
+      "layer": "street",
+      "method": "template",
+      "direction": "both",
+      "firstFrame": 0,
+      "lastFrame": 89,
+      "origin": 15,
+      "file": "tracks/track_1-dac7555a.json",
+      "anchors": [
+        {
+          "frame": 15,
+          "x": 820,
+          "y": 460,
+          "width": 200,
+          "height": 150
+        }
+      ]
+    },
+    {
+      "id": "track_2",
+      "asset": "street",
+      "layer": "street",
+      "method": "template",
+      "direction": "both",
+      "firstFrame": 0,
+      "lastFrame": 89,
+      "origin": 15,
+      "file": "tracks/track_2-c2c45d73.json",
+      "anchors": [
+        {
+          "frame": 15,
+          "x": 560,
+          "y": 160,
+          "width": 120,
+          "height": 120
+        }
+      ]
+    },
+    {
+      "id": "track_3",
+      "asset": "street",
+      "layer": "street_b",
+      "method": "csrt",
+      "direction": "forward",
+      "firstFrame": 86,
+      "lastFrame": 149,
+      "origin": 86,
+      "file": "tracks/track_3-fd15d6a3.json",
+      "anchors": [
+        {
+          "frame": 86,
+          "x": 970,
+          "y": 119.99999999999997,
+          "width": 142,
+          "height": 142.00000000000003
+        },
+        {
+          "frame": 93,
+          "x": 967,
+          "y": 119,
+          "width": 148,
+          "height": 148
+        }
+      ]
+    }
+  ],
+  "markers": [
+    {
+      "id": "intro",
+      "time": 0,
+      "name": "Intro",
+      "kind": "chapter"
+    },
+    {
+      "id": "part_two",
+      "time": 6,
+      "name": "Part two",
+      "kind": "chapter"
+    },
+    {
+      "id": "outro",
+      "time": 9,
+      "name": "Outro",
+      "kind": "scene"
+    }
+  ]
+}

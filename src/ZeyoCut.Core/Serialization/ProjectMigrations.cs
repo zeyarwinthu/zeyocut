@@ -37,6 +37,8 @@ public static class ProjectMigrations
         new(10, _ => { }),
         // 11: a redaction's shape and smoothing.
         new(11, _ => { }),
+        // 12: a clip's color grade.
+        new(12, _ => { }),
     ];
 
     private static readonly JsonNodeOptions NodeOptions = new() { PropertyNameCaseInsensitive = true };

@@ -207,6 +207,14 @@ when they open.
   which keeps the box steady through a tracker's jitter: its center and size are averaged over 6
   frames on each side rather than widened to every frame's padded box, and it always contains the
   track's own box. `update_layer` sets both on a redaction. Older projects update as they open.
+- **Color grade (project format 12):** `set_color` grades an image or video clip: exposure in
+  stops, highlights and shadows, temperature and tint (in a new `grade`), with its contrast and
+  saturation. `from` copies another clip's color, `reset` puts it back as shot, and `sameFootage`
+  gives every clip of the same video or picture the clip's color. The grade is drawn before
+  saturation, contrast and brightness: exposure and white balance on the light itself, then curves
+  for the highlights and shadows that keep black and white. `set_keyframes` animates
+  `grade.exposure`, `grade.highlights`, `grade.shadows`, `grade.temperature` and `grade.tint`, and
+  `list_layers` shows a clip's grade. Older projects update as they open.
 - **Insert and overwrite:** `add_video_layer`, `add_audio_layer` and `add_image_layer` take `edit`.
   `insert` splits the clip under the new one's start on its lane (its draw level, or its role's
   sound) and moves everything that starts there or later later by the new clip's length, with

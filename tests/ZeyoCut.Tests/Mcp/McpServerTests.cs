@@ -33,7 +33,7 @@ public class McpServerTests
         "set_camera", "camera_shake",
         "frame_diff", "audio_levels", "check_project",
         "list_sfx", "add_sfx", "detect_beats", "auto_lip_flap",
-        "set_effect", "set_mask", "set_motion_path",
+        "set_effect", "set_color", "set_mask", "set_motion_path",
         "export_batch", "export_thumbnail", "export_frames",
         "remove_background", "refine_matte", "text_behind_subject", "text_occlusion",
         "system_check", "get_logs",
@@ -695,6 +695,63 @@ public class McpServerTests
         every.Apply(editor);
         Same(editor);
         Assert.True(editor.FindLayer("three")!.Start < 4);
+    }
+
+    // set_color makes the project the editor's SetColorOperation makes: values, a copy of another
+    // clip's color, every clip of the same footage, and reset; the grade then animates.
+    [Fact]
+    public async Task ServerGradesClipsAsTheEditorDoes()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var root = TestPaths.NewDirectory("mcp-color");
+        var street = TestImages.Solid(Path.Combine(root, "street.png"), 20, 10, SKColors.Gray);
+        var sky = TestImages.Solid(Path.Combine(root, "sky.png"), 20, 10, SKColors.SkyBlue);
+        var file = Path.Combine(root, "projects", "graded", "project.json");
+        await using var client = await StartServer(root, Path.Combine(root, "projects"), Path.Combine(root, "logs"), ct);
+        await CallOk(client, "create_project", new() { ["name"] = "graded", ["width"] = 320, ["height"] = 180, ["fps"] = 10, ["duration"] = 6.0 }, ct);
+        await CallOk(client, "import_asset", new() { ["path"] = street }, ct);
+        await CallOk(client, "import_asset", new() { ["path"] = sky }, ct);
+        foreach (var (id, asset, start) in new[] { ("street_a", "street", 0.0), ("sky_a", "sky", 2.0), ("street_b", "street", 4.0) })
+        {
+            await CallOk(client, "add_image_layer", new() { ["asset"] = asset, ["id"] = id, ["start"] = start, ["end"] = start + 2, ["zIndex"] = 0 }, ct);
+        }
+
+        var before = File.ReadAllText(file);
+        var editor = ProjectJson.Deserialize(before);
+        void Same(EditOperation operation, string reply)
+        {
+            var summary = operation.Apply(editor);
+            Assert.Equal(reply.ReplaceLineEndings("\n").Split('\n')[0], summary.Split("; the keyframes")[0]);
+            editor.Revision = ProjectJson.Deserialize(File.ReadAllText(file)).Revision;
+            Assert.Equal(TestProjects.WithoutRevision(File.ReadAllText(file)), TestProjects.WithoutRevision(ProjectJson.Serialize(editor)));
+        }
+
+        var graded = await CallOk(client, "set_color", new() { ["layerId"] = "street_a", ["exposure"] = 0.3, ["contrast"] = 1.12, ["highlights"] = -0.2, ["shadows"] = 0.18, ["temperature"] = 0.35, ["saturation"] = 1.2 }, ct);
+        Assert.Equal("color of 'street_a': exposure 0.3, contrast 1.12, highlights -0.2, shadows 0.18, temperature 0.35, saturation 1.2", graded);
+        Same(new SetColorOperation("street_a", new ColorChange(new Dictionary<string, double> { ["exposure"] = 0.3, ["contrast"] = 1.12, ["highlights"] = -0.2, ["shadows"] = 0.18, ["temperature"] = 0.35, ["saturation"] = 1.2 })), graded);
+
+        var everyClip = await CallOk(client, "set_color", new() { ["layerId"] = "street_a", ["sameFootage"] = true }, ct);
+        Assert.EndsWith("; the same on street_b (every clip of 'street')", everyClip);
+        Same(new SetColorOperation("street_a", new ColorChange(new Dictionary<string, double>(), SameFootage: true)), everyClip);
+
+        var copied = await CallOk(client, "set_color", new() { ["layerId"] = "sky_a", ["from"] = "street_a", ["tint"] = -0.1 }, ct);
+        Assert.StartsWith("copied the color of 'street_a' to 'sky_a': ", copied);
+        Same(new SetColorOperation("sky_a", new ColorChange(new Dictionary<string, double> { ["tint"] = -0.1 }, From: "street_a")), copied);
+
+        Assert.Contains("grade(exposure 0.3, highlights -0.2, shadows 0.18, temperature 0.35, tint -0.1)", await CallOk(client, "list_layers", new(), ct));
+        await CallOk(client, "set_keyframes", new() { ["entries"] = new object[] { new { layerId = "sky_a", property = "grade.temperature", time = 2.0, value = -1.0 }, new { layerId = "sky_a", property = "grade.temperature", time = 4.0, value = 1.0 } } }, ct);
+        Assert.Contains("'sky_a' animates its temperature with keyframes; its color is copied as fixed values", Text(await Call(client, "set_color", new() { ["layerId"] = "street_b", ["from"] = "sky_a" }, ct)));
+        new SetKeyframesOperation(
+        [
+            new KeyframeEntry("sky_a", "grade.temperature", 2, JsonSerializer.SerializeToElement(-1.0)),
+            new KeyframeEntry("sky_a", "grade.temperature", 4, JsonSerializer.SerializeToElement(1.0)),
+        ]).Apply(editor);
+
+        var reset = await CallOk(client, "set_color", new() { ["layerId"] = "sky_a", ["reset"] = true }, ct);
+        Assert.StartsWith("put the color of 'sky_a' back as shot", reset);
+        Same(new SetColorOperation("sky_a", new ColorChange(new Dictionary<string, double>(), Reset: true)), reset);
+        Assert.Contains("exposure must be between -3 and 3 (got 5)", Text(await Call(client, "set_color", new() { ["layerId"] = "street_a", ["exposure"] = 5.0 }, ct)));
+        Assert.StartsWith("undid: set_color sky_a", await CallOk(client, "undo", new(), ct));
     }
 
     // add_text_layer's style, animateIn and animateOut make the project the editor's AddTitleOperation
@@ -1817,7 +1874,7 @@ public class McpServerTests
         }
 
         var first = JsonDocument.Parse(File.ReadAllText(projectFile)).RootElement.GetProperty("tracks")[0];
-        Assert.Equal(11, JsonDocument.Parse(File.ReadAllText(projectFile)).RootElement.GetProperty("formatVersion").GetInt32());
+        Assert.Equal(12, JsonDocument.Parse(File.ReadAllText(projectFile)).RootElement.GetProperty("formatVersion").GetInt32());
         var firstFile = first.GetProperty("file").GetString()!;
         Assert.True(File.Exists(Path.Combine(root, "projects", "tracking", firstFile)));
 
@@ -2985,10 +3042,10 @@ public class McpServerTests
         await using var client = await StartServer(root, projects, Path.Combine(root, "logs"), ct);
 
         var opened = await CallOk(client, "open_project", new() { ["nameOrPath"] = "tora" }, ct);
-        Assert.Matches(@"\nupdated project\.json from format 1 \(saved by an older ZeyoCut\) to 11; the file as it was is kept as backups\\project-v1-\d{8}-\d{6}\.json\n", opened);
+        Assert.Matches(@"\nupdated project\.json from format 1 \(saved by an older ZeyoCut\) to 12; the file as it was is kept as backups\\project-v1-\d{8}-\d{6}\.json\n", opened);
         Assert.Contains("tora_head", opened);
         Assert.Single(Directory.GetFiles(Path.Combine(projects, "tora", "backups"), "project-v1-*.json"));
-        Assert.Matches("\"formatVersion\": 11,\r?\n  \"revision\": 1,", await CallOk(client, "get_project", new(), ct));
+        Assert.Matches("\"formatVersion\": 12,\r?\n  \"revision\": 1,", await CallOk(client, "get_project", new(), ct));
 
         Assert.DoesNotContain("updated project.json", await CallOk(client, "open_project", new() { ["nameOrPath"] = "tora" }, ct));
     }

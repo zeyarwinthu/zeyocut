@@ -182,7 +182,7 @@ public class TrackTests
     {
         var project = Canvas();
         Assert.DoesNotContain("\"tracks\"", ProjectJson.Serialize(project));
-        Assert.Equal(11, project.FormatVersion);
+        Assert.Equal(12, project.FormatVersion);
 
         project.Tracks.Add(Track(TrackDirection.Forward, 0, 0));
         var restored = ProjectJson.Deserialize(ProjectJson.Serialize(project));

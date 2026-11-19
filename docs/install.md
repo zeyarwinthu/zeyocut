@@ -119,7 +119,7 @@ Any client that runs local (stdio) MCP servers can use ZeyoCut. The command is t
 Two things to know:
 
 - Tools such as `render_frame` and `contact_sheet` return PNG images so the model can check its work. With a client that doesn't pass images to the model, everything still works, but the model edits without seeing the result.
-- ZeyoCut has 95 tools. Some clients limit how many tools they turn on at once.
+- ZeyoCut has 96 tools. Some clients limit how many tools they turn on at once.
 
 ## 4. First run
 
