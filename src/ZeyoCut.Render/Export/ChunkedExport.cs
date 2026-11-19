@@ -24,6 +24,8 @@ internal static class ChunkedExport
 
     public const string CacheFolder = ProjectStore.CacheFolder;
 
+    public const string ChunksFolder = "chunks";
+
     // A GPU encoder that fails on a chunk is given it again, up to this many times in all: Intel Quick
     // Sync now and then hands back an empty frame ("Invalid FrameType:0") when frames come faster than
     // it encodes them, and encodes the same frames the next time.
@@ -55,7 +57,7 @@ internal static class ChunkedExport
         Stopwatch stopwatch)
     {
         var frameCount = settings.FrameCount;
-        var folder = Path.Combine(projectDirectory, CacheFolder, "chunks");
+        var folder = Path.Combine(projectDirectory, CacheFolder, ChunksFolder);
         Directory.CreateDirectory(folder);
 
         var keysStarted = Stopwatch.GetTimestamp();

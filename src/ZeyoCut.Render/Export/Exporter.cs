@@ -27,8 +27,11 @@ public static class Exporter
     // (one per thread) and the decoders have cores left and the memory stays within a few GB.
     public static int DefaultWorkers => Math.Clamp(Environment.ProcessorCount / 4, 1, 4);
 
-    // A chunked export renders and caches the frames in chunks of this many seconds.
+    // A chunked export renders and caches the frames in chunks of this many seconds, in this folder of
+    // the project's cache.
     public const int ChunkSeconds = ChunkedExport.ChunkSeconds;
+
+    public const string ChunksFolder = ChunkedExport.ChunksFolder;
 
     // The memory one thread of a chunked export takes, by the pixels of the canvas or the file, whichever
     // is bigger. Measured with 4 threads on a 16-core laptop: about 1 GB at 1920x1080 (x264 medium, with

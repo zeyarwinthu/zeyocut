@@ -65,15 +65,15 @@ public sealed class ExportStart
 
     // Starts exporting the project (a snapshot nothing else changes) to exports\<fileName> in its
     // folder, at crf (by default the preset's, else 18), as one language's version when language is
-    // given. Later edits don't affect it.
-    public ExportStarted Start(ExportJobManager exports, Project project, string directory, string fileName, int? crf, Preset? preset, string? language, Action<string>? log)
+    // given, on workers render threads (Exporter.DefaultWorkers when null). Later edits don't affect it.
+    public ExportStarted Start(ExportJobManager exports, Project project, string directory, string fileName, int? crf, Preset? preset, string? language, Action<string>? log, int? workers = null)
     {
         var name = FileName(fileName);
         var ffmpeg = _ffmpeg();
         var version = Languages.Choose(project, language, export: true);
         var output = Path.Combine(directory, ProjectStore.ExportsFolder, name);
         Exporter.CheckPreset(project, preset);
-        var job = exports.Start(project, directory, output, crf ?? preset?.Crf ?? 18, ffmpeg, log, preset);
+        var job = exports.Start(project, directory, output, crf ?? preset?.Crf ?? 18, ffmpeg, log, preset, workers);
         return new ExportStarted(job, output, version);
     }
 }

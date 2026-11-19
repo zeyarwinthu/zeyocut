@@ -238,6 +238,24 @@ public class ExportTests
         Assert.Contains("export job 'nope' not found; jobs: export_1", Assert.Throws<ZeyoCut.Core.ZeyoCutException>(() => manager.Get("nope")).Message);
     }
 
+    // An export can be given its number of render threads (the editor's Keep editing smoothly uses
+    // one); without, it uses Exporter.DefaultWorkers.
+    [Fact]
+    public async Task AnExportJobRendersOnTheThreadsItIsGiven()
+    {
+        var ffmpeg = Ffmpeg.Require();
+        var session = MovingSquareProject("export-workers", ffmpeg, withAudio: false);
+        session.Mutate("longer", p => p.Duration = 6);
+        var manager = new ExportJobManager();
+        foreach (var workers in new[] { 1, 2 })
+        {
+            var job = manager.Start(session.Snapshot(), session.Directory, Path.Combine(session.Directory, "exports", $"workers-{workers}.mp4"), 30 + workers, ffmpeg, workers: workers);
+            await job.Completion.WaitAsync(TimeSpan.FromSeconds(120), TestContext.Current.CancellationToken);
+            Assert.Equal(ExportState.Completed, job.State);
+            Assert.Equal((3, workers), (job.Result!.Times!.Chunks, job.Result.Times.Workers));
+        }
+    }
+
     [Fact]
     public async Task WaitingForAStuckFfmpegGivesUpOrCancels()
     {
