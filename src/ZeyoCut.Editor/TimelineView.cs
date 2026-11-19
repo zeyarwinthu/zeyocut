@@ -51,6 +51,9 @@ public sealed class TimelineView : FrameworkElement
     private static readonly Brush EyeBrush = Frozen(0x7C, 0x83, 0x92);
     private static readonly Brush MixedBar = Frozen(0x9A, 0xA1, 0xAE);
     private static readonly Brush GlowBrush = Frozen(0x40, 0x7B, 0x93, 0xFF);
+
+    // How long a clip another program just changed glows.
+    public static readonly TimeSpan HighlightTime = TimeSpan.FromSeconds(3);
     public static readonly Dictionary<ClipKind, Brush> Fills = new()
     {
         [ClipKind.Video] = Frozen(0x2B, 0x4A, 0x8A),
@@ -103,6 +106,8 @@ public sealed class TimelineView : FrameworkElement
     private double _scrollY;
     private int _playhead;
     private string? _selected;
+    private readonly Dictionary<string, DateTime> _highlighted = new(StringComparer.Ordinal);
+    private DispatcherTimer? _fading;
     private TimelineCut? _cut;
     private TimelineCut? _pressCut;
     private Drag? _drag;
@@ -197,6 +202,28 @@ public sealed class TimelineView : FrameworkElement
             DrawContent();
         }
     }
+
+    // The clips of layers another program just changed: each glows for HighlightTime, fading out.
+    public void Highlight(IEnumerable<string> layerIds)
+    {
+        var until = DateTime.UtcNow + HighlightTime;
+        foreach (var id in layerIds)
+        {
+            _highlighted[id] = until;
+        }
+
+        if (_highlighted.Count == 0)
+        {
+            return;
+        }
+
+        _fading ??= new DispatcherTimer(TimeSpan.FromMilliseconds(100), DispatcherPriority.Render, (_, _) => Fade(), Dispatcher);
+        _fading.Start();
+        DrawContent();
+    }
+
+    // The layers whose clips glow now.
+    public IReadOnlyCollection<string> Highlighted => _highlighted.Keys;
 
     // The cut the Effects view puts a transition on, marked where its clips meet.
     public TimelineCut? Cut
@@ -800,6 +827,22 @@ public sealed class TimelineView : FrameworkElement
         CutChosen?.Invoke(this, cut);
     }
 
+    private void Fade()
+    {
+        var now = DateTime.UtcNow;
+        foreach (var id in _highlighted.Where(h => h.Value <= now).Select(h => h.Key).ToList())
+        {
+            _highlighted.Remove(id);
+        }
+
+        if (_highlighted.Count == 0)
+        {
+            _fading!.Stop();
+        }
+
+        DrawContent();
+    }
+
     private void ChangeSelection(string? id)
     {
         if (id == _selected)
@@ -1153,6 +1196,14 @@ public sealed class TimelineView : FrameworkElement
             var glow = rect;
             glow.Inflate(2.5, 2.5);
             dc.DrawRoundedRectangle(null, new Pen(GlowBrush, 3), glow, corner + 2.5, corner + 2.5);
+        }
+
+        if (!outline && _highlighted.TryGetValue(clip.LayerId, out var until))
+        {
+            var strength = Math.Clamp((until - DateTime.UtcNow).TotalSeconds / HighlightTime.TotalSeconds, 0, 1);
+            var ring = rect;
+            ring.Inflate(3, 3);
+            dc.DrawRoundedRectangle(null, new Pen(new SolidColorBrush(Color.FromArgb((byte)(230 * strength), 0x7B, 0x93, 0xFF)), 2), ring, corner + 3, corner + 3);
         }
 
         if (clip.Hidden)

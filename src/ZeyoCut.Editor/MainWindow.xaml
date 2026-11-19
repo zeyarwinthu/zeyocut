@@ -431,6 +431,65 @@
       </Border>
     </DataTemplate>
 
+    <DataTemplate x:Key="QueueRowTemplate">
+      <Border x:Name="Row" BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,0,0,1" Padding="16,14">
+        <DockPanel>
+          <Button x:Name="RowAction" DockPanel.Dock="Right" Style="{StaticResource FieldButton}" Height="32" MinWidth="76" Padding="12,0" FontSize="12" Margin="14,0,0,0"
+                  VerticalAlignment="Center" Content="{Binding Row.Action}" ToolTip="{Binding Row.ActionTip}" Tag="{Binding Row}" Click="OnQueueAction" />
+          <StackPanel DockPanel.Dock="Right" Width="170" VerticalAlignment="Center" Margin="14,0,0,0">
+            <TextBlock x:Name="RowStatus" Text="{Binding Row.Status}" FontWeight="SemiBold" HorizontalAlignment="Right" />
+            <TextBlock Text="{Binding Row.Detail}" Style="{StaticResource Secondary}" FontSize="12" HorizontalAlignment="Right" TextAlignment="Right" TextWrapping="Wrap" TextTrimming="None"
+                       Margin="0,3,0,0" ToolTip="{Binding Row.Detail}" />
+          </StackPanel>
+          <Border DockPanel.Dock="Left" Width="72" Height="40" CornerRadius="6" Background="{StaticResource ControlBrush}" VerticalAlignment="Center" Margin="0,0,14,0">
+            <Border CornerRadius="6" Background="{Binding Row.Picture}" />
+          </Border>
+          <StackPanel VerticalAlignment="Center">
+            <StackPanel Orientation="Horizontal">
+              <TextBlock Text="{Binding Row.File}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+              <Border x:Name="WhoTag" CornerRadius="4" Padding="6,1" Margin="8,0,0,0" Background="{StaticResource YouBrush}" VerticalAlignment="Center">
+                <TextBlock x:Name="WhoText" Text="{Binding Row.Who}" FontSize="10" FontWeight="Bold" Foreground="{StaticResource YouTextBrush}" />
+              </Border>
+            </StackPanel>
+            <TextBlock Text="{Binding Row.Line}" Style="{StaticResource Secondary}" FontSize="12" Margin="0,5,0,0" />
+            <ProgressBar x:Name="RowBar" Height="4" Maximum="100" MaxWidth="360" HorizontalAlignment="Stretch" Value="{Binding Row.Percent, Mode=OneWay}" Margin="0,7,0,0" Visibility="Collapsed" />
+          </StackPanel>
+        </DockPanel>
+      </Border>
+      <DataTemplate.Triggers>
+        <DataTrigger Binding="{Binding Row.Claude}" Value="True">
+          <Setter TargetName="WhoTag" Property="Background" Value="{StaticResource ClaudeBrush}" />
+          <Setter TargetName="WhoText" Property="Foreground" Value="{StaticResource AccentSoftTextBrush}" />
+        </DataTrigger>
+        <DataTrigger Binding="{Binding Row.HasBar}" Value="True">
+          <Setter TargetName="RowBar" Property="Visibility" Value="Visible" />
+        </DataTrigger>
+        <DataTrigger Binding="{Binding Row.Action}" Value="{x:Null}">
+          <Setter TargetName="RowAction" Property="Visibility" Value="Hidden" />
+        </DataTrigger>
+        <DataTrigger Binding="{Binding Row.Tone}" Value="Running">
+          <Setter TargetName="Row" Property="Background" Value="#151A27" />
+          <Setter TargetName="RowStatus" Property="Foreground" Value="{StaticResource AccentSoftTextBrush}" />
+        </DataTrigger>
+        <DataTrigger Binding="{Binding Row.Tone}" Value="Done">
+          <Setter TargetName="RowStatus" Property="Foreground" Value="{StaticResource YouTextBrush}" />
+        </DataTrigger>
+        <DataTrigger Binding="{Binding Row.Tone}" Value="Failed">
+          <Setter TargetName="RowStatus" Property="Foreground" Value="#FFB4A8" />
+        </DataTrigger>
+        <DataTrigger Binding="{Binding Row.Tone}" Value="Stopped">
+          <Setter TargetName="RowStatus" Property="Foreground" Value="{StaticResource SecondaryTextBrush}" />
+        </DataTrigger>
+      </DataTemplate.Triggers>
+    </DataTemplate>
+
+    <DataTemplate x:Key="CacheLegendTemplate">
+      <StackPanel Orientation="Horizontal" Margin="0,0,14,6">
+        <Border Width="8" Height="8" CornerRadius="2" Background="{Binding Color}" VerticalAlignment="Center" Margin="0,0,6,0" />
+        <TextBlock Text="{Binding Text}" Style="{StaticResource Secondary}" FontSize="12" />
+      </StackPanel>
+    </DataTemplate>
+
     <DataTemplate x:Key="ExportFileCard">
       <Border Background="{StaticResource HeaderBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="10" Padding="14,12" Margin="0,0,0,8">
         <DockPanel>
@@ -1259,7 +1318,11 @@
             <TextBlock Style="{StaticResource Secondary}" FontSize="14" TextWrapping="Wrap" TextTrimming="None" Margin="0,6,0,0" LineHeight="21"
                        Text="Claude builds the first cut over MCP. Open a project to fine-tune it: every change is saved as you make it, and Claude sees it on its next step." />
           </StackPanel>
-          <Grid Grid.Column="1" Width="280" Height="40" VerticalAlignment="Bottom">
+          <Button x:Name="PrefsButton" Grid.Column="1" Style="{StaticResource FieldButton}" Width="40" Height="40" Padding="0" VerticalAlignment="Bottom" HorizontalAlignment="Left"
+                  Click="OnPreferences" ToolTip="Preferences: snapping, Claude's highlight, still length, preview quality, export defaults" AutomationProperties.Name="Preferences">
+            <TextBlock FontFamily="{StaticResource IconFont}" Text="&#xE713;" FontSize="15" HorizontalAlignment="Center" VerticalAlignment="Center" />
+          </Button>
+          <Grid Grid.Column="1" Width="280" Height="40" Margin="50,0,0,0" VerticalAlignment="Bottom">
             <TextBox x:Name="HomeSearch" Background="{StaticResource HeaderBrush}" Padding="34,10,10,0" FontSize="14" TextChanged="OnHomeSearch"
                      AutomationProperties.Name="Search projects" ToolTip="Show the projects whose names have this in them" />
             <local:Icon Data="{StaticResource SearchShape}" Width="15" Height="15" Margin="12,0,0,0" HorizontalAlignment="Left" IsHitTestVisible="False"
@@ -2237,7 +2300,7 @@
                         ToolTip="Export the project as it is saved now with these settings">
                   <StackPanel Orientation="Horizontal">
                     <local:Icon Data="{StaticResource ExportShape}" Thickness="2.2" Width="16" Height="16" />
-                    <TextBlock Text="Export" Margin="8,0,0,0" />
+                    <TextBlock x:Name="ExportButtonText" Text="Export" Margin="8,0,0,0" />
                   </StackPanel>
                 </Button>
               </StackPanel>
@@ -2254,7 +2317,13 @@
               </Style>
             </TextBlock.Style>
           </TextBlock>
-          <TextBlock Text="EXPORTS FOLDER" Style="{StaticResource PanelTitle}" Margin="0,20,0,8" />
+          <DockPanel Margin="0,20,0,8">
+            <Button x:Name="QueueLink" DockPanel.Dock="Right" Style="{StaticResource LinkButton}" FontSize="11" FontWeight="Medium" Foreground="{StaticResource AccentSoftTextBrush}"
+                    Click="OnRenderQueue" ToolTip="Your exports from every project, Claude's running ones, the render settings and the cache">
+              <TextBlock x:Name="QueueLinkText" Text="Render queue" />
+            </Button>
+            <TextBlock Text="EXPORTS FOLDER" Style="{StaticResource PanelTitle}" />
+          </DockPanel>
           <Border x:Name="OwnExport" Background="{StaticResource HeaderBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="10" Padding="14,12" Margin="0,0,0,8"
                   Visibility="Collapsed">
             <StackPanel>
@@ -3196,6 +3265,307 @@
         <TextBlock x:Name="RenderText" Grid.Column="6" Style="{StaticResource Secondary}" />
       </Grid>
     </Border>
+
+    <DockPanel x:Name="QueuePage" Grid.RowSpan="2" Background="{StaticResource WindowBrush}" Visibility="Collapsed">
+      <Border DockPanel.Dock="Top" Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,0,0,1" MinHeight="48" Padding="12,0">
+        <DockPanel>
+          <Button x:Name="AddExportButton" DockPanel.Dock="Right" Style="{StaticResource FieldButton}" Height="32" Padding="12,0" VerticalAlignment="Center" Click="OnAddExport"
+                  Content="+ Add export" ToolTip="Open the project's Export view to add an export to the queue" />
+          <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+            <Button Style="{StaticResource LogoButton}" Click="OnCloseAppPage" ToolTip="Back to where you were (Esc)" AutomationProperties.Name="Back" />
+            <Button Style="{StaticResource LinkButton}" Content="ZeyoCut" FontSize="13" Margin="10,0,0,0" Foreground="{StaticResource SecondaryTextBrush}" Click="OnCloseAppPage"
+                    ToolTip="Back to where you were (Esc)" />
+            <TextBlock Text="/" Foreground="{StaticResource SecondaryTextBrush}" FontSize="13" Margin="7,0" VerticalAlignment="Center" />
+            <TextBlock Text="Render queue" FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center" />
+          </StackPanel>
+        </DockPanel>
+      </Border>
+      <ScrollViewer x:Name="QueueScroll" VerticalScrollBarVisibility="Auto" Focusable="False">
+        <Grid MaxWidth="1320" Margin="40,32">
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="28" />
+            <ColumnDefinition Width="340" />
+          </Grid.ColumnDefinitions>
+          <StackPanel>
+            <DockPanel>
+              <Button x:Name="PauseQueueButton" DockPanel.Dock="Right" Style="{StaticResource FieldButton}" Height="36" Padding="14,0" VerticalAlignment="Bottom" Margin="12,0,0,0" Click="OnPauseQueue">
+                <StackPanel Orientation="Horizontal">
+                  <TextBlock x:Name="PauseQueueIcon" FontFamily="{StaticResource IconFont}" Text="&#xE769;" FontSize="12" Margin="0,0,8,0" VerticalAlignment="Center" />
+                  <TextBlock x:Name="PauseQueueText" Text="Pause queue" VerticalAlignment="Center" />
+                </StackPanel>
+              </Button>
+              <StackPanel>
+                <TextBlock Text="Render queue" FontSize="24" FontWeight="SemiBold" />
+                <TextBlock Style="{StaticResource Secondary}" FontSize="13" TextWrapping="Wrap" TextTrimming="None" LineHeight="20" Margin="0,6,0,0"
+                           Text="Your exports, from any project, run here one after another while you keep editing. Claude's exports run in its ZeyoCut server; they're listed while they run." />
+              </StackPanel>
+            </DockPanel>
+            <Border x:Name="QueueListCard" CornerRadius="12" BorderBrush="{StaticResource DividerBrush}" BorderThickness="1,1,1,0" Margin="0,18,0,0" ClipToBounds="True">
+              <ItemsControl x:Name="QueueList" Focusable="False" ItemTemplate="{StaticResource QueueRowTemplate}" />
+            </Border>
+            <TextBlock x:Name="QueueEmpty" Style="{StaticResource Secondary}" FontSize="13" TextWrapping="Wrap" TextTrimming="None" Margin="0,18,0,0" Visibility="Collapsed"
+                       Text="Nothing is rendering. Exports you start in a project's Export view line up here." />
+            <TextBlock x:Name="QueueNote" FontSize="12" TextWrapping="Wrap" Margin="0,12,0,0" Foreground="{StaticResource SecondaryTextBrush}" Visibility="Collapsed" />
+          </StackPanel>
+
+          <StackPanel Grid.Column="2">
+            <Border Background="{StaticResource HeaderBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="14" Padding="18">
+              <StackPanel>
+                <TextBlock Text="While rendering" FontWeight="SemiBold" Margin="0,0,0,14" />
+                <DockPanel Margin="0,0,0,14">
+                  <CheckBox x:Name="GentleExports" DockPanel.Dock="Right" Style="{StaticResource Switch}" VerticalAlignment="Center" Click="OnRenderSetting"
+                            AutomationProperties.Name="Keep editing smoothly" />
+                  <StackPanel Margin="0,0,12,0">
+                    <TextBlock Text="Keep editing smoothly" />
+                    <TextBlock Style="{StaticResource Secondary}" FontSize="12" TextWrapping="Wrap" TextTrimming="None" Margin="0,2,0,0"
+                               Text="Your exports render on one CPU thread, not several" />
+                  </StackPanel>
+                </DockPanel>
+                <DockPanel Margin="0,0,0,14">
+                  <CheckBox x:Name="GpuEncoder" DockPanel.Dock="Right" Style="{StaticResource Switch}" VerticalAlignment="Center" Click="OnRenderSetting"
+                            AutomationProperties.Name="Use GPU encoder" />
+                  <StackPanel Margin="0,0,12,0">
+                    <TextBlock Text="Use GPU encoder" />
+                    <TextBlock x:Name="GpuEncoderNote" Style="{StaticResource Secondary}" FontSize="12" TextWrapping="Wrap" TextTrimming="None" Margin="0,2,0,0"
+                               Text="Faster when available; off, your exports use libx264" />
+                  </StackPanel>
+                </DockPanel>
+                <DockPanel>
+                  <CheckBox x:Name="NotifyExports" DockPanel.Dock="Right" Style="{StaticResource Switch}" VerticalAlignment="Center" Click="OnRenderSetting"
+                            AutomationProperties.Name="Notify when done" />
+                  <StackPanel Margin="0,0,12,0">
+                    <TextBlock Text="Notify when done" />
+                    <TextBlock Style="{StaticResource Secondary}" FontSize="12" TextWrapping="Wrap" TextTrimming="None" Margin="0,2,0,0"
+                               Text="Flashes the taskbar button when the window isn't in front" />
+                  </StackPanel>
+                </DockPanel>
+              </StackPanel>
+            </Border>
+
+            <Border x:Name="CacheCard" Background="{StaticResource HeaderBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="14" Padding="18" Margin="0,16,0,0">
+              <StackPanel>
+                <DockPanel Margin="0,0,0,12">
+                  <TextBlock x:Name="CacheTotal" DockPanel.Dock="Right" FontFamily="Consolas" FontSize="12" Foreground="{StaticResource IconTextBrush}" VerticalAlignment="Center" />
+                  <TextBlock Text="Cache" FontWeight="SemiBold" />
+                </DockPanel>
+                <Border Height="8" CornerRadius="4" Background="{StaticResource BorderBrush}" ClipToBounds="True">
+                  <Grid x:Name="CacheBar" />
+                </Border>
+                <ItemsControl x:Name="CacheLegend" Focusable="False" Margin="0,12,0,0" ItemTemplate="{StaticResource CacheLegendTemplate}">
+                  <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                      <WrapPanel />
+                    </ItemsPanelTemplate>
+                  </ItemsControl.ItemsPanel>
+                </ItemsControl>
+                <TextBlock x:Name="CacheNote" Style="{StaticResource Secondary}" FontSize="12" TextWrapping="Wrap" TextTrimming="None" LineHeight="18" Margin="0,4,0,12" />
+                <Button x:Name="ClearCacheButton" Style="{StaticResource FieldButton}" Height="34" HorizontalContentAlignment="Center" Click="OnClearCache"
+                        ToolTip="Delete the export chunks, preview sound, pictures and waveforms; each is made again when it's needed">
+                  <TextBlock Text="Clear cache" HorizontalAlignment="Center" />
+                </Button>
+              </StackPanel>
+            </Border>
+          </StackPanel>
+        </Grid>
+      </ScrollViewer>
+    </DockPanel>
+
+    <DockPanel x:Name="PrefsPage" Grid.RowSpan="2" Background="{StaticResource WindowBrush}" Visibility="Collapsed">
+      <Border DockPanel.Dock="Top" Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,0,0,1" MinHeight="48" Padding="12,0">
+        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+          <Button Style="{StaticResource LogoButton}" Click="OnCloseAppPage" ToolTip="Back to where you were (Esc)" AutomationProperties.Name="Back" />
+          <Button Style="{StaticResource LinkButton}" Content="ZeyoCut" FontSize="13" Margin="10,0,0,0" Foreground="{StaticResource SecondaryTextBrush}" Click="OnCloseAppPage"
+                  ToolTip="Back to where you were (Esc)" />
+          <TextBlock Text="/" Foreground="{StaticResource SecondaryTextBrush}" FontSize="13" Margin="7,0" VerticalAlignment="Center" />
+          <TextBlock Text="Preferences" FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center" />
+        </StackPanel>
+      </Border>
+      <Border DockPanel.Dock="Left" Width="240" Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,0,1,0" Padding="10,16">
+        <StackPanel AutomationProperties.Name="Preference sections">
+          <RadioButton x:Name="PrefsGeneral" Style="{StaticResource ShelfButton}" GroupName="PrefsSection" Content="General" FontWeight="Medium" IsChecked="True" Checked="OnPrefsSection" />
+          <Button Style="{StaticResource NavButton}" FontWeight="Medium" Click="OnPrefsClaude" ToolTip="Open the Welcome view: how to connect Claude to ZeyoCut's MCP server">
+            <DockPanel>
+              <TextBlock DockPanel.Dock="Right" FontFamily="{StaticResource IconFont}" Text="&#xE8A7;" FontSize="11" Foreground="{StaticResource SecondaryTextBrush}" VerticalAlignment="Center" />
+              <TextBlock Text="Claude &amp; MCP" />
+            </DockPanel>
+          </Button>
+          <Button Style="{StaticResource NavButton}" FontWeight="Medium" Click="OnPrefsShortcuts" ToolTip="Open the list of keyboard shortcuts (Ctrl+/)">
+            <DockPanel>
+              <TextBlock DockPanel.Dock="Right" FontFamily="{StaticResource IconFont}" Text="&#xE8A7;" FontSize="11" Foreground="{StaticResource SecondaryTextBrush}" VerticalAlignment="Center" />
+              <TextBlock Text="Keyboard shortcuts" />
+            </DockPanel>
+          </Button>
+          <RadioButton x:Name="PrefsExport" Style="{StaticResource ShelfButton}" GroupName="PrefsSection" Content="Export defaults" FontWeight="Medium" Checked="OnPrefsSection" />
+          <Button Style="{StaticResource NavButton}" FontWeight="Medium" Click="OnPrefsCache" ToolTip="Open the Render queue's cache sizes and Clear cache">
+            <DockPanel>
+              <TextBlock DockPanel.Dock="Right" FontFamily="{StaticResource IconFont}" Text="&#xE8A7;" FontSize="11" Foreground="{StaticResource SecondaryTextBrush}" VerticalAlignment="Center" />
+              <TextBlock Text="Storage &amp; cache" />
+            </DockPanel>
+          </Button>
+          <RadioButton x:Name="PrefsAbout" Style="{StaticResource ShelfButton}" GroupName="PrefsSection" Content="About" FontWeight="Medium" Checked="OnPrefsSection" />
+        </StackPanel>
+      </Border>
+      <ScrollViewer VerticalScrollBarVisibility="Auto" Focusable="False">
+        <StackPanel MaxWidth="820" HorizontalAlignment="Left" Margin="48,32">
+          <TextBlock x:Name="PrefsTitle" Text="General" FontSize="24" FontWeight="SemiBold" />
+          <TextBlock x:Name="PrefsSubtitle" Style="{StaticResource Secondary}" FontSize="13" TextWrapping="Wrap" TextTrimming="None" Margin="0,6,0,0"
+                     Text="Changes save instantly and apply to every project." />
+
+          <StackPanel x:Name="PrefsGeneralSection">
+            <TextBlock Text="APP" Style="{StaticResource PanelTitle}" Margin="0,28,0,6" />
+            <Border CornerRadius="12" BorderBrush="{StaticResource DividerBrush}" BorderThickness="1" Background="{StaticResource PanelBrush}">
+              <DockPanel Margin="16,14">
+                <Button DockPanel.Dock="Right" Style="{StaticResource FieldButton}" Height="32" Padding="14,0" FontSize="12" VerticalAlignment="Center" Margin="12,0,0,0" Content="Show folder"
+                        Click="OnShowProjectsFolder" ToolTip="Open the projects folder in File Explorer" />
+                <StackPanel>
+                  <TextBlock Text="Projects folder" FontWeight="Medium" />
+                  <TextBlock x:Name="PrefsFolder" FontFamily="Consolas" FontSize="12" Foreground="{StaticResource SecondaryTextBrush}" TextTrimming="CharacterEllipsis" Margin="0,2,0,0" />
+                  <TextBlock Style="{StaticResource Secondary}" FontSize="12" TextWrapping="Wrap" TextTrimming="None" Margin="0,6,0,0" LineHeight="18">
+                    <Run Text="The editor and the MCP server share it. Change it with" />
+                    <Run Text="ProjectsRoot" FontFamily="Consolas" Foreground="{StaticResource AccentSoftTextBrush}" />
+                    <Run Text="in appsettings.json next to ZeyoCut.Mcp.exe, or the" />
+                    <Run Text="ZEYOCUT_PROJECTS_DIR" FontFamily="Consolas" Foreground="{StaticResource AccentSoftTextBrush}" />
+                    <Run Text="environment variable, then restart both." />
+                  </TextBlock>
+                </StackPanel>
+              </DockPanel>
+            </Border>
+
+            <TextBlock Text="EDITING" Style="{StaticResource PanelTitle}" Margin="0,28,0,6" />
+            <Border CornerRadius="12" BorderBrush="{StaticResource DividerBrush}" BorderThickness="1" Background="{StaticResource PanelBrush}">
+              <StackPanel>
+                <DockPanel Margin="16,14">
+                  <CheckBox x:Name="PrefsSnap" DockPanel.Dock="Right" Style="{StaticResource Switch}" VerticalAlignment="Center" Click="OnPrefsSnap" AutomationProperties.Name="Snap to clips and markers" />
+                  <StackPanel Margin="0,0,12,0">
+                    <TextBlock Text="Snap to clips and markers" FontWeight="Medium" />
+                    <TextBlock Style="{StaticResource Secondary}" FontSize="12" TextWrapping="Wrap" TextTrimming="None" Margin="0,2,0,0"
+                               Text="A clip you drag lines up with other clips' edges, markers and the playhead (N on the timeline)" />
+                  </StackPanel>
+                </DockPanel>
+                <Border Height="1" Background="{StaticResource DividerBrush}" />
+                <DockPanel Margin="16,14">
+                  <CheckBox x:Name="PrefsShowChanges" DockPanel.Dock="Right" Style="{StaticResource Switch}" VerticalAlignment="Center" Click="OnPrefsShowChanges"
+                            AutomationProperties.Name="Show Claude's changes with a highlight" />
+                  <StackPanel Margin="0,0,12,0">
+                    <TextBlock Text="Show Claude’s changes with a highlight" FontWeight="Medium" />
+                    <TextBlock Style="{StaticResource Secondary}" FontSize="12" TextWrapping="Wrap" TextTrimming="None" Margin="0,2,0,0"
+                               Text="Clips Claude (or another program) just changed glow on the timeline for 3 seconds" />
+                  </StackPanel>
+                </DockPanel>
+                <Border Height="1" Background="{StaticResource DividerBrush}" />
+                <DockPanel Margin="16,14">
+                  <Grid DockPanel.Dock="Right" Width="90" Height="32" VerticalAlignment="Center" Margin="12,0,0,0">
+                    <TextBox x:Name="PrefsStill" Background="{StaticResource WindowBrush}" Padding="10,7,24,0" FontFamily="Consolas" FontSize="12"
+                             AutomationProperties.Name="Seconds" ToolTip="Seconds, from 0.1 to 3600; Enter saves it" KeyDown="OnPrefsStillKey" LostKeyboardFocus="OnPrefsStillLeft" />
+                    <TextBlock Text="s" FontSize="11" Foreground="{StaticResource SecondaryTextBrush}" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,11,0"
+                               IsHitTestVisible="False" />
+                  </Grid>
+                  <StackPanel Margin="0,0,12,0">
+                    <TextBlock Text="Default still-image length" FontWeight="Medium" />
+                    <TextBlock x:Name="PrefsStillNote" Style="{StaticResource Secondary}" FontSize="12" TextWrapping="Wrap" TextTrimming="None" Margin="0,2,0,0"
+                               Text="How long a picture lasts when you add it to the timeline" />
+                  </StackPanel>
+                </DockPanel>
+              </StackPanel>
+            </Border>
+
+            <TextBlock Text="PLAYBACK &amp; PERFORMANCE" Style="{StaticResource PanelTitle}" Margin="0,28,0,6" />
+            <Border CornerRadius="12" BorderBrush="{StaticResource DividerBrush}" BorderThickness="1" Background="{StaticResource PanelBrush}">
+              <DockPanel Margin="16,14">
+                <Border DockPanel.Dock="Right" Background="{StaticResource WindowBrush}" CornerRadius="8" Padding="3" VerticalAlignment="Center" Margin="12,0,0,0">
+                  <StackPanel Orientation="Horizontal" AutomationProperties.Name="Preview quality">
+                    <RadioButton x:Name="PrefsFull" GroupName="PrefsScale" Style="{StaticResource SegmentButton}" Content="Full" Tag="1" Padding="12,0" Height="28" Click="OnPrefsScale" />
+                    <RadioButton x:Name="PrefsHalf" GroupName="PrefsScale" Style="{StaticResource SegmentButton}" Content="½" Tag="0.5" Padding="12,0" Height="28" Click="OnPrefsScale" />
+                    <RadioButton x:Name="PrefsQuarter" GroupName="PrefsScale" Style="{StaticResource SegmentButton}" Content="¼" Tag="0.25" Padding="12,0" Height="28" Click="OnPrefsScale" />
+                  </StackPanel>
+                </Border>
+                <StackPanel Margin="0,0,12,0">
+                  <TextBlock Text="Preview quality" FontWeight="Medium" />
+                  <TextBlock Style="{StaticResource Secondary}" FontSize="12" TextWrapping="Wrap" TextTrimming="None" Margin="0,2,0,0"
+                             Text="The size playback draws frames at; lower is smoother. The viewer's resolution menu is the same setting." />
+                </StackPanel>
+              </DockPanel>
+            </Border>
+          </StackPanel>
+
+          <StackPanel x:Name="PrefsExportSection" Visibility="Collapsed">
+            <TextBlock Text="STARTS WITH" Style="{StaticResource PanelTitle}" Margin="0,28,0,6" />
+            <Border CornerRadius="12" BorderBrush="{StaticResource DividerBrush}" BorderThickness="1" Background="{StaticResource PanelBrush}">
+              <StackPanel>
+                <DockPanel Margin="16,14">
+                  <Border DockPanel.Dock="Right" Background="{StaticResource WindowBrush}" CornerRadius="8" Padding="3" VerticalAlignment="Center" Margin="12,0,0,0">
+                    <ItemsControl x:Name="PrefsPresets" Focusable="False" AutomationProperties.Name="Preset">
+                      <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                          <StackPanel Orientation="Horizontal" />
+                        </ItemsPanelTemplate>
+                      </ItemsControl.ItemsPanel>
+                      <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                          <RadioButton Style="{StaticResource SegmentButton}" GroupName="PrefsPreset" Content="{Binding Label}" IsChecked="{Binding Selected, Mode=OneTime}" ToolTip="{Binding Tip}"
+                                       Tag="{Binding}" Padding="12,0" Height="28" Click="OnPrefsDefault" />
+                        </DataTemplate>
+                      </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                  </Border>
+                  <StackPanel Margin="0,0,12,0">
+                    <TextBlock Text="Preset" FontWeight="Medium" />
+                    <TextBlock Style="{StaticResource Secondary}" FontSize="12" TextWrapping="Wrap" TextTrimming="None" Margin="0,2,0,0"
+                               Text="A preset of another shape than a project's starts as Project settings there" />
+                  </StackPanel>
+                </DockPanel>
+                <Border Height="1" Background="{StaticResource DividerBrush}" />
+                <DockPanel Margin="16,14">
+                  <Border DockPanel.Dock="Right" Background="{StaticResource WindowBrush}" CornerRadius="8" Padding="3" VerticalAlignment="Center" Margin="12,0,0,0">
+                    <ItemsControl x:Name="PrefsQualities" Focusable="False" AutomationProperties.Name="Quality">
+                      <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                          <StackPanel Orientation="Horizontal" />
+                        </ItemsPanelTemplate>
+                      </ItemsControl.ItemsPanel>
+                      <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                          <RadioButton Style="{StaticResource SegmentButton}" GroupName="PrefsQuality" Content="{Binding Label}" IsChecked="{Binding Selected, Mode=OneTime}" ToolTip="{Binding Tip}"
+                                       Tag="{Binding}" Padding="12,0" Height="28" Click="OnPrefsDefault" />
+                        </DataTemplate>
+                      </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                  </Border>
+                  <StackPanel Margin="0,0,12,0">
+                    <TextBlock Text="Quality" FontWeight="Medium" />
+                    <TextBlock Style="{StaticResource Secondary}" FontSize="12" TextWrapping="Wrap" TextTrimming="None" Margin="0,2,0,0"
+                               Text="High is crf 18, Balanced 23 and Small 28, as start_export takes them" />
+                  </StackPanel>
+                </DockPanel>
+              </StackPanel>
+            </Border>
+          </StackPanel>
+
+          <StackPanel x:Name="PrefsAboutSection" Visibility="Collapsed">
+            <Border CornerRadius="12" BorderBrush="{StaticResource DividerBrush}" BorderThickness="1" Background="{StaticResource PanelBrush}" Margin="0,28,0,0">
+              <StackPanel Margin="16,14">
+                <StackPanel Orientation="Horizontal">
+                  <Button Style="{StaticResource LogoButton}" IsEnabled="False" Focusable="False" />
+                  <TextBlock x:Name="AboutVersion" FontSize="15" FontWeight="SemiBold" Margin="12,0,0,0" VerticalAlignment="Center" />
+                </StackPanel>
+                <TextBlock Style="{StaticResource Secondary}" FontSize="12" TextWrapping="Wrap" TextTrimming="None" LineHeight="18" Margin="0,12,0,0"
+                           Text="ZeyoCut is open source under the MIT License. The libraries in it (SkiaSharp, OpenCvSharp, ONNX Runtime, the MCP SDK and others) are listed with their licenses in THIRD_PARTY_NOTICES.md, and their texts are in the licenses folder. FFmpeg isn't included: the editor runs the one on this computer." />
+                <StackPanel x:Name="AboutFiles" Orientation="Horizontal" Margin="0,14,0,0">
+                  <Button x:Name="AboutLicense" Style="{StaticResource FieldButton}" Height="32" Padding="12,0" FontSize="12" Content="License" Click="OnAboutFile" ToolTip="Open LICENSE" />
+                  <Button x:Name="AboutNotices" Style="{StaticResource FieldButton}" Height="32" Padding="12,0" FontSize="12" Margin="8,0,0,0" Content="Third-party notices" Click="OnAboutFile"
+                          ToolTip="Open THIRD_PARTY_NOTICES.md" />
+                  <Button x:Name="AboutLicenses" Style="{StaticResource FieldButton}" Height="32" Padding="12,0" FontSize="12" Margin="8,0,0,0" Content="Licenses folder" Click="OnAboutFile"
+                          ToolTip="Open the licenses folder in File Explorer" />
+                </StackPanel>
+                <TextBlock x:Name="AboutMissing" Style="{StaticResource Secondary}" FontSize="12" TextWrapping="Wrap" TextTrimming="None" Margin="0,10,0,0" Visibility="Collapsed" />
+              </StackPanel>
+            </Border>
+          </StackPanel>
+        </StackPanel>
+      </ScrollViewer>
+    </DockPanel>
+
     <Grid x:Name="DialogLayer" Grid.RowSpan="3" Background="#B80A0B0D" Visibility="Collapsed">
       <Border x:Name="ShortcutsDialog" Style="{StaticResource DialogCard}" MaxWidth="1040">
         <DockPanel>

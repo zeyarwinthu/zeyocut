@@ -11,7 +11,9 @@ public sealed record WindowPlacement(double Left, double Top, double Width, doub
 // The editor's own settings, in %LOCALAPPDATA%\ZeyoCut\editor.json (or the file ZEYOCUT_EDITOR_SETTINGS
 // names) and never in a project: the recent projects, newest first, the panel sizes and window
 // placement as you left them, the playback size, whether playback loops, the preview's guides and
-// language, whether the timeline snaps, and the Animate view's onion skin and motion path.
+// language, whether the timeline snaps, the Animate view's onion skin and motion path, and the
+// preferences: how long a picture added to the timeline lasts, whether another program's changes
+// glow, what the Export view starts with, and how the Render queue renders.
 public sealed class EditorSettings
 {
     public const int MaxRecent = 10;
@@ -61,7 +63,32 @@ public sealed class EditorSettings
 
     public bool MotionPath { get; set; } = true;
 
+    // How long a picture added to the timeline lasts, in seconds (MinStill to MaxStill).
+    public double StillLength { get; set; } = AddClipOperation.StillLength;
+
+    // The timeline's clips that another program (Claude) just changed glow for a moment.
+    public bool ShowChanges { get; set; } = true;
+
+    // The preset (a preset's name or "project", ExportChoices.ProjectSettings) and quality (High,
+    // Balanced, Small) the Export view starts with.
+    public string? ExportPreset { get; set; }
+
+    public string? ExportQuality { get; set; }
+
+    // The Render queue: its exports render on one thread so editing stays smooth, use the GPU encoder
+    // when one works (else libx264), and flash the taskbar button when one finishes while the window
+    // isn't in front.
+    public bool GentleExports { get; set; }
+
+    public bool GpuEncoder { get; set; } = true;
+
+    public bool NotifyExports { get; set; } = true;
+
     public WindowPlacement? Window { get; set; }
+
+    public const double MinStill = 0.1;
+
+    public const double MaxStill = 3600;
 
     // The settings saved at path; the defaults when there are none or they can't be read.
     public static EditorSettings Load(string path)
@@ -78,6 +105,10 @@ public sealed class EditorSettings
 
         settings ??= new EditorSettings();
         settings.Recent = settings.Recent?.Where(r => !string.IsNullOrWhiteSpace(r)).ToList() ?? [];
+        if (!(settings.StillLength >= MinStill && settings.StillLength <= MaxStill))
+        {
+            settings.StillLength = AddClipOperation.StillLength;
+        }
         return settings;
     }
 

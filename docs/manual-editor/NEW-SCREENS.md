@@ -1,7 +1,7 @@
 # Editor new screens: plan
 
 - Written 2026-11-18 on `feature/manual-editor` at `88295e8`, after the redesign of the existing screens (REDESIGN.md, phases A–H) was done.
-- Status: S1–S22 decided as recommended (2026-11-18). Phases 1, 2, 3 and 4 done (2026-11-18), phases 5, 6 and 7 (2026-11-19); phase 8 waits for a go.
+- Status: S1–S22 decided as recommended (2026-11-18). Phases 1, 2, 3 and 4 done (2026-11-18), phases 5, 6, 7 and 8 (2026-11-19): every planned phase is done.
 - Covers the 15 artboards of the design canvas "ZeyoCut Editor — modern redesign" that have no screen yet, in the order agreed on 2026-11-18. Each phase is one step of that order and ends with a report and a stop.
 - The rules in PLAN.md still hold: no control without real project data and real render output behind it; the UI has no editing logic of its own; a new project property is saved, rendered on export and reachable over MCP; tests pass at every commit; stop and report after each phase. Logic that lives in an MCP tool today moves into Core first, in a commit of its own with no change in behavior (as D9 did for the SRT writer).
 

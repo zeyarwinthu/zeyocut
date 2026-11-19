@@ -180,6 +180,32 @@ public class StartTests
         Assert.Equal([Path.Combine(folder, "p11")], loaded.ExistingRecent());
     }
 
+    // The preferences start as before them: 5 s stills, Claude's changes shown, the GPU encoder used
+    // and the taskbar flashed, exports on several threads, the Export view at Project settings and
+    // High. A still length that can't be is put back.
+    [Fact]
+    public void ThePreferencesAreSavedWithTheEditorsSettings()
+    {
+        var folder = TestFiles.NewFolder("start-preferences");
+        var path = Path.Combine(folder, "editor.json");
+        var settings = EditorSettings.Load(path);
+        Assert.Equal((5.0, true, true, true, false), (settings.StillLength, settings.ShowChanges, settings.GpuEncoder, settings.NotifyExports, settings.GentleExports));
+        Assert.Equal(((string?)null, (string?)null), (settings.ExportPreset, settings.ExportQuality));
+
+        (settings.StillLength, settings.ShowChanges, settings.GpuEncoder, settings.NotifyExports, settings.GentleExports) = (2.5, false, false, false, true);
+        (settings.ExportPreset, settings.ExportQuality) = ("youtube_1080p", "Small");
+        settings.Save(path);
+        var loaded = EditorSettings.Load(path);
+        Assert.Equal((2.5, false, false, false, true), (loaded.StillLength, loaded.ShowChanges, loaded.GpuEncoder, loaded.NotifyExports, loaded.GentleExports));
+        Assert.Equal(("youtube_1080p", "Small"), (loaded.ExportPreset, loaded.ExportQuality));
+
+        foreach (var bad in new[] { "0", "-2", "5000" })
+        {
+            File.WriteAllText(path, $$"""{ "stillLength": {{bad}} }""");
+            Assert.Equal(5, EditorSettings.Load(path).StillLength);
+        }
+    }
+
     [Fact]
     public void ASettingsFileThatCantBeReadGivesTheDefaults()
     {

@@ -1310,6 +1310,34 @@ public class WindowTests
         Assert.Equal(["Play it in the default video player", "Show it in its folder"], buttons.Select(b => (string)b.ToolTip));
         Assert.All(buttons, b => Assert.Equal(file.Path, b.Tag));
         Assert.Equal(Visibility.Collapsed, Shown(window, "ExportFilesEmpty"));
+
+        // The Render queue lists it as done; paused, it starts no other export.
+        Click(window, "QueueLink");
+        Assert.Equal(Visibility.Visible, Shown(window, "QueuePage"));
+        var row = Assert.Single(((ItemsControl)window.FindName("QueueList")).Items.Cast<QueueRowView>()).Row;
+        Assert.Equal(("talk.mp4", "YOU", "talk · Project settings · .srt", "Done", "Open"), (row.File, row.Who, row.Line, row.Status, row.Action));
+        Click(window, "PauseQueueButton");
+        Assert.Equal("Resume queue", Text(window, "PauseQueueText"));
+
+        // A render setting switched saves only itself.
+        Assert.Equal([false, true, true], new[] { "GentleExports", "GpuEncoder", "NotifyExports" }.Select(n => ((CheckBox)window.FindName(n)).IsChecked == true));
+        Flip(window, "GpuEncoder");
+        var prefs = EditorSettings.Load(Path.Combine(folder, "editor.json"));
+        Assert.Equal((false, false, true), (prefs.GentleExports, prefs.GpuEncoder, prefs.NotifyExports));
+        TestWindow.Press(window, Key.Escape);
+        Assert.Equal(Visibility.Collapsed, Shown(window, "QueuePage"));
+
+        // Export then adds to the queue: the card says it waits, and Remove takes it off.
+        ((TextBox)window.FindName("ExportName")).Text = "again";
+        Click(window, "ExportButton");
+        Assert.Equal(Visibility.Visible, Shown(window, "OwnExport"));
+        Assert.Equal(("again.mp4", "Queued", "In the render queue, which is paused"), (Text(window, "OwnExportName"), Text(window, "OwnExportStatus"), Text(window, "OwnExportBy")));
+        Assert.Equal("Add to render queue", Text(window, "ExportButtonText"));
+        Assert.Equal("Render queue · 1", Text(window, "QueueLinkText"));
+        Click(window, "StopExportButton");
+        Assert.Equal(Visibility.Collapsed, Shown(window, "OwnExport"));
+        Assert.Equal("Took again.mp4 off the render queue; it wasn't rendered.", Text(window, "ExportStatus"));
+        Assert.False(File.Exists(Path.Combine(directory, ProjectStore.ExportsFolder, "again.mp4")));
     });
 
     // Clicks the item of the drop-down list open now whose header starts with text, and closes it.
@@ -2752,5 +2780,124 @@ public class WindowTests
         WaitForSaves(window);
         new AddTemplateOperation("lower third", 0.5, directory, library).Apply(expected);
         Assert.Equal(WithoutRevision(ZeyoCut.Core.Serialization.ProjectJson.Serialize(expected)), ProjectJson(directory));
+    });
+
+    private static void Flip(MainWindow window, string name)
+    {
+        var box = (System.Windows.Controls.Primitives.ToggleButton)window.FindName(name);
+        box.IsChecked = box.IsChecked != true;
+        box.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+    }
+
+    // Preferences, from Home's settings button, save to the editor's settings at once and apply to
+    // every project: a picture added lasts the still length, the Export view starts with the export
+    // defaults, and the timeline doesn't snap.
+    [Fact]
+    public void ThePreferencesSaveToTheEditorsSettingsAndApply() => TestWindow.Run("window-preferences", (window, folder) =>
+    {
+        Click(window, "PrefsButton");
+        TestWindow.Pump();
+        Assert.Equal(Visibility.Visible, Shown(window, "PrefsPage"));
+        Assert.Equal(("General", "Changes save instantly and apply to every project."), (Text(window, "PrefsTitle"), Text(window, "PrefsSubtitle")));
+        Assert.Equal(Path.Combine(folder, "projects"), Text(window, "PrefsFolder"));
+        Assert.Equal([true, true], new[] { "PrefsSnap", "PrefsShowChanges" }.Select(n => ((CheckBox)window.FindName(n)).IsChecked == true));
+        Flip(window, "PrefsSnap");
+        Flip(window, "PrefsShowChanges");
+        var still = (TextBox)window.FindName("PrefsStill");
+        Assert.Equal("5.0", still.Text);
+        still.Text = "2,5";
+        TestWindow.Press(still, Key.Enter);
+        Assert.Equal("2.5", still.Text);
+        still.Text = "0";
+        TestWindow.Press(still, Key.Enter);
+        Assert.Equal(("2.5", "Type seconds from 0.1 to 3600; it stays 2.5 s"), (still.Text, Text(window, "PrefsStillNote")));
+        Assert.True(((RadioButton)window.FindName("PrefsHalf")).IsChecked);
+        Flip(window, "PrefsQuarter");
+
+        Flip(window, "PrefsExport");
+        Assert.Equal(("Export defaults", Visibility.Visible, Visibility.Collapsed), (Text(window, "PrefsTitle"), Shown(window, "PrefsExportSection"), Shown(window, "PrefsGeneralSection")));
+        TestWindow.Pump();
+        var presets = Descendants<RadioButton>((ItemsControl)window.FindName("PrefsPresets")).ToList();
+        Assert.Equal(["Project settings", "YouTube 1080p", "Shorts 1080p"], presets.Select(r => r.Content));
+        Assert.Equal([true, false, false], presets.Select(r => r.IsChecked == true));
+        presets[1].IsChecked = true;
+        presets[1].RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+        var small = Descendants<RadioButton>((ItemsControl)window.FindName("PrefsQualities")).Single(r => (string)r.Content == "Small");
+        small.IsChecked = true;
+        small.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+        Flip(window, "PrefsAbout");
+        Assert.StartsWith("ZeyoCut Editor 0.", Text(window, "AboutVersion"));
+
+        var saved = EditorSettings.Load(Path.Combine(folder, "editor.json"));
+        Assert.Equal((false, false, 2.5, 0.25), (saved.Snapping, saved.ShowChanges, saved.StillLength, saved.PlaybackScale));
+        Assert.Equal(("youtube_1080p", "Small"), (saved.ExportPreset, saved.ExportQuality));
+        TestWindow.Press(window, Key.Escape);
+        Assert.Equal(Visibility.Collapsed, Shown(window, "PrefsPage"));
+
+        var project = TestFiles.Project();
+        project.Assets.Add(new Asset { Id = "logo", Type = AssetType.Image, File = "assets/logo.png", Width = 8, Height = 8 });
+        var directory = Path.Combine(folder, "pictures");
+        ProjectSession.Create(directory, project);
+        TestFiles.Png(Path.Combine(directory, ProjectStore.AssetsFolder, "logo.png"), 8, 8);
+        window.OpenProject(directory);
+        Assert.False(((TimelineView)window.FindName("Timeline")).Snapping);
+        Click(window, "MediaBrowserButton");
+        TestWindow.Pump();
+        SelectCards(window, "logo");
+        Click(window, "BrowserAddButton");
+        WaitForSaves(window);
+        var logo = ProjectStore.Load(directory).Layers.Single();
+        Assert.Equal((0.0, 2.5), (logo.Start, logo.End));
+
+        Click(window, "BackToEdit");
+        Click(window, "ExportViewButton");
+        TestWindow.Pump();
+        Assert.Equal("Small", Text(window, "QualityText"));
+        Assert.Equal("YouTube 1080p", ((ItemsControl)window.FindName("ExportPresets")).Items.Cast<PageChoice>().Single(c => c.Selected).Label);
+        Assert.Equal("1920×1080", Text(window, "ExportResolution"));
+    });
+
+    // A clip another program changes glows on the timeline for a moment, unless Show Claude's
+    // changes is off.
+    [Fact]
+    public void AnotherProgramsChangeMakesItsClipGlow() => TestWindow.Run("window-change-glow", (window, folder) =>
+    {
+        var (directory, timeline, _) = ShortTitle(window, folder);
+        void Change(double end)
+        {
+            ((TextBlock)window.FindName("MessageText")).Text = "";
+            ProjectSession.Open(directory).Mutate("update_layer title", p =>
+            {
+                p.FindLayer("title")!.End = end;
+                return 0;
+            });
+            for (var i = 0; i < 300 && !Text(window, "MessageText").StartsWith("Another program saved", StringComparison.Ordinal); i++)
+            {
+                TestWindow.Pump(10);
+            }
+
+            Assert.StartsWith("Another program saved", Text(window, "MessageText"));
+        }
+
+        Assert.Empty(timeline.Highlighted);
+        Change(1.5);
+        Assert.Equal(["title"], timeline.Highlighted);
+        var watch = Stopwatch.StartNew();
+        for (var i = 0; i < 500 && timeline.Highlighted.Count > 0; i++)
+        {
+            TestWindow.Pump(10);
+        }
+
+        Assert.Empty(timeline.Highlighted);
+        Assert.InRange(watch.Elapsed.TotalSeconds, 2, 4);
+
+        // Off, the next change doesn't glow.
+        Click(window, "PrefsButton");
+        TestWindow.Pump();
+        Flip(window, "PrefsShowChanges");
+        TestWindow.Press(window, Key.Escape);
+        Change(1.25);
+        Assert.Empty(timeline.Highlighted);
+        Assert.Equal(1.25, ProjectStore.Load(directory).FindLayer("title")!.End);
     });
 }

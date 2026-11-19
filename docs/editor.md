@@ -4,14 +4,14 @@
 
 ![The editor with the Tora Jumps example open: the media on the left, the frame at 0.967 seconds in the middle, the inspector on the right with Tora's position and rotation animated, and the timeline below with the keyframes on Tora's clip](editor-edit.png)
 
-It imports, browses and tags media, plays the edit with its sound, marks the part of a video or sound to use and inserts or overwrites it at the playhead, moves, trims and splits clips on a timeline, places, crops and animates layers with keyframes, retimes and eases keyframes on a dope sheet or as curves, sets effects, color adjustments and face-blur settings, tracks objects in footage and hides them with corrections where the tracker lost them, puts transitions on cuts, adds titles in the library's styles and its templates with a way in and out, edits captions, changes volumes and a video's speed, mixes the sound roles with volume keyframes and ducking, and exports. Masks and motion paths stay with the model: ask it for those.
+It imports, browses and tags media, plays the edit with its sound, marks the part of a video or sound to use and inserts or overwrites it at the playhead, moves, trims and splits clips on a timeline, places, crops and animates layers with keyframes, retimes and eases keyframes on a dope sheet or as curves, sets effects, color adjustments and face-blur settings, tracks objects in footage and hides them with corrections where the tracker lost them, puts transitions on cuts, adds titles in the library's styles and its templates with a way in and out, edits captions, changes volumes and a video's speed, mixes the sound roles with volume keyframes and ducking, and exports, one after another in a render queue. Masks and motion paths stay with the model: ask it for those.
 
 ## Open a project
 
 `ZeyoCut.Editor.exe` is in the release zip, next to `ZeyoCut.Mcp.exe`; [Install](install.md#the-editor-optional) says how it finds FFmpeg and your projects. Then:
 
 - **Home**, the start page, shows your recent projects and then the rest of your projects folder. Each card has a picture of the project (its frame a second in, kept in the project's `cache\thumbnails` folder and drawn again once it's saved), its length, how many languages it's in, and "Claude edited 2 min ago" when Claude saved it last that day. The full folder is in its tooltip.
-- The search box keeps the projects whose names have what you type, and the buttons on the right show them as cards or as a list. Show folder, at the bottom, opens the projects folder.
+- The search box keeps the projects whose names have what you type, and the buttons on the right show them as cards or as a list. Show folder, at the bottom, opens the projects folder. The settings button left of the search box opens [Preferences](#preferences).
 - Open folder… (Ctrl+O) opens any project folder, and so does dropping one on Home.
 - **New project…** (Ctrl+N), or the Landscape, Shorts / Reels and Square cards under Start something new (each opens it with its canvas chosen), makes a project in the projects folder. It takes a name and a blank canvas (YouTube 1920×1080, HD 720p, Shorts 1080×1920, Square, Portrait 4:5 or any size typed in), a frame rate (24, 25, 30 or 60) and a background (black, white, sky blue or transparent). It can also start from a template in the library, which brings its own canvas, frame rate and background. The preview shows the canvas's shape with its safe area and says which export preset fits it. It makes the same `project.json` as `create_project` (or `new_project_from_template`) with those values, then opens it.
 - From the command line: `ZeyoCut.Editor.exe C:\Users\you\ZeyoCut\projects\my-video`.
@@ -230,22 +230,60 @@ To blur seconds 2 to 4, say:
 
 ![The Export view exporting the Japanese version of comic-panels at 1920×1080, at 24%, with the earlier exports listed in the exports folder](editor-export.png)
 
-Export in the header (Ctrl+E) opens the Export view, and Back to edit returns to the timeline. It renders the project as it's saved to an MP4 in its `exports` folder, as the model's `start_export` does, in the editor's own process. Edits made while it runs aren't in it.
+Export in the header (Ctrl+E) opens the Export view, and Back to edit returns to the timeline. It renders the project as it's saved to an MP4 in its `exports` folder, as the model's `start_export` does, in the editor's own process, through the [Render queue](#render-queue). Edits made after you press Export aren't in it.
 
 - **File name**, and **Save to**: the project's `exports` folder, which Show folder opens. Exports always go there.
 - **Preset** cards: the project's settings or a preset, each with the size and frame rate it exports at (a preset keeps the project's frame rate). A preset of another shape than the canvas says what it needs ("Needs a 9:16 project"); ask Claude to change the canvas first.
 - **Language version**, when layers are tagged with languages: every layer, or one language's version. **Also save .srt files** saves each caption track you tick next to the video once the export is done, as `export_srt` writes it: `talk.mp4`'s English captions in `talk.en.srt`, captions without a language in `talk.srt`.
 - **Quality**: High (`start_export`'s crf 18, the default), Balanced (23) or Small (28), a smaller file with a softer picture. The format is always MP4 with H.264 video.
-- The card on the right shows a picture of the project, the resolution, frame rate, duration and captions the export will have, and **Export**.
+- The card on the right shows a picture of the project, the resolution, frame rate, duration and captions the export will have, and **Export**. While another export renders, it reads **Add to render queue**: the export waits its turn.
+- The preset and quality the view starts with are Preferences' [Export defaults](#preferences).
 
-Under **Exports folder**, an export running here has its progress and Stop; exports Claude runs on this project (from the server's job records) show their progress and can't be stopped here. Each file in the folder has Play, which opens it in the default video player, and Show in folder. Replacing a file asks first, and closing the window or the project while an export runs asks whether to stop it.
+Under **Exports folder**, your export of this project has its progress and Stop while it renders, or its place in the queue and Remove while it waits; exports Claude runs on this project (from the server's job records) show their progress and can't be stopped here. Each file in the folder has Play, which opens it in the default video player, and Show in folder. Replacing a file asks first. **Render queue**, beside the heading, opens the queue, with how many exports it still has.
+
+## Render queue
+
+![The Render queue: timeline-demo.mp4 rendering at 11%, Claude's timeline-demo-ja.mp4 at 62%, street-demo.mp4 next and comic-panels.mp4 second in line, tora-jump-draft.mp4 failed because clouds.png is missing, with Relink, and tora-jump.mp4 done; on the right the While rendering switches and the cache sizes with Clear cache](editor-queue.png)
+
+The Render queue lists your exports, from every project, and renders them one after another while you go on editing; opening or closing a project doesn't stop them. Exports Claude runs are listed too while they run, read from the server's job records, with no buttons: they run in the server, beside yours. It opens from the Export view's **Render queue** and from Preferences › Storage & cache; **+ Add export** opens the open project's Export view, and Esc or the logo goes back.
+
+- Each row has the file, **YOU** or **CLAUDE**, the project and how it's exported (the preset, the language version, .srt files), and its status: **Rendering** with a progress bar and the time left (Cancel stops it; nothing is written to its file), **Queued** ("next", "2nd in line"; Remove takes it off), **Done** with the file's size and when it finished (Open plays it), **Failed** with why, or **Stopped**.
+- An export whose project uses a file that's missing fails before it starts ("clouds.png is missing"). **Relink** opens the project with its Relink view; export it again once the file is found. The next export in line starts meanwhile.
+- **Pause queue** lets the export rendering finish and starts no other until **Resume queue**.
+- The queue lasts while the window is open. Closing the window with exports rendering or waiting asks whether to stop them.
+
+**While rendering** applies to your exports that start after it's changed:
+
+- **Keep editing smoothly** renders on one CPU thread instead of up to four, so playback and dragging stay smooth while an export takes longer.
+- **Use GPU encoder** (on at first) encodes with the GPU where one works, or as the `VideoEncoder` setting says; off, your exports use libx264. Claude's exports keep the server's `VideoEncoder` setting.
+- **Notify when done** (on at first) flashes the editor's taskbar button when an export finishes or fails while the window isn't in front.
+
+**Cache** shows how much the projects' cache folders hold, for the projects in the projects folder and the recent ones: **Export chunks** (exports keep their 2 s chunks so exporting again only renders what changed), **Preview sound**, **Pictures** (the media's and the projects') and **Waveforms**. **Clear cache** deletes those files; each is made again when it's needed, and the next export renders every chunk again. A project that's exporting, here or for Claude, is left as it is, and so is a file another program has open. A project's own files, exports, backups, tracks and proxies stay.
+
+## Preferences
+
+![Preferences at General: the projects folder with Show folder and where it's set, Snap to clips and markers, Show Claude's changes with a highlight, the default still-image length at 5.0 s, and the preview quality at ½](editor-preferences.png)
+
+The settings button on Home opens Preferences; Esc or the logo goes back. Changes are saved at once, in the editor's settings, and apply to every project.
+
+- **General**:
+  - **Projects folder** shows the folder the editor and the server share, with Show folder. It's set by `ProjectsRoot` in `appsettings.json` next to `ZeyoCut.Mcp.exe`, or `ZEYOCUT_PROJECTS_DIR`; restart both after changing it.
+  - **Snap to clips and markers** is the timeline's Snap button (N).
+  - **Show Claude's changes with a highlight** (on at first): the clips Claude, or another program, just changed glow on the timeline for 3 seconds.
+  - **Default still-image length**, 5 s at first (0.1 to 3600), is how long a picture lasts when you add it from the media panel or the Media browser, or drop it on the timeline. Claude's `add_image_layer` sets its own times.
+  - **Preview quality** Full, ½ or ¼ is the size playback draws frames at, the same setting as the viewer's resolution menu.
+- **Claude & MCP** opens the Welcome view at its Connect step.
+- **Keyboard shortcuts** opens the list of keys.
+- **Export defaults**: the preset (Project settings, YouTube 1080p or Shorts 1080p) and quality (High, Balanced or Small) the Export view starts with when a project opens. A preset of another shape than the project starts as Project settings there.
+- **Storage & cache** opens the Render queue at its cache sizes.
+- **About**: the editor's version, and License, Third-party notices and Licenses folder, which open the files the release zip puts next to the editor.
 
 ## Working with the model
 
 - **Every change is saved at once**, as one step that Ctrl+Z undoes and Ctrl+Y redoes. The header shows "Saved · rev N" and the status bar what the last change did; there's no Save button. The header says "Saving…" while a change is being saved: when the server is saving at that moment, your change is saved after it (it waits up to 5 s), and the window goes on working meanwhile. Split, Delete, Pack lanes, a keyframe diamond and Export, pressed meanwhile, wait for it and then act on the project as saved, and closing the window hides it at once and lets the change finish saving before it closes.
 - When a change can't be saved, because another program holds `project.json` or its folder is read-only or gone, the change isn't made and the status bar says why. Make it again once the file can be written.
 - If the editor runs into an error it didn't expect, it says so in plain words and goes on; your changes before it are saved. The details are added to `editor-errors.log` in the log folder (`%LOCALAPPDATA%\ZeyoCut\logs` by default): include them when you report the problem.
-- When the server saves the project, the editor shows the new version and says what changed. The server's next reply lists what the editor changed. Undo on either side takes back only its own changes. See [Saving alongside another program](project-format.md#saving-alongside-another-program).
+- When the server saves the project, the editor shows the new version and says what changed, and the clips it changed glow on the timeline for 3 seconds (Preferences › Show Claude's changes). The server's next reply lists what the editor changed. Undo on either side takes back only its own changes. See [Saving alongside another program](project-format.md#saving-alongside-another-program).
 - Ctrl+Z can't take back your change to a layer the server changed after it: that would throw the server's change away, and the status bar says so. The next Ctrl+Z steps over that change, which stays as it is, undoes the one before it and names the one it stepped over. Ctrl+Y does the same with a change it can't put back.
 - A change you began before the server's isn't saved over it. If the server changes a layer while you're typing in one of its fields or dragging it, your change isn't saved and the status bar says "Your change wasn't saved: another program changed '…' first". What you typed stays in the field: Enter saves it over the server's change, Escape drops it.
 - The header says when Claude last saved the project ("Claude saved 3 min ago"); hover over it for what it changed.
@@ -289,7 +327,7 @@ Under **Exports folder**, an export running here has its progress and Stop; expo
 
 ## Settings
 
-The editor reads `FfmpegPath`, `ProjectsRoot`, `LibraryPath` and `VideoEncoder` from the same `appsettings.json` and environment variables as the server (see [Configuration](https://github.com/zeyarwinthu/zeyocut#configuration)). It keeps its own settings (recent projects, cards or list on Home, panel sizes, window position, snapping, playback size, preview language, the onion skin's frames and whether it and the motion path show) in `%LOCALAPPDATA%\ZeyoCut\editor.json`, or the file `ZEYOCUT_EDITOR_SETTINGS` names, never in the project. While there's no such file, the editor starts with the Welcome view.
+The editor reads `FfmpegPath`, `ProjectsRoot`, `LibraryPath` and `VideoEncoder` from the same `appsettings.json` and environment variables as the server (see [Configuration](https://github.com/zeyarwinthu/zeyocut#configuration)). It keeps its own settings (recent projects, cards or list on Home, panel sizes, window position, snapping, playback size, preview language, the onion skin's frames and whether it and the motion path show, and the [Preferences](#preferences) and the Render queue's While rendering switches) in `%LOCALAPPDATA%\ZeyoCut\editor.json`, or the file `ZEYOCUT_EDITOR_SETTINGS` names, never in the project. While there's no such file, the editor starts with the Welcome view.
 
 ## What it leaves to the model
 

@@ -72,11 +72,14 @@ public static class ExportChoices
             ? null
             : $"{p.Name} is {p.Width}×{p.Height}, another shape than the project's {project.Width}×{project.Height}; ask Claude to change the canvas first")
         {
-            Title = $"{p.Description.Split(' ')[0]} {Math.Min(p.Width, p.Height)}p",
+            Title = Title(p),
             Size = Size(p.Width, p.Height, project.Fps),
             Needs = Exporter.SameShape(project, p) ? null : $"Needs a {Shape(p.Width, p.Height)} project",
         }),
     ];
+
+    // A preset's short name: YouTube 1080p, Shorts 1080p.
+    public static string Title(Preset preset) => $"{preset.Description.Split(' ')[0]} {Math.Min(preset.Width, preset.Height)}p";
 
     // The project folder's name, as an .mp4.
     public static string DefaultFileName(string directory) => Path.GetFileName(Path.TrimEndingDirectorySeparator(directory)) + ".mp4";

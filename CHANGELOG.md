@@ -137,6 +137,19 @@ when they open.
     them, a summary card with a picture of the project, progress and stop, Claude's running exports
     of the project read from the jobs folder, and the exports folder's files with Play and Show in
     folder.
+  - **Render queue:** the editor's exports, from any project, render one after another while you
+    edit, and go on when another project opens; Claude's running exports from every project are
+    listed read-only. Each row has its project, preset, progress and time left, its place in line,
+    or why it failed, with Cancel, Remove, Open, and Relink for a missing file the project uses.
+    Pause queue holds the next export. Keep editing smoothly renders on one thread, Use GPU encoder
+    off uses libx264 for the editor's exports, and Notify when done flashes the taskbar button. The
+    cache card sizes the projects' export chunks, preview sound, pictures and waveforms, and Clear
+    cache deletes only those, leaving a project that's exporting.
+  - **Preferences** (Home's settings button): the projects folder and where it's set, snapping,
+    the glow on clips Claude just changed (3 seconds), the default still-image length, the preview
+    quality, the preset and quality the Export view starts with, and About with the version and
+    licenses; Claude & MCP opens the Welcome, Keyboard shortcuts the list, Storage & cache the
+    Render queue's cache.
   - **Activity view:** the saves the backups folder keeps, yours and Claude's, as steps under their
     days (saves in a row by one side, under 5 minutes apart), with a filter by who saved and
     Restore, which puts a step back as a new revision the way `restore_backup` does.

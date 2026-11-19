@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: MIT
 
+using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Globalization;
+using System.Reflection;
 using System.Text.Json.Nodes;
 using System.Windows;
 using System.Windows.Automation;
@@ -245,8 +247,7 @@ public partial class MainWindow : Window
     private DateTime _prerollUntil;
     private DateTime _nextAdapt;
     private (Point At, string Asset)? _mediaPressed;
-    private ExportStarted? _export;
-    private ExportState? _exportShown;
+    private readonly RenderQueue _queue;
     private string _exportPreset = ExportChoices.ProjectSettings;
     private string _exportLanguage = ExportChoices.EveryLanguage;
     private string _exportQuality = ExportChoices.Qualities[0].Name;
@@ -254,15 +255,16 @@ public partial class MainWindow : Window
     // The caption groups to save as .srt files with the next export.
     private readonly HashSet<string> _exportSrt = new(StringComparer.Ordinal);
 
-    // The .srt files the export this window started saves once it's done, with their cues from the
-    // project as it was exported, and what saving them said.
-    private IReadOnlyList<(string Name, List<(double Start, double End, string Text)> Cues)> _exportSrtFiles = [];
-    private string? _exportSrtNote;
-
     // Claude's exports of the project, as last read from the jobs folder, and when.
     private IReadOnlyList<RunningExport> _claudeExports = [];
     private DateTime _claudeExportsRead;
     private bool _readingClaudeExports;
+
+    // Claude's running exports from every project as the Render queue lists them, the queue's rows as
+    // shown, and whether the cache sizes are being read or cleared.
+    private IReadOnlyList<QueueRow> _claudeRows = [];
+    private readonly ObservableCollection<QueueRowView> _queueRows = [];
+    private bool _cacheBusy;
     private string? _encoderWarning;
 
     // Whose steps the Activity view shows: yours (true), Claude's (false) or both (null).
@@ -334,7 +336,11 @@ public partial class MainWindow : Window
         }
 
         _exportStart = new ExportStart(encoder, settings.LibraryPath ?? Settings.DefaultLibraryPath, Ffmpeg);
-        _exports = new ExportJobManager { ChooseEncoder = crf => _exportStart.ChooseEncoder(crf) };
+        _exports = new ExportJobManager
+        {
+            ChooseEncoder = crf => _prefs.GpuEncoder ? _exportStart.ChooseEncoder(crf) : new EncoderChoice(VideoEncoder.X264, "the Render queue's Use GPU encoder is off"),
+        };
+        _queue = new RenderQueue(StartQueued, job => _exports.Cancel(job.Id));
         _serverJobs = settings.JobsDirectory is { } jobs ? new JobStore(jobs) : null;
         InitializeComponent();
         RestorePlacement();
@@ -418,12 +424,6 @@ public partial class MainWindow : Window
                     Message(note);
                 }
 
-                return;
-            }
-
-            if (!StopExportFirst($"open {Path.GetFileName(directory)}"))
-            {
-                claim.Dispose();
                 return;
             }
 
@@ -544,6 +544,17 @@ public partial class MainWindow : Window
             }
 
             CloseDialog();
+            return Command.Cancel;
+        }
+
+        if (AppPageOpen)
+        {
+            if (key != Key.Escape || modifiers != ModifierKeys.None)
+            {
+                return null;
+            }
+
+            CloseAppPages();
             return Command.Cancel;
         }
 
@@ -694,12 +705,13 @@ public partial class MainWindow : Window
             return;
         }
 
-        var export = _export?.Job;
-        if (!StopExportFirst("close the window", wait: false))
+        if (!StopExportsFirst())
         {
             e.Cancel = true;
             return;
         }
+
+        var export = _queue.Running?.Started?.Job;
 
         SavePlacement();
         CloseProject();
@@ -838,7 +850,8 @@ public partial class MainWindow : Window
         PreviewImage.Source = null;
         SoundText.Text = "";
         ExportName.Text = ExportChoices.DefaultFileName(directory);
-        _exportPreset = ExportChoices.ProjectSettings;
+        _exportPreset = _prefs.ExportPreset ?? ExportChoices.ProjectSettings;
+        _exportQuality = ExportChoices.Qualities.FirstOrDefault(q => q.Name == _prefs.ExportQuality)?.Name ?? ExportChoices.Qualities[0].Name;
         _exportLanguage = ExportChoices.EveryLanguage;
         _exportSrt.Clear();
         _captionTable = null;
@@ -931,8 +944,6 @@ public partial class MainWindow : Window
         _path = ([], []);
         _shown = _shownFrom = null;
         _waiting.Clear();
-        _export = null;
-        _exportShown = null;
         _document = null;
         _importer = null;
         _proxies = null;
@@ -984,10 +995,15 @@ public partial class MainWindow : Window
         }
 
         _document.Refresh();
+        List<string> changed = [];
         if (_document.TakeOutsideChanges() is { Edits.Count: > 0 } change)
         {
             var edits = change.Edits.Count > 4 ? string.Join(", ", change.Edits.Take(4)) + $" and {change.Edits.Count - 4} more" : string.Join(", ", change.Edits);
             Message($"Another program saved: {edits}");
+            if (_prefs.ShowChanges)
+            {
+                changed = change.Items.Where(i => i.Kind == "layer" && i.Change != ItemChange.Removed).Select(i => i.Id).ToList();
+            }
         }
 
         if (_document.Revision != _shownRevision)
@@ -999,6 +1015,9 @@ public partial class MainWindow : Window
         {
             UpdateStatus();
         }
+
+        // The clips another program just changed glow for a moment (Show Claude's changes).
+        Timeline.Highlight(changed);
     }
 
     // Shows the project as the document has it now.
@@ -1589,10 +1608,11 @@ public partial class MainWindow : Window
 
     // A clip of an asset dropped on the timeline: footage or a still on the visual lane it's dropped
     // on, or on a level of its own on top anywhere else; sound in the role of the sound lane it's
-    // dropped on, else as music.
-    private static AddClipOperation? ClipFor(Asset asset, double time, TimelineLane? lane) => asset.Type switch
+    // dropped on, else as music. A still lasts the Default still-image length.
+    private AddClipOperation? ClipFor(Asset asset, double time, TimelineLane? lane) => asset.Type switch
     {
-        AssetType.Video or AssetType.Image => new AddClipOperation(asset.Type, asset.Id, time, lane is { Kind: LaneKind.Visual } ? lane.ZIndex : null),
+        AssetType.Video => new AddClipOperation(asset.Type, asset.Id, time, lane is { Kind: LaneKind.Visual } ? lane.ZIndex : null),
+        AssetType.Image => new AddClipOperation(asset.Type, asset.Id, time, lane is { Kind: LaneKind.Visual } ? lane.ZIndex : null, StillSeconds: _prefs.StillLength),
         AssetType.Audio => new AddClipOperation(asset.Type, asset.Id, time, Role: lane is { Kind: LaneKind.Audio, Role: { } role } ? EnumNames.ToName(role) : null),
         _ => null,
     };
@@ -2313,31 +2333,8 @@ public partial class MainWindow : Window
         var jobs = _jobs.All;
         var running = jobs.Where(j => j.State == JobState.Running).ToList();
         var progress = running.Select(j => $"{(string.IsNullOrEmpty(j.Stage) ? j.Description : j.Stage)} {j.Percent}%").ToList();
-        if (_export?.Job is { } export)
-        {
-            if (export.State == ExportState.Running)
-            {
-                progress.Add($"Export {export.Percent.ToString("0", CultureInfo.InvariantCulture)}%");
-            }
-            else if (_exportShown == ExportState.Running)
-            {
-                if (export.State == ExportState.Completed)
-                {
-                    SaveSubtitles(export);
-                }
-
-                Message(ExportOutcome(export));
-                ExportFilesChanged();
-            }
-
-            _exportShown = export.State;
-            if (ExportPage.Visibility == Visibility.Visible)
-            {
-                ShowExportState();
-            }
-        }
-
-        if (ExportPage.Visibility == Visibility.Visible && DateTime.UtcNow - _claudeExportsRead > TimeSpan.FromSeconds(2))
+        TickQueue(progress);
+        if ((ExportPage.Visibility == Visibility.Visible || QueuePage.Visibility == Visibility.Visible) && DateTime.UtcNow - _claudeExportsRead > TimeSpan.FromSeconds(2))
         {
             _ = ReadClaudeExports();
         }
@@ -2718,6 +2715,11 @@ public partial class MainWindow : Window
             {
                 ShowExportSummary();
             }
+
+            if (QueuePage.Visibility == Visibility.Visible)
+            {
+                ShowQueue();
+            }
         });
     }
 
@@ -2905,11 +2907,6 @@ public partial class MainWindow : Window
 
     private void OnCloseProject(object sender, RoutedEventArgs e)
     {
-        if (!StopExportFirst("close the project"))
-        {
-            return;
-        }
-
         CloseProject();
         ShowStartPage();
     }
@@ -5389,30 +5386,59 @@ public partial class MainWindow : Window
 
     private string? ExportLanguage() => _exportLanguage == ExportChoices.EveryLanguage ? null : _exportLanguage;
 
-    // The export this window started last: its card while it runs, what it made when it's done.
+    // The project's export added to the Render queue last: its card while it waits or runs, what it
+    // made when it's done. The Export button adds to the queue once something is in it.
     private void ShowExportState()
     {
-        var job = _export?.Job;
-        var running = job is { State: ExportState.Running };
-        ExportButton.IsEnabled = !running;
-        ExportName.IsEnabled = !running;
-        OwnExport.Visibility = running ? Visibility.Visible : Visibility.Collapsed;
-        if (job is null)
+        ExportButtonText.Text = _queue.Left > 0 ? "Add to render queue" : "Export";
+        QueueLinkText.Text = _queue.Left > 0 ? $"Render queue · {_queue.Left}" : "Render queue";
+        var item = ExportItem();
+        var job = item?.Started?.Job;
+        var pending = item is { State: QueueState.Queued or QueueState.Running };
+        OwnExport.Visibility = pending ? Visibility.Visible : Visibility.Collapsed;
+        if (item is null)
         {
             return;
         }
 
-        if (running)
+        if (pending)
         {
-            OwnExportName.Text = Path.GetFileName(job.OutputPath);
-            OwnExportStatus.Text = $"{(job.FramesDone >= job.TotalFrames ? "Finishing" : "Rendering")} · {job.Percent.ToString("0", CultureInfo.InvariantCulture)}%";
-            OwnExportBy.Text = "Started here" + JobTime.LeftText(job.Percent / 100, DateTime.UtcNow - job.StartedUtc);
-            ExportProgress.Value = job.Percent;
+            OwnExportName.Text = item.Name;
+            if (item.State == QueueState.Running && job is not null)
+            {
+                OwnExportStatus.Text = $"{(job.FramesDone >= job.TotalFrames ? "Finishing" : "Rendering")} · {job.Percent.ToString("0", CultureInfo.InvariantCulture)}%";
+                OwnExportBy.Text = "Started here" + JobTime.LeftText(job.Percent / 100, DateTime.UtcNow - job.StartedUtc);
+                ExportProgress.Value = job.Percent;
+                StopExportButton.Content = "Stop";
+                StopExportButton.ToolTip = "Stop this export; nothing is written to its file";
+            }
+            else
+            {
+                var place = _queue.Place(item);
+                OwnExportStatus.Text = "Queued";
+                OwnExportBy.Text = _queue.Paused ? "In the render queue, which is paused" : $"In the render queue, {(place == 1 ? "next" : $"{RenderQueue.Ordinal(place)} in line")}";
+                ExportProgress.Value = 0;
+                StopExportButton.Content = "Remove";
+                StopExportButton.ToolTip = "Take it off the render queue; it won't render";
+            }
         }
 
-        ExportStatus.Foreground = (Brush)FindResource(job.State == ExportState.Failed ? "ErrorBrush" : "SecondaryTextBrush");
-        ExportStatus.Text = ExportText(job, _export!.Version, _exportSrtNote);
+        ExportStatus.Foreground = (Brush)FindResource(item.State == QueueState.Failed ? "ErrorBrush" : "SecondaryTextBrush");
+        ExportStatus.Text = item switch
+        {
+            { State: QueueState.Queued } => "",
+            { Started: { } started } => ExportText(started.Job, started.Version, item.SrtNote),
+            { State: QueueState.Stopped } => $"Took {item.Name} off the render queue; it wasn't rendered.",
+            _ => $"Couldn't export {item.Name}: {item.Error}" + (item.Missing is null ? "" : ". Relink in the Render queue or the Media browser finds it."),
+        };
     }
+
+    // The open project's export in the Render queue, the one added last.
+    private QueueItem? ExportItem() =>
+        _document is { } document ? _queue.Items.LastOrDefault(i => SameFolder(i.Directory, document.Session.Directory)) : null;
+
+    private static bool SameFolder(string a, string b) =>
+        string.Equals(Path.TrimEndingDirectorySeparator(Path.GetFullPath(a)), Path.TrimEndingDirectorySeparator(Path.GetFullPath(b)), StringComparison.OrdinalIgnoreCase);
 
     // What the export says once it's done (its card shows it while it runs), with the language
     // version's warnings.
@@ -5468,22 +5494,23 @@ public partial class MainWindow : Window
         ExportFilesEmpty.Visibility = files.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
     }
 
-    // Claude's exports of this project that ZeyoCut servers run now, read from the jobs folder off
-    // the UI thread, read-only; when one is gone, it's done, and the files are listed again.
+    // Claude's exports that ZeyoCut servers run now, read from the jobs folder off the UI thread,
+    // read-only: the open project's for the Export view, every project's for the Render queue. When
+    // one of the project's is gone, it's done, and the files are listed again.
     private async Task ReadClaudeExports()
     {
-        if (_serverJobs is not { } store || _document is not { } document || _readingClaudeExports)
+        if (_serverJobs is not { } store || _readingClaudeExports)
         {
             return;
         }
 
         _readingClaudeExports = true;
         _claudeExportsRead = DateTime.UtcNow;
-        var directory = document.Session.Directory;
-        IReadOnlyList<RunningExport> exports;
+        var directory = _document?.Session.Directory;
+        List<JobRecord> records;
         try
         {
-            exports = await Task.Run(() => ExportChoices.ServerExports(store.Running(), directory));
+            records = await Task.Run(() => store.Running().ToList());
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException or ArgumentException)
         {
@@ -5494,7 +5521,19 @@ public partial class MainWindow : Window
             _readingClaudeExports = false;
         }
 
-        if (_document?.Session.Directory != directory || exports.SequenceEqual(_claudeExports))
+        _claudeRows = RenderQueue.ClaudeRows(records, DateTime.Now);
+        if (QueuePage.Visibility == Visibility.Visible)
+        {
+            ShowQueue();
+        }
+
+        if (directory is null || _document?.Session.Directory != directory)
+        {
+            return;
+        }
+
+        var exports = ExportChoices.ServerExports(records, directory);
+        if (exports.SequenceEqual(_claudeExports))
         {
             return;
         }
@@ -5508,53 +5547,27 @@ public partial class MainWindow : Window
         }
     }
 
-    // Saves the .srt files chosen for the export that's done, as export_srt writes them.
-    private void SaveSubtitles(ExportJob job)
+    // Before closing the window: asks whether to stop the exports the Render queue runs and those
+    // waiting. True when there are none or they were stopped.
+    private bool StopExportsFirst()
     {
-        if (_exportSrtFiles.Count == 0)
-        {
-            return;
-        }
-
-        try
-        {
-            foreach (var (name, cues) in _exportSrtFiles)
-            {
-                CaptionBuilder.WriteSrt(job.ProjectDirectory, name, cues);
-            }
-
-            _exportSrtNote = $"Saved {string.Join(", ", _exportSrtFiles.Select(f => f.Name))} next to it.";
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            _exportSrtNote = $"Couldn't save the .srt files: {ex.Message}";
-        }
-
-        _exportSrtFiles = [];
-    }
-
-    // Before something that would end the running export: asks whether to stop it. True when no
-    // export runs or it was stopped; 'wait' waits up to 5 s for it to stop.
-    private bool StopExportFirst(string then, bool wait = true)
-    {
-        if (_export?.Job is not { State: ExportState.Running } job)
+        if (_queue.Left == 0)
         {
             return true;
         }
 
-        var answer = MessageBox.Show(this, $"{Path.GetFileName(job.OutputPath)} is still exporting ({job.Percent.ToString("0", CultureInfo.InvariantCulture)}%). Stop the export and {then}?",
-            "ZeyoCut Editor", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No);
+        var waiting = _queue.Waiting.Count;
+        var running = _queue.Running?.Started?.Job is { } job
+            ? $"{Path.GetFileName(job.OutputPath)} is still exporting ({job.Percent.ToString("0", CultureInfo.InvariantCulture)}%)" + (waiting > 0 ? $" and {Count(waiting, "more export")} {(waiting == 1 ? "is" : "are")} in the render queue" : "")
+            : $"{Count(waiting, "export")} {(waiting == 1 ? "is" : "are")} in the render queue";
+        var answer = MessageBox.Show(this, $"{running}. Stop {(_queue.Left == 1 ? "it" : "them")} and close the window?", "ZeyoCut Editor", MessageBoxButton.YesNo, MessageBoxImage.Warning,
+            MessageBoxResult.No);
         if (answer != MessageBoxResult.Yes)
         {
             return false;
         }
 
-        _exports.Cancel(job.Id);
-        if (wait)
-        {
-            job.Completion.Wait(TimeSpan.FromSeconds(5));
-        }
-
+        _queue.CancelAll();
         return true;
     }
 
@@ -5602,8 +5615,9 @@ public partial class MainWindow : Window
     // An edit still being saved goes into the export: it waits for it.
     private void OnExport(object sender, RoutedEventArgs e) => WhenSaved(Export);
 
-    // Exports the project as it is saved now (with what another program saved last), the way
-    // start_export does, in this window's process.
+    // Adds an export of the project as it is saved now (with what another program saved last) to the
+    // Render queue; it starts at once when nothing else renders, the way start_export does, in this
+    // window's process.
     private void Export()
     {
         TakeOutsideChanges();
@@ -5623,18 +5637,34 @@ public partial class MainWindow : Window
                 return;
             }
 
-            var preset = ExportChoices.Presets(document.View).First(p => p.Name == _exportPreset).Preset;
+            var preset = ExportChoices.Presets(document.View).First(p => p.Name == _exportPreset);
             var quality = ExportChoices.Qualities.First(q => q.Name == _exportQuality);
 
             // The .srt files' cues come from the snapshot before the language version is made of it.
             var snapshot = document.Session.Snapshot();
             var subtitles = ExportChoices.Subtitles(snapshot).Where(s => _exportSrt.Contains(s.GroupId));
             var srt = ExportChoices.SrtFiles(name, subtitles).Select(f => (f.Name, CaptionBuilder.GroupCues(snapshot, f.GroupId))).ToList();
-            _export = _exportStart.Start(_exports, snapshot, directory, name, quality.Crf, preset, ExportLanguage(), null);
-            _exportSrtFiles = srt;
-            _exportSrtNote = null;
-            _exportShown = ExportState.Running;
-            Message($"Exporting {name}{_export.Version.Note}" + (_encoderWarning is null ? "" : $" ({_encoderWarning})"));
+            var language = ExportLanguage();
+            var item = _queue.Add(new QueueItem
+            {
+                Directory = directory,
+                Snapshot = snapshot,
+                Revision = document.Revision,
+                Name = name,
+                Crf = quality.Crf,
+                Preset = preset.Preset,
+                Language = language,
+                Settings = preset.Title + (language is null ? "" : $" · {language.ToUpperInvariant()} version") + (srt.Count > 0 ? " · .srt" : ""),
+                Srt = srt,
+            });
+            Message(item switch
+            {
+                { State: QueueState.Running, Started: { } started } => $"Exporting {name}{started.Version.Note}" + (_encoderWarning is null ? "" : $" ({_encoderWarning})"),
+                { State: QueueState.Queued } => _queue.Paused
+                    ? $"Added {name} to the render queue, which is paused"
+                    : $"Added {name} to the render queue, {(_queue.Place(item) == 1 ? "next" : $"{RenderQueue.Ordinal(_queue.Place(item))} in line")}",
+                _ => $"Couldn't export {name}: {item.Error}",
+            });
             ShowExportState();
         }
         catch (Exception ex) when (ex is ZeyoCutException or IOException or UnauthorizedAccessException)
@@ -5644,18 +5674,534 @@ public partial class MainWindow : Window
         }
     }
 
+    // Starts an export of the Render queue the way start_export does, with its render settings: one
+    // thread when Keep editing smoothly is on.
+    private ExportStarted StartQueued(QueueItem item) =>
+        _exportStart.Start(_exports, item.Snapshot, item.Directory, item.Name, item.Crf, item.Preset, item.Language, null, _prefs.GentleExports ? 1 : null);
+
     private void OnStopExport(object sender, RoutedEventArgs e)
     {
-        if (_export?.Job is { State: ExportState.Running } job)
+        if (ExportItem() is { State: QueueState.Queued or QueueState.Running } item)
         {
-            _exports.Cancel(job.Id);
+            _queue.Cancel(item);
+            ShowExportState();
+        }
+    }
+
+    // Moves the Render queue on: an export that finished says so in the status bar (and flashes the
+    // taskbar button, with Notify when done, when the window isn't in front) and the next starts.
+    private void TickQueue(List<string> progress)
+    {
+        var finished = _queue.Poll();
+        foreach (var item in finished)
+        {
+            Message(QueueOutcome(item));
+            if (_document is { } document && SameFolder(item.Directory, document.Session.Directory))
+            {
+                ExportFilesChanged();
+            }
+        }
+
+        if (finished.Count > 0 && _prefs.NotifyExports && !IsActive)
+        {
+            TaskbarFlash.Flash(this);
+        }
+
+        if (_queue.Running?.Started?.Job is { } export)
+        {
+            var waiting = _queue.Waiting.Count;
+            progress.Add($"Export {export.Percent.ToString("0", CultureInfo.InvariantCulture)}%" + (waiting > 0 ? $" · {waiting} queued" : ""));
+        }
+
+        if (ExportPage.Visibility == Visibility.Visible)
+        {
+            ShowExportState();
+        }
+
+        if (QueuePage.Visibility == Visibility.Visible)
+        {
+            ShowQueue();
+        }
+    }
+
+    // One line for the status bar about an export of the queue that has finished or couldn't start.
+    private static string QueueOutcome(QueueItem item) => item switch
+    {
+        { Started.Job: { State: not ExportState.Running } job } => ExportOutcome(job),
+        { Missing: { } missing } => $"Couldn't export {item.Name} of {item.Project}: {Path.GetFileName(missing.File)} is missing; Relink in the Render queue finds it",
+        _ => $"Couldn't export {item.Name} of {item.Project}: {item.Error}",
+    };
+
+    private bool AppPageOpen => QueuePage.Visibility == Visibility.Visible || PrefsPage.Visibility == Visibility.Visible;
+
+    // The Render queue over the window, at its cache card when asked.
+    private void ShowRenderQueue(bool cache = false)
+    {
+        Pause();
+        PrefsPage.Visibility = Visibility.Collapsed;
+        QueuePage.Visibility = Visibility.Visible;
+        GentleExports.IsChecked = _prefs.GentleExports;
+        GpuEncoder.IsChecked = _prefs.GpuEncoder;
+        NotifyExports.IsChecked = _prefs.NotifyExports;
+        AddExportButton.IsEnabled = _document is not null;
+        AddExportButton.ToolTip = _document is null
+            ? "Open a project first; its Export view adds exports here"
+            : $"Open the Export view of {Path.GetFileName(_document.Session.Directory)} to add an export to the queue";
+        QueueNote.Visibility = Visibility.Collapsed;
+        ShowQueue();
+        _ = ReadClaudeExports();
+        _ = ReadCacheSizes();
+        if (cache)
+        {
+            QueuePage.UpdateLayout();
+            CacheCard.BringIntoView();
+        }
+    }
+
+    private void CloseAppPages()
+    {
+        QueuePage.Visibility = Visibility.Collapsed;
+        PrefsPage.Visibility = Visibility.Collapsed;
+    }
+
+    // The queue's rows: a row already shown keeps its buttons while its text and progress change.
+    private void ShowQueue()
+    {
+        var rows = _queue.Rows(_claudeRows, DateTime.Now).Select(r => r with { Picture = QueuePicture(r) }).ToList();
+        if (rows.Select(r => r.Key).SequenceEqual(_queueRows.Select(v => v.Row.Key)))
+        {
+            for (var i = 0; i < rows.Count; i++)
+            {
+                var shown = _queueRows[i].Row;
+                var row = shown.Picture is null ? rows[i] : rows[i] with { Picture = shown.Picture };
+                if (row != shown)
+                {
+                    _queueRows[i].Row = row;
+                }
+            }
+        }
+        else
+        {
+            _queueRows.Clear();
+            foreach (var row in rows)
+            {
+                _queueRows.Add(new QueueRowView(row));
+            }
+        }
+
+        QueueList.ItemsSource ??= _queueRows;
+        QueueListCard.Visibility = rows.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        QueueEmpty.Visibility = rows.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        PauseQueueText.Text = _queue.Paused ? "Resume queue" : "Pause queue";
+        PauseQueueIcon.Text = _queue.Paused ? "\uE768" : "\uE769";
+        PauseQueueButton.ToolTip = _queue.Paused ? "Start the next export waiting" : "Let the export running finish, and start no other until you resume";
+    }
+
+    // A row's picture: the project's as it was exported for your exports, the open project's for
+    // Claude's of it, else none.
+    private Brush? QueuePicture(QueueRow row)
+    {
+        if (row.Key is QueueItem item)
+        {
+            return PictureOf(new ProjectEntry(item.Project, item.Directory, "", DateTime.Now)
+            {
+                Revision = item.Revision,
+                Width = item.Snapshot.Width,
+                Height = item.Snapshot.Height,
+                Empty = item.Snapshot.Layers.Count == 0,
+                Length = Timecode.Short(item.Snapshot.Duration),
+            });
+        }
+
+        return _document is { } document && SameFolder(row.Directory, document.Session.Directory)
+            ? PictureOf(new ProjectEntry(row.Project, document.Session.Directory, "", DateTime.Now)
+            {
+                Revision = document.Revision,
+                Width = document.View.Width,
+                Height = document.View.Height,
+                Empty = document.View.Layers.Count == 0,
+                Length = Timecode.Short(document.View.Duration),
+            })
+            : null;
+    }
+
+    private void OnRenderQueue(object sender, RoutedEventArgs e) => ShowRenderQueue();
+
+    private void OnCloseAppPage(object sender, RoutedEventArgs e) => CloseAppPages();
+
+    // + Add export: the open project's Export view.
+    private void OnAddExport(object sender, RoutedEventArgs e)
+    {
+        if (_document is null)
+        {
+            return;
+        }
+
+        CloseAppPages();
+        TurnOn(ExportMode);
+    }
+
+    private void OnPauseQueue(object sender, RoutedEventArgs e)
+    {
+        _queue.Pause(!_queue.Paused);
+        ShowQueue();
+    }
+
+    // A row's Cancel, Remove, Relink or Open.
+    private void OnQueueAction(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement { Tag: QueueRow { Key: QueueItem item } row })
+        {
+            return;
+        }
+
+        switch (row.Action)
+        {
+            case "Cancel":
+                _queue.Cancel(item);
+                break;
+            case "Remove" when item.State == QueueState.Queued:
+                _queue.Cancel(item);
+                _queue.Remove(item);
+                break;
+            case "Remove":
+                _queue.Remove(item);
+                break;
+            case "Open":
+                PlayFile(item.Output);
+                break;
+            case "Relink":
+                CloseAppPages();
+                if (_document is { } document && SameFolder(document.Session.Directory, item.Directory))
+                {
+                    if (MissingAssets() is { Count: > 0 } missing)
+                    {
+                        ShowRelink(missing, opening: false);
+                    }
+                    else
+                    {
+                        Message($"The files {item.Project} uses are all there now; export it again from the Export view");
+                    }
+                }
+                else
+                {
+                    OpenProject(item.Directory);
+                }
+
+                break;
+        }
+
+        if (QueuePage.Visibility == Visibility.Visible)
+        {
+            ShowQueue();
+        }
+    }
+
+    // Keep editing smoothly, Use GPU encoder and Notify when done; they apply to exports that start
+    // after.
+    private void OnRenderSetting(object sender, RoutedEventArgs e)
+    {
+        var on = ((CheckBox)sender).IsChecked == true;
+        if (sender == GentleExports)
+        {
+            _prefs.GentleExports = on;
+        }
+        else if (sender == GpuEncoder)
+        {
+            _prefs.GpuEncoder = on;
+        }
+        else
+        {
+            _prefs.NotifyExports = on;
+        }
+
+        SavePrefs();
+    }
+
+    // The project folders whose caches the Render queue counts and clears: those in the projects
+    // folder, the recent ones and the open one. Folders are read off the UI thread.
+    private Func<List<string>> CacheProjects()
+    {
+        var recent = _prefs.Recent.ToList();
+        var open = _document?.Session.Directory;
+        var root = _settings.ProjectsRoot;
+        return () =>
+        {
+            var found = Directory.Exists(root) ? ProjectList.In(root).Select(p => p.Directory) : [];
+            return [.. found.Concat(recent).Concat(open is null ? [] : [open]).Where(Directory.Exists).Select(Path.GetFullPath).Distinct(StringComparer.OrdinalIgnoreCase)];
+        };
+    }
+
+    // Reads the cache sizes off the UI thread.
+    private async Task ReadCacheSizes()
+    {
+        if (_cacheBusy)
+        {
+            return;
+        }
+
+        _cacheBusy = true;
+        try
+        {
+            var find = CacheProjects();
+            var (sizes, projects) = await Task.Run(() =>
+            {
+                var folders = find();
+                return (CacheFolders.Sizes(folders), folders.Count);
+            });
+            ShowCache(sizes, projects);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ZeyoCutException or InvalidOperationException)
+        {
+            CacheNote.Text = $"Couldn't read the cache folders: {ex.Message}";
+        }
+        finally
+        {
+            _cacheBusy = false;
+        }
+    }
+
+    // The cache card: the total, a bar with each kind's part, and each kind's size.
+    private void ShowCache(IReadOnlyList<CacheSize> sizes, int projects)
+    {
+        var total = sizes.Sum(s => s.Bytes);
+        CacheTotal.Text = CacheText(total);
+        CacheBar.Children.Clear();
+        CacheBar.ColumnDefinitions.Clear();
+        foreach (var size in sizes.Where(s => s.Bytes > 0))
+        {
+            CacheBar.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(size.Bytes, GridUnitType.Star) });
+            var part = new Border { Background = (Brush)new BrushConverter().ConvertFromString(size.Kind.Color)! };
+            Grid.SetColumn(part, CacheBar.ColumnDefinitions.Count - 1);
+            CacheBar.Children.Add(part);
+        }
+
+        CacheLegend.ItemsSource = sizes.Select(s => new CacheLegendItem(s.Kind.Color, $"{s.Kind.Name} {CacheText(s.Bytes)}")).ToList();
+        CacheNote.Text = $"In the cache folders of {Count(projects, "project")}. Each is made again when it's needed; a project's own files, exports, backups and proxies stay.";
+        ClearCacheButton.IsEnabled = total > 0;
+    }
+
+    private static string CacheText(long bytes) =>
+        bytes >= 1024L * 1024 * 1024 ? $"{(bytes / 1024.0 / 1024 / 1024).ToString("0.0", CultureInfo.InvariantCulture)} GB" : ExportSummary.FileSize(bytes);
+
+    // Clear cache: a project that is exporting (here or for Claude) is left as it is.
+    private async void OnClearCache(object sender, RoutedEventArgs e)
+    {
+        if (_cacheBusy)
+        {
+            return;
+        }
+
+        _cacheBusy = true;
+        ClearCacheButton.IsEnabled = false;
+        var busy = _queue.Running is { } running ? new List<string> { running.Directory } : [];
+        var store = _serverJobs;
+        var find = CacheProjects();
+        try
+        {
+            var (cleared, skipped) = await Task.Run(() =>
+            {
+                var exporting = busy.Concat(store is null ? [] : RenderQueue.ClaudeRows(store.Running(), DateTime.Now).Select(r => r.Directory)).ToList();
+                var projects = find();
+                var skip = projects.Where(p => exporting.Any(x => SameFolder(x, p))).ToList();
+                return (CacheFolders.Clear(projects.Except(skip, StringComparer.OrdinalIgnoreCase)), skip);
+            });
+            QueueNote.Foreground = (Brush)FindResource("SecondaryTextBrush");
+            QueueNote.Text = $"Cleared {CacheText(cleared.Freed)} of cache"
+                + (cleared.Kept > 0 ? $"; {Count(cleared.Kept, "file")} a program has open stayed" : "")
+                + (skipped.Count > 0 ? $"; {string.Join(", ", skipped.Select(s => Path.GetFileName(s)))} {(skipped.Count == 1 ? "is" : "are")} exporting, so {(skipped.Count == 1 ? "its cache" : "their caches")} stayed" : "")
+                + ".";
+            QueueNote.Visibility = Visibility.Visible;
+            Message(QueueNote.Text);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ZeyoCutException or InvalidOperationException)
+        {
+            QueueNote.Foreground = (Brush)FindResource("ErrorBrush");
+            QueueNote.Text = $"Couldn't clear the cache: {ex.Message}";
+            QueueNote.Visibility = Visibility.Visible;
+        }
+        finally
+        {
+            _cacheBusy = false;
+        }
+
+        await ReadCacheSizes();
+    }
+
+    // Preferences over the window, at General.
+    private void ShowPreferences()
+    {
+        Pause();
+        QueuePage.Visibility = Visibility.Collapsed;
+        PrefsPage.Visibility = Visibility.Visible;
+        PrefsGeneral.IsChecked = true;
+        ShowPrefs();
+    }
+
+    private void ShowPrefs()
+    {
+        PrefsFolder.Text = _settings.ProjectsRoot;
+        PrefsFolder.ToolTip = _settings.ProjectsRoot;
+        PrefsSnap.IsChecked = _prefs.Snapping;
+        PrefsShowChanges.IsChecked = _prefs.ShowChanges;
+        PrefsStill.Text = _prefs.StillLength.ToString("0.0##", CultureInfo.InvariantCulture);
+        PrefsStillNote.Text = "How long a picture lasts when you add it to the timeline";
+        PrefsStillNote.Foreground = (Brush)FindResource("SecondaryTextBrush");
+        PrefsFull.IsChecked = _prefs.PlaybackScale == 1;
+        PrefsHalf.IsChecked = _prefs.PlaybackScale == 0.5;
+        PrefsQuarter.IsChecked = _prefs.PlaybackScale == 0.25;
+        var preset = _prefs.ExportPreset ?? ExportChoices.ProjectSettings;
+        PrefsPresets.ItemsSource = new[] { new PageChoice("PrefsPreset", ExportChoices.ProjectSettings, ExportChoices.ProjectSettings, null, preset == ExportChoices.ProjectSettings, true, "The project's own size and frame rate") }
+            .Concat(Presets.All.Select(p => new PageChoice("PrefsPreset", p.Name, ExportChoices.Title(p), null, preset == p.Name, true, $"{p.Description}, as start_export's {p.Name}")))
+            .ToList();
+        var quality = ExportChoices.Qualities.FirstOrDefault(q => q.Name == _prefs.ExportQuality)?.Name ?? ExportChoices.Qualities[0].Name;
+        PrefsQualities.ItemsSource = ExportChoices.Qualities.Select(q => new PageChoice("PrefsQuality", q.Name, q.Name, null, q.Name == quality, true, q.Tip)).ToList();
+        var version = (typeof(MainWindow).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "0.0.0").Split('+')[0];
+        AboutVersion.Text = $"ZeyoCut Editor {version}";
+        var folder = AppContext.BaseDirectory;
+        AboutLicense.Tag = Path.Combine(folder, "LICENSE");
+        AboutNotices.Tag = Path.Combine(folder, "THIRD_PARTY_NOTICES.md");
+        AboutLicenses.Tag = Path.Combine(folder, "licenses");
+        AboutLicense.Visibility = File.Exists((string)AboutLicense.Tag) ? Visibility.Visible : Visibility.Collapsed;
+        AboutNotices.Visibility = File.Exists((string)AboutNotices.Tag) ? Visibility.Visible : Visibility.Collapsed;
+        AboutLicenses.Visibility = Directory.Exists((string)AboutLicenses.Tag) ? Visibility.Visible : Visibility.Collapsed;
+        var missing = new[] { AboutLicense, AboutNotices, AboutLicenses }.All(b => b.Visibility == Visibility.Collapsed);
+        AboutFiles.Visibility = missing ? Visibility.Collapsed : Visibility.Visible;
+        AboutMissing.Text = "LICENSE, THIRD_PARTY_NOTICES.md and the licenses folder come with the release zip, next to ZeyoCut.Editor.exe; they aren't next to this one.";
+        AboutMissing.Visibility = missing ? Visibility.Visible : Visibility.Collapsed;
+        ShowPrefsSection();
+    }
+
+    private void ShowPrefsSection()
+    {
+        var (title, subtitle, section) = PrefsExport.IsChecked == true
+            ? ("Export defaults", "What the Export view starts with when you open a project. Changes save instantly.", (UIElement)PrefsExportSection)
+            : PrefsAbout.IsChecked == true
+                ? ("About", "The version, and the licenses of ZeyoCut and of what it's built with.", PrefsAboutSection)
+                : ("General", "Changes save instantly and apply to every project.", PrefsGeneralSection);
+        PrefsTitle.Text = title;
+        PrefsSubtitle.Text = subtitle;
+        foreach (var panel in new UIElement[] { PrefsGeneralSection, PrefsExportSection, PrefsAboutSection })
+        {
+            panel.Visibility = panel == section ? Visibility.Visible : Visibility.Collapsed;
+        }
+    }
+
+    private void OnPreferences(object sender, RoutedEventArgs e) => ShowPreferences();
+
+    private void OnPrefsSection(object sender, RoutedEventArgs e)
+    {
+        if (PrefsPage.Visibility == Visibility.Visible)
+        {
+            ShowPrefsSection();
+        }
+    }
+
+    // Claude & MCP: the Welcome view, at its Connect step.
+    private void OnPrefsClaude(object sender, RoutedEventArgs e)
+    {
+        CloseAppPages();
+        ShowWelcome();
+    }
+
+    private void OnPrefsShortcuts(object sender, RoutedEventArgs e) => ShowShortcuts();
+
+    private void OnPrefsCache(object sender, RoutedEventArgs e) => ShowRenderQueue(cache: true);
+
+    private void OnPrefsSnap(object sender, RoutedEventArgs e)
+    {
+        SnapToggle.IsChecked = PrefsSnap.IsChecked == true;
+        OnSnap(SnapToggle, e);
+    }
+
+    private void OnPrefsShowChanges(object sender, RoutedEventArgs e)
+    {
+        _prefs.ShowChanges = PrefsShowChanges.IsChecked == true;
+        SavePrefs();
+    }
+
+    private void OnPrefsStillKey(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Enter)
+        {
+            SaveStillLength();
+            e.Handled = true;
+        }
+    }
+
+    private void OnPrefsStillLeft(object sender, KeyboardFocusChangedEventArgs e) => SaveStillLength();
+
+    // The Default still-image length typed, in seconds; one that isn't a number from MinStill to
+    // MaxStill is put back.
+    private void SaveStillLength()
+    {
+        if (double.TryParse(PrefsStill.Text.Trim().Replace(',', '.'), NumberStyles.Float, CultureInfo.InvariantCulture, out var seconds)
+            && seconds >= EditorSettings.MinStill && seconds <= EditorSettings.MaxStill)
+        {
+            _prefs.StillLength = Math.Round(seconds, 3);
+            SavePrefs();
+            PrefsStillNote.Text = "How long a picture lasts when you add it to the timeline";
+            PrefsStillNote.Foreground = (Brush)FindResource("SecondaryTextBrush");
+        }
+        else
+        {
+            PrefsStillNote.Text = $"Type seconds from {Number(EditorSettings.MinStill)} to {Number(EditorSettings.MaxStill)}; it stays {Number(_prefs.StillLength)} s";
+            PrefsStillNote.Foreground = (Brush)FindResource("ErrorBrush");
+        }
+
+        PrefsStill.Text = _prefs.StillLength.ToString("0.0##", CultureInfo.InvariantCulture);
+    }
+
+    private void OnPrefsScale(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { Tag: string scale })
+        {
+            SetPlaybackScale(double.Parse(scale, CultureInfo.InvariantCulture));
+        }
+    }
+
+    // The preset or quality the Export view starts with; the one it shows now too.
+    private void OnPrefsDefault(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement { Tag: PageChoice choice })
+        {
+            return;
+        }
+
+        if (choice.Group == "PrefsPreset")
+        {
+            _prefs.ExportPreset = choice.Name == ExportChoices.ProjectSettings ? null : choice.Name;
+            _exportPreset = choice.Name;
+        }
+        else
+        {
+            _prefs.ExportQuality = choice.Name;
+            _exportQuality = choice.Name;
+        }
+
+        SavePrefs();
+    }
+
+    private void OnAboutFile(object sender, RoutedEventArgs e)
+    {
+        var path = (string)((FrameworkElement)sender).Tag;
+        try
+        {
+            using var _ = Directory.Exists(path)
+                ? Process.Start(new ProcessStartInfo("explorer.exe", $"\"{path}\"") { UseShellExecute = false })
+                : Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
+        }
+        catch (System.ComponentModel.Win32Exception ex)
+        {
+            Message($"Couldn't open {Path.GetFileName(path)}: {ex.Message}");
         }
     }
 
     // Plays an exported file in the default video player.
-    private void OnPlayExportFile(object sender, RoutedEventArgs e)
+    private void OnPlayExportFile(object sender, RoutedEventArgs e) => PlayFile((string)((FrameworkElement)sender).Tag);
+
+    private void PlayFile(string path)
     {
-        var path = (string)((FrameworkElement)sender).Tag;
         try
         {
             using var _ = Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
