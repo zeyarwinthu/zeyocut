@@ -164,7 +164,7 @@ public sealed record EditPlan(Project Project, IReadOnlyList<PlannedTrack> Track
             effects.Add("crop");
         }
 
-        if (!Near(video.Brightness.Value, 0) || !Near(video.Contrast.Value, 1) || !Near(video.Saturation.Value, 1))
+        if (!Near(video.Brightness.Value, 0) || !Near(video.Contrast.Value, 1) || !Near(video.Saturation.Value, 1) || video.Grade is not null)
         {
             effects.Add("color");
         }
