@@ -325,6 +325,14 @@ public class EditOperationTests
         Assert.Equal("added audio layer 'music_2' at 1s as voice", new AddClipOperation(AssetType.Audio, "music", 1, Role: "voice").Apply(project));
         Assert.Equal((AudioRole.Voice, 19.0), (Layer<AudioLayer>(project, "music_2").Role, project.Duration));
 
+        // A still can be given its length (the editor's Default still-image length).
+        Assert.Equal("added image layer 'photo_2' at 18s on draw level 12", new AddClipOperation(AssetType.Image, "photo", 18, StillSeconds: 2.5).Apply(project));
+        Assert.Equal((18.0, 20.5, 20.5), (Layer<ImageLayer>(project, "photo_2").Start, Layer<ImageLayer>(project, "photo_2").End!.Value, project.Duration));
+        foreach (var bad in new[] { 0, -1, double.NaN })
+        {
+            Assert.Equal("a still's length must be more than 0 seconds", Assert.Throws<ZeyoCutException>(() => new AddClipOperation(AssetType.Image, "photo", 0, StillSeconds: bad).Apply(project)).Message);
+        }
+
         Assert.Equal("'font' is a font: only video, images and sound go on the timeline", Assert.Throws<ZeyoCutException>(() => new AddClipOperation(AssetType.Font, "font", 0).Apply(project)).Message);
         Assert.Throws<ZeyoCutException>(() => new AddClipOperation(AssetType.Video, "photo", 0).Apply(project));
     }

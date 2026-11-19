@@ -370,8 +370,8 @@ public sealed record PackLanesOperation : EditOperation
 }
 
 // A clip of an asset starting at Start, as add_video_layer, add_image_layer and add_audio_layer add
-// one: footage fitted to the canvas, a still image for StillLength seconds (made smaller to fit the
-// canvas when it's bigger), or sound with Role (music by default). Footage and stills go on draw
+// one: footage fitted to the canvas, a still image for StillSeconds (StillLength when it's null; made
+// smaller to fit the canvas when it's bigger), or sound with Role (music by default). Footage and stills go on draw
 // level ZIndex, or on a level of their own on top when it's null. Footage and stills that run past
 // the end make the project longer, as add_video_layer does; sound doesn't. TrimIn and TrimOut pick
 // the part of footage or sound to use, Muted leaves footage's sound out, and Edit makes room for the
@@ -385,7 +385,8 @@ public sealed record AddClipOperation(
     double? TrimIn = null,
     double? TrimOut = null,
     bool Muted = false,
-    ClipEdit Edit = ClipEdit.Overlay) : EditOperation
+    ClipEdit Edit = ClipEdit.Overlay,
+    double? StillSeconds = null) : EditOperation
 {
     public const double StillLength = 5;
 
@@ -403,18 +404,24 @@ public sealed record AddClipOperation(
                 layer = ProjectEditor.AddVideoLayer(project, new VideoLayerOptions { Asset = AssetId, Start = Start, ZIndex = ZIndex, TrimIn = TrimIn, TrimOut = TrimOut, Muted = Muted });
                 break;
             case AssetType.Image:
+                var length = StillSeconds ?? StillLength;
+                if (!(length > 0) || double.IsInfinity(length))
+                {
+                    throw new ZeyoCutException("a still's length must be more than 0 seconds");
+                }
+
                 var asset = project.FindAsset(AssetId);
                 var fit = asset is { Width: > 0, Height: > 0 } ? Math.Min(1, Math.Min(project.Width / (double)asset.Width.Value, project.Height / (double)asset.Height.Value)) : 1;
                 layer = ProjectEditor.AddImageLayer(project, new ImageLayerOptions
                 {
                     Drawings = new Dictionary<string, string> { ["normal"] = AssetId },
                     Start = Start,
-                    End = Start + StillLength,
+                    End = Start + length,
                     ScaleX = fit,
                     ScaleY = fit,
                     ZIndex = ZIndex,
                 });
-                ProjectEditor.ExtendToFit(project, Start + StillLength);
+                ProjectEditor.ExtendToFit(project, Start + length);
                 break;
             case AssetType.Audio:
                 layer = ProjectEditor.AddAudioLayer(project, new AudioLayerOptions { Asset = AssetId, Start = Start, Role = Role, TrimIn = TrimIn, TrimOut = TrimOut });
