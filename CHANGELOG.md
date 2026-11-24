@@ -8,6 +8,13 @@ when they open.
 
 ## [Unreleased]
 
+### Fixed
+
+- Two programs importing different files of the same name into a project at the same moment (the
+  server and the editor, or two servers) each get a file of their own in `assets\`. Before, one of
+  them could be given the other's file while its own copy was thrown away, or fail with "being used
+  by another process".
+
 ## [0.2.0] - 2026-11-24
 
 This release adds the ZeyoCut editor, `ZeyoCut.Editor.exe`: a window for working on a project by

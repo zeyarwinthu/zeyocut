@@ -137,5 +137,5 @@ It prints the ffprobe summary, for example:
 ## Notes
 
 - **Test runner.** `global.json` uses Microsoft.Testing.Platform, and the VSTest packages (`Microsoft.NET.Test.Sdk`, `xunit.runner.visualstudio`) are not referenced. xUnit v3 under the .NET 10 SDK requires this.
-- **SkiaSharp 4.x** (4.154.0) is used, the current major version.
+- **SkiaSharp 4.x** (4.157.0) is used, the current major version.
 - **Asset registry.** `project.json` keeps an `assets[]` registry. Layers refer to asset ids, and `import_asset` copies the file into `assets\`, so a project folder is self-contained.

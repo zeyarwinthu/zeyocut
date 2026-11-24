@@ -223,7 +223,7 @@ public static class AssetImporter
     private static string CopyIn(string assetsDir, string source)
     {
         var destination = ChooseDestination(assetsDir, source);
-        if (string.Equals(destination, source, StringComparison.OrdinalIgnoreCase) || File.Exists(destination))
+        if (string.Equals(destination, source, StringComparison.OrdinalIgnoreCase) || (File.Exists(destination) && SameContent(destination, source)))
         {
             return destination;
         }
@@ -242,8 +242,9 @@ public static class AssetImporter
                 catch (IOException) when (File.Exists(destination))
                 {
                     // Another program put a file of that name there meanwhile: use it if it's the same, else the next name.
+                    // A name ChooseDestination found free can be taken before this check, so a file there is compared, not trusted.
                     destination = ChooseDestination(assetsDir, source);
-                    if (File.Exists(destination))
+                    if (File.Exists(destination) && SameContent(destination, source))
                     {
                         File.Delete(partial);
                         return destination;
@@ -297,8 +298,9 @@ public static class AssetImporter
             return false;
         }
 
-        using var streamA = infoA.OpenRead();
-        using var streamB = infoB.OpenRead();
+        // Shares delete access: another program may be renaming its finished copy to this name right now.
+        using var streamA = new FileStream(a, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+        using var streamB = new FileStream(b, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
         var bufferA = new byte[81920];
         var bufferB = new byte[81920];
         while (true)

@@ -37,50 +37,50 @@ Microsoft ships in the same runtime package.
 
 | Package | Version | License | Copyright | Source |
 |---|---|---|---|---|
-| HarfBuzzSharp | 14.2.1.400 | MIT | © Microsoft Corporation. All rights reserved. | [go.microsoft.com/fwlink/?linkid=868515](https://go.microsoft.com/fwlink/?linkid=868515) |
-| HarfBuzzSharp.NativeAssets.macOS (macOS files only; not in the Windows release) | 14.2.1.400 | MIT | © Microsoft Corporation. All rights reserved. | [go.microsoft.com/fwlink/?linkid=868515](https://go.microsoft.com/fwlink/?linkid=868515) |
-| HarfBuzzSharp.NativeAssets.Win32 | 14.2.1.400 | MIT | © Microsoft Corporation. All rights reserved. | [go.microsoft.com/fwlink/?linkid=868515](https://go.microsoft.com/fwlink/?linkid=868515) |
+| HarfBuzzSharp | 14.4.0.200 | MIT | © Microsoft Corporation. All rights reserved. | [go.microsoft.com/fwlink/?linkid=868515](https://go.microsoft.com/fwlink/?linkid=868515) |
+| HarfBuzzSharp.NativeAssets.macOS (macOS files only; not in the Windows release) | 14.4.0.200 | MIT | © Microsoft Corporation. All rights reserved. | [go.microsoft.com/fwlink/?linkid=868515](https://go.microsoft.com/fwlink/?linkid=868515) |
+| HarfBuzzSharp.NativeAssets.Win32 | 14.4.0.200 | MIT | © Microsoft Corporation. All rights reserved. | [go.microsoft.com/fwlink/?linkid=868515](https://go.microsoft.com/fwlink/?linkid=868515) |
 | Microsoft.AI.DirectML | 1.15.4 | Microsoft Software License Terms for DirectML (not open source; see below) | © Microsoft Corporation. All rights reserved. | [aka.ms/DirectML](https://aka.ms/DirectML) |
 | Microsoft.Extensions.AI.Abstractions | 10.11.0 | MIT | © Microsoft Corporation. All rights reserved. | [dot.net](https://dot.net/) |
-| Microsoft.Extensions.Caching.Abstractions | 10.0.13 | MIT | © Microsoft Corporation. All rights reserved. | [dot.net](https://dot.net/) |
-| Microsoft.Extensions.Configuration | 10.0.14 | MIT | © Microsoft Corporation. All rights reserved. | [dot.net](https://dot.net/) |
-| Microsoft.Extensions.Configuration.Abstractions | 10.0.14 | MIT | © Microsoft Corporation. All rights reserved. | [dot.net](https://dot.net/) |
-| Microsoft.Extensions.Configuration.Binder | 10.0.14 | MIT | © Microsoft Corporation. All rights reserved. | [dot.net](https://dot.net/) |
-| Microsoft.Extensions.Configuration.CommandLine | 10.0.14 | MIT | © Microsoft Corporation. All rights reserved. | [dot.net](https://dot.net/) |
-| Microsoft.Extensions.Configuration.EnvironmentVariables | 10.0.14 | MIT | © Microsoft Corporation. All rights reserved. | [dot.net](https://dot.net/) |
-| Microsoft.Extensions.Configuration.FileExtensions | 10.0.14 | MIT | © Microsoft Corporation. All rights reserved. | [dot.net](https://dot.net/) |
-| Microsoft.Extensions.Configuration.Json | 10.0.14 | MIT | © Microsoft Corporation. All rights reserved. | [dot.net](https://dot.net/) |
-| Microsoft.Extensions.Configuration.UserSecrets | 10.0.14 | MIT | © Microsoft Corporation. All rights reserved. | [dot.net](https://dot.net/) |
-| Microsoft.Extensions.DependencyInjection | 10.0.14 | MIT | © Microsoft Corporation. All rights reserved. | [dot.net](https://dot.net/) |
-| Microsoft.Extensions.DependencyInjection.Abstractions | 10.0.14 | MIT | © Microsoft Corporation. All rights reserved. | [dot.net](https://dot.net/) |
-| Microsoft.Extensions.Diagnostics | 10.0.14 | MIT | © Microsoft Corporation. All rights reserved. | [dot.net](https://dot.net/) |
-| Microsoft.Extensions.Diagnostics.Abstractions | 10.0.14 | MIT | © Microsoft Corporation. All rights reserved. | [dot.net](https://dot.net/) |
-| Microsoft.Extensions.FileProviders.Abstractions | 10.0.14 | MIT | © Microsoft Corporation. All rights reserved. | [dot.net](https://dot.net/) |
-| Microsoft.Extensions.FileProviders.Physical | 10.0.14 | MIT | © Microsoft Corporation. All rights reserved. | [dot.net](https://dot.net/) |
-| Microsoft.Extensions.FileSystemGlobbing | 10.0.14 | MIT | © Microsoft Corporation. All rights reserved. | [dot.net](https://dot.net/) |
-| Microsoft.Extensions.Hosting | 10.0.14 | MIT | © Microsoft Corporation. All rights reserved. | [dot.net](https://dot.net/) |
-| Microsoft.Extensions.Hosting.Abstractions | 10.0.14 | MIT | © Microsoft Corporation. All rights reserved. | [dot.net](https://dot.net/) |
-| Microsoft.Extensions.Logging | 10.0.14 | MIT | © Microsoft Corporation. All rights reserved. | [dot.net](https://dot.net/) |
-| Microsoft.Extensions.Logging.Abstractions | 10.0.14 | MIT | © Microsoft Corporation. All rights reserved. | [dot.net](https://dot.net/) |
-| Microsoft.Extensions.Logging.Configuration | 10.0.14 | MIT | © Microsoft Corporation. All rights reserved. | [dot.net](https://dot.net/) |
-| Microsoft.Extensions.Logging.Console | 10.0.14 | MIT | © Microsoft Corporation. All rights reserved. | [dot.net](https://dot.net/) |
-| Microsoft.Extensions.Logging.Debug | 10.0.14 | MIT | © Microsoft Corporation. All rights reserved. | [dot.net](https://dot.net/) |
-| Microsoft.Extensions.Logging.EventLog | 10.0.14 | MIT | © Microsoft Corporation. All rights reserved. | [dot.net](https://dot.net/) |
-| Microsoft.Extensions.Logging.EventSource | 10.0.14 | MIT | © Microsoft Corporation. All rights reserved. | [dot.net](https://dot.net/) |
-| Microsoft.Extensions.Options | 10.0.14 | MIT | © Microsoft Corporation. All rights reserved. | [dot.net](https://dot.net/) |
-| Microsoft.Extensions.Options.ConfigurationExtensions | 10.0.14 | MIT | © Microsoft Corporation. All rights reserved. | [dot.net](https://dot.net/) |
-| Microsoft.Extensions.Primitives | 10.0.14 | MIT | © Microsoft Corporation. All rights reserved. | [dot.net](https://dot.net/) |
+| Microsoft.Extensions.Caching.Abstractions | 10.0.14 | MIT | © Microsoft Corporation. All rights reserved. | [dot.net](https://dot.net/) |
+| Microsoft.Extensions.Configuration | 10.0.15 | MIT | © Microsoft Corporation. All rights reserved. | [dot.net](https://dot.net/) |
+| Microsoft.Extensions.Configuration.Abstractions | 10.0.15 | MIT | © Microsoft Corporation. All rights reserved. | [dot.net](https://dot.net/) |
+| Microsoft.Extensions.Configuration.Binder | 10.0.15 | MIT | © Microsoft Corporation. All rights reserved. | [dot.net](https://dot.net/) |
+| Microsoft.Extensions.Configuration.CommandLine | 10.0.15 | MIT | © Microsoft Corporation. All rights reserved. | [dot.net](https://dot.net/) |
+| Microsoft.Extensions.Configuration.EnvironmentVariables | 10.0.15 | MIT | © Microsoft Corporation. All rights reserved. | [dot.net](https://dot.net/) |
+| Microsoft.Extensions.Configuration.FileExtensions | 10.0.15 | MIT | © Microsoft Corporation. All rights reserved. | [dot.net](https://dot.net/) |
+| Microsoft.Extensions.Configuration.Json | 10.0.15 | MIT | © Microsoft Corporation. All rights reserved. | [dot.net](https://dot.net/) |
+| Microsoft.Extensions.Configuration.UserSecrets | 10.0.15 | MIT | © Microsoft Corporation. All rights reserved. | [dot.net](https://dot.net/) |
+| Microsoft.Extensions.DependencyInjection | 10.0.15 | MIT | © Microsoft Corporation. All rights reserved. | [dot.net](https://dot.net/) |
+| Microsoft.Extensions.DependencyInjection.Abstractions | 10.0.15 | MIT | © Microsoft Corporation. All rights reserved. | [dot.net](https://dot.net/) |
+| Microsoft.Extensions.Diagnostics | 10.0.15 | MIT | © Microsoft Corporation. All rights reserved. | [dot.net](https://dot.net/) |
+| Microsoft.Extensions.Diagnostics.Abstractions | 10.0.15 | MIT | © Microsoft Corporation. All rights reserved. | [dot.net](https://dot.net/) |
+| Microsoft.Extensions.FileProviders.Abstractions | 10.0.15 | MIT | © Microsoft Corporation. All rights reserved. | [dot.net](https://dot.net/) |
+| Microsoft.Extensions.FileProviders.Physical | 10.0.15 | MIT | © Microsoft Corporation. All rights reserved. | [dot.net](https://dot.net/) |
+| Microsoft.Extensions.FileSystemGlobbing | 10.0.15 | MIT | © Microsoft Corporation. All rights reserved. | [dot.net](https://dot.net/) |
+| Microsoft.Extensions.Hosting | 10.0.15 | MIT | © Microsoft Corporation. All rights reserved. | [dot.net](https://dot.net/) |
+| Microsoft.Extensions.Hosting.Abstractions | 10.0.15 | MIT | © Microsoft Corporation. All rights reserved. | [dot.net](https://dot.net/) |
+| Microsoft.Extensions.Logging | 10.0.15 | MIT | © Microsoft Corporation. All rights reserved. | [dot.net](https://dot.net/) |
+| Microsoft.Extensions.Logging.Abstractions | 10.0.15 | MIT | © Microsoft Corporation. All rights reserved. | [dot.net](https://dot.net/) |
+| Microsoft.Extensions.Logging.Configuration | 10.0.15 | MIT | © Microsoft Corporation. All rights reserved. | [dot.net](https://dot.net/) |
+| Microsoft.Extensions.Logging.Console | 10.0.15 | MIT | © Microsoft Corporation. All rights reserved. | [dot.net](https://dot.net/) |
+| Microsoft.Extensions.Logging.Debug | 10.0.15 | MIT | © Microsoft Corporation. All rights reserved. | [dot.net](https://dot.net/) |
+| Microsoft.Extensions.Logging.EventLog | 10.0.15 | MIT | © Microsoft Corporation. All rights reserved. | [dot.net](https://dot.net/) |
+| Microsoft.Extensions.Logging.EventSource | 10.0.15 | MIT | © Microsoft Corporation. All rights reserved. | [dot.net](https://dot.net/) |
+| Microsoft.Extensions.Options | 10.0.15 | MIT | © Microsoft Corporation. All rights reserved. | [dot.net](https://dot.net/) |
+| Microsoft.Extensions.Options.ConfigurationExtensions | 10.0.15 | MIT | © Microsoft Corporation. All rights reserved. | [dot.net](https://dot.net/) |
+| Microsoft.Extensions.Primitives | 10.0.15 | MIT | © Microsoft Corporation. All rights reserved. | [dot.net](https://dot.net/) |
 | Microsoft.ML.OnnxRuntime.DirectML | 1.24.4 | MIT | © Microsoft Corporation. All rights reserved. | [github.com/Microsoft/onnxruntime](https://github.com/Microsoft/onnxruntime) |
 | Microsoft.ML.OnnxRuntime.Managed | 1.24.4 | MIT | © Microsoft Corporation. All rights reserved. | [github.com/Microsoft/onnxruntime](https://github.com/Microsoft/onnxruntime) |
-| ModelContextProtocol | 2.3.1 | Apache-2.0 | © Model Context Protocol a Series of LF Projects, LLC. | [csharp.sdk.modelcontextprotocol.io](https://csharp.sdk.modelcontextprotocol.io/) |
-| ModelContextProtocol.Core | 2.3.1 | Apache-2.0 | © Model Context Protocol a Series of LF Projects, LLC. | [csharp.sdk.modelcontextprotocol.io](https://csharp.sdk.modelcontextprotocol.io/) |
-| OpenCvSharp4 | 4.13.0.20260627 | Apache-2.0 | Copyright 2008-2026 | [github.com/shimat/opencvsharp](https://github.com/shimat/opencvsharp) |
-| OpenCvSharp4.runtime.win | 4.13.0.20260627 | Apache-2.0 | Copyright 2008-2026 | [github.com/shimat/opencvsharp](https://github.com/shimat/opencvsharp) |
-| SkiaSharp | 4.154.0 | MIT | © Microsoft Corporation. All rights reserved. | [go.microsoft.com/fwlink/?linkid=868515](https://go.microsoft.com/fwlink/?linkid=868515) |
-| SkiaSharp.HarfBuzz | 4.154.0 | MIT | © Microsoft Corporation. All rights reserved. | [go.microsoft.com/fwlink/?linkid=868515](https://go.microsoft.com/fwlink/?linkid=868515) |
-| SkiaSharp.NativeAssets.macOS (macOS files only; not in the Windows release) | 4.154.0 | MIT | © Microsoft Corporation. All rights reserved. | [go.microsoft.com/fwlink/?linkid=868515](https://go.microsoft.com/fwlink/?linkid=868515) |
-| SkiaSharp.NativeAssets.Win32 | 4.154.0 | MIT | © Microsoft Corporation. All rights reserved. | [go.microsoft.com/fwlink/?linkid=868515](https://go.microsoft.com/fwlink/?linkid=868515) |
-| System.Diagnostics.EventLog | 10.0.14 | MIT | © Microsoft Corporation. All rights reserved. | [dot.net](https://dot.net/) |
+| ModelContextProtocol | 2.4.0 | Apache-2.0 | © Model Context Protocol a Series of LF Projects, LLC. | [csharp.sdk.modelcontextprotocol.io](https://csharp.sdk.modelcontextprotocol.io/) |
+| ModelContextProtocol.Core | 2.4.0 | Apache-2.0 | © Model Context Protocol a Series of LF Projects, LLC. | [csharp.sdk.modelcontextprotocol.io](https://csharp.sdk.modelcontextprotocol.io/) |
+| OpenCvSharp4 | 4.13.0.20261107 | Apache-2.0 | Copyright 2008-2026 | [github.com/shimat/opencvsharp](https://github.com/shimat/opencvsharp) |
+| OpenCvSharp4.runtime.win | 4.13.0.20261107 | Apache-2.0 | Copyright 2008-2026 | [github.com/shimat/opencvsharp](https://github.com/shimat/opencvsharp) |
+| SkiaSharp | 4.157.0 | MIT | © Microsoft Corporation. All rights reserved. | [go.microsoft.com/fwlink/?linkid=868515](https://go.microsoft.com/fwlink/?linkid=868515) |
+| SkiaSharp.HarfBuzz | 4.157.0 | MIT | © Microsoft Corporation. All rights reserved. | [go.microsoft.com/fwlink/?linkid=868515](https://go.microsoft.com/fwlink/?linkid=868515) |
+| SkiaSharp.NativeAssets.macOS (macOS files only; not in the Windows release) | 4.157.0 | MIT | © Microsoft Corporation. All rights reserved. | [go.microsoft.com/fwlink/?linkid=868515](https://go.microsoft.com/fwlink/?linkid=868515) |
+| SkiaSharp.NativeAssets.Win32 | 4.157.0 | MIT | © Microsoft Corporation. All rights reserved. | [go.microsoft.com/fwlink/?linkid=868515](https://go.microsoft.com/fwlink/?linkid=868515) |
+| System.Diagnostics.EventLog | 10.0.15 | MIT | © Microsoft Corporation. All rights reserved. | [dot.net](https://dot.net/) |
 | System.Numerics.Tensors | 9.0.0 | MIT | © Microsoft Corporation. All rights reserved. | [dot.net](https://dot.net/) |
 
 ### Native libraries inside these packages
@@ -137,21 +137,21 @@ reply names the model and its license before the download starts.
 |---|---|---|---|---|
 | Microsoft.ApplicationInsights | 2.23.0 | MIT | © Microsoft Corporation. All rights reserved. | [go.microsoft.com/fwlink/?LinkId=392727](https://go.microsoft.com/fwlink/?LinkId=392727) |
 | Microsoft.Bcl.AsyncInterfaces | 6.0.0 | MIT | © Microsoft Corporation. All rights reserved. | [dot.net](https://dot.net/) |
-| Microsoft.Testing.Extensions.Telemetry | 2.5.1 | MIT | © Microsoft Corporation. All rights reserved. | [github.com/microsoft/testfx](https://github.com/microsoft/testfx) |
-| Microsoft.Testing.Extensions.TrxReport.Abstractions | 2.5.1 | MIT | © Microsoft Corporation. All rights reserved. | [github.com/microsoft/testfx](https://github.com/microsoft/testfx) |
-| Microsoft.Testing.Platform | 2.5.1 | MIT | © Microsoft Corporation. All rights reserved. | [github.com/microsoft/testfx](https://github.com/microsoft/testfx) |
-| Microsoft.Testing.Platform.MSBuild | 2.5.1 | MIT | © Microsoft Corporation. All rights reserved. | [github.com/microsoft/testfx](https://github.com/microsoft/testfx) |
+| Microsoft.Testing.Extensions.Telemetry | 2.5.2 | MIT | © Microsoft Corporation. All rights reserved. | [github.com/microsoft/testfx](https://github.com/microsoft/testfx) |
+| Microsoft.Testing.Extensions.TrxReport.Abstractions | 2.5.2 | MIT | © Microsoft Corporation. All rights reserved. | [github.com/microsoft/testfx](https://github.com/microsoft/testfx) |
+| Microsoft.Testing.Platform | 2.5.2 | MIT | © Microsoft Corporation. All rights reserved. | [github.com/microsoft/testfx](https://github.com/microsoft/testfx) |
+| Microsoft.Testing.Platform.MSBuild | 2.5.2 | MIT | © Microsoft Corporation. All rights reserved. | [github.com/microsoft/testfx](https://github.com/microsoft/testfx) |
 | Microsoft.Win32.Registry | 5.0.0 | MIT | © Microsoft Corporation. All rights reserved. | [github.com/dotnet/runtime](https://github.com/dotnet/runtime) |
 | System.Security.AccessControl | 6.0.1 | MIT | © Microsoft Corporation. All rights reserved. | [dot.net](https://dot.net/) |
-| xunit.analyzers | 2.2.0 | Apache-2.0 | Copyright (C) .NET Foundation | [github.com/xunit/xunit.analyzers](https://github.com/xunit/xunit.analyzers) |
-| xunit.v3 | 4.0.2 | Apache-2.0 | Copyright (C) .NET Foundation | [github.com/xunit/xunit](https://github.com/xunit/xunit) |
-| xunit.v3.assert | 4.0.2 | Apache-2.0 | Copyright (C) .NET Foundation | [github.com/xunit/xunit](https://github.com/xunit/xunit) |
-| xunit.v3.common | 4.0.2 | Apache-2.0 | Copyright (C) .NET Foundation | [github.com/xunit/xunit](https://github.com/xunit/xunit) |
-| xunit.v3.core.mtp-v2 | 4.0.2 | Apache-2.0 | Copyright (C) .NET Foundation | [github.com/xunit/xunit](https://github.com/xunit/xunit) |
-| xunit.v3.extensibility.core | 4.0.2 | Apache-2.0 | Copyright (C) .NET Foundation | [github.com/xunit/xunit](https://github.com/xunit/xunit) |
-| xunit.v3.mtp-v2 | 4.0.2 | Apache-2.0 | Copyright (C) .NET Foundation | [github.com/xunit/xunit](https://github.com/xunit/xunit) |
-| xunit.v3.runner.common | 4.0.2 | Apache-2.0 | Copyright (C) .NET Foundation | [github.com/xunit/xunit](https://github.com/xunit/xunit) |
-| xunit.v3.runner.inproc.console | 4.0.2 | Apache-2.0 | Copyright (C) .NET Foundation | [github.com/xunit/xunit](https://github.com/xunit/xunit) |
+| xunit.analyzers | 2.3.0 | Apache-2.0 | Copyright (C) .NET Foundation | [github.com/xunit/xunit.analyzers](https://github.com/xunit/xunit.analyzers) |
+| xunit.v3 | 4.0.3 | Apache-2.0 | Copyright (C) .NET Foundation | [github.com/xunit/xunit](https://github.com/xunit/xunit) |
+| xunit.v3.assert | 4.0.3 | Apache-2.0 | Copyright (C) .NET Foundation | [github.com/xunit/xunit](https://github.com/xunit/xunit) |
+| xunit.v3.common | 4.0.3 | Apache-2.0 | Copyright (C) .NET Foundation | [github.com/xunit/xunit](https://github.com/xunit/xunit) |
+| xunit.v3.core.mtp-v2 | 4.0.3 | Apache-2.0 | Copyright (C) .NET Foundation | [github.com/xunit/xunit](https://github.com/xunit/xunit) |
+| xunit.v3.extensibility.core | 4.0.3 | Apache-2.0 | Copyright (C) .NET Foundation | [github.com/xunit/xunit](https://github.com/xunit/xunit) |
+| xunit.v3.mtp-v2 | 4.0.3 | Apache-2.0 | Copyright (C) .NET Foundation | [github.com/xunit/xunit](https://github.com/xunit/xunit) |
+| xunit.v3.runner.common | 4.0.3 | Apache-2.0 | Copyright (C) .NET Foundation | [github.com/xunit/xunit](https://github.com/xunit/xunit) |
+| xunit.v3.runner.inproc.console | 4.0.3 | Apache-2.0 | Copyright (C) .NET Foundation | [github.com/xunit/xunit](https://github.com/xunit/xunit) |
 
 The face and plate detection tests use three photos from Wikimedia Commons: two NASA photos, which are in
 the public domain, and one dedicated to the public domain (CC0 1.0). Their sources are in
