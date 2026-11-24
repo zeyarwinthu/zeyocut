@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: MIT
 
 using SkiaSharp;
+using ZeyoCut.Core;
 using ZeyoCut.Core.Editing;
 using ZeyoCut.Core.Model;
+using ZeyoCut.Core.Serialization;
 using ZeyoCut.Render;
 using ZeyoCut.Render.Export;
 using ZeyoCut.Tests.TestSupport;
@@ -134,6 +136,126 @@ public class ColorGradeTests
 
         Assert.Null(ColorAdjust.Grade(0, 0, 0, 0, 0));
         Assert.Equal(Enumerable.Range(0, 256).Select(i => (byte)i), ColorAdjust.Tables(0, 0, 0, 0, 0).Red);
+    }
+
+    // Each wheel moves its channel in its part of the range: lift the dark values with white kept,
+    // gamma the middle with black and white kept, gain the light values with black kept.
+    [Fact]
+    public void EachWheelMovesItsChannelToTheReferenceValues()
+    {
+        var session = SwatchProject("color-wheel-reference");
+        Add(session, "swatch", 0, 1);
+        using var renderer = new FrameRenderer(session.Directory);
+
+        SKColor[] Render(params (string Control, double Value)[] values)
+        {
+            var project = session.Snapshot();
+            ColorEditor.SetColor(project, "swatch", new ColorChange(values.ToDictionary(v => v.Control, v => v.Value)));
+            using var image = renderer.RenderImage(project, 5);
+            return [.. new[] { 10, 30, 50, 65, 75 }.Select(x => TestImages.Pixel(image, x, 10))];
+        }
+
+        Near((141, 128, 128), Render(("lift.red", 0.1))[0]);
+        Near((128, 157, 128), Render(("gamma.green", 0.5))[0]);
+        Near((128, 128, 64), Render(("gain.blue", -0.5))[0]);
+        Near((64, 64, 64), Render(("gamma.red", -1), ("gamma.green", -1), ("gamma.blue", -1))[0]);
+
+        var lifted = Render(("lift.red", -0.2), ("lift.green", -0.2), ("lift.blue", -0.2));
+        Near((51, 51, 51), lifted[1]);
+        Near((0, 0, 0), lifted[3], 0);
+        Near((255, 255, 255), lifted[4], 0);
+        var gained = Render(("gain.red", 0.2), ("gain.green", 0.2), ("gain.blue", 0.2));
+        Near((204, 204, 204), gained[2]);
+        Near((0, 0, 0), gained[3], 0);
+
+        // The wheels' tables only go up too, whatever they're set to.
+        var (red, green, blue) = ColorAdjust.Tables(0.5, -0.3, 0.4, 0.2, 0, new Rgb(-1, 0.5, 1), new Rgb(1, -1, 0.3), new Rgb(-0.5, 1, 0));
+        foreach (var table in new[] { red, green, blue })
+        {
+            Assert.True(table.Zip(table.Skip(1)).All(p => p.Second >= p.First), "a wheel's table goes down somewhere");
+        }
+    }
+
+    // A look is the LUT's color mixed with the clip's by its amount, drawn after the rest of the
+    // color: here a LUT that squares red, keeps green and turns blue around.
+    [Fact]
+    public void ALookIsTheLutsColorsMixedByItsAmount()
+    {
+        var session = SwatchProject("color-look-reference");
+        Add(session, "swatch", 0, 1);
+        var cube = Path.Combine(session.Directory, "src_curves.cube");
+        File.WriteAllText(cube, ZeyoCut.Tests.Core.CubeLutTests.Curves());
+        session.Mutate("import", p => AssetImporter.Import(p, session.Directory, cube, "curves", new AssetProbe()));
+        using var renderer = new FrameRenderer(session.Directory);
+
+        SKColor[] Render(double amount, params (string Control, double Value)[] values)
+        {
+            var project = session.Snapshot();
+            ColorEditor.SetColor(project, "swatch", new ColorChange(values.Append(("look.amount", amount)).ToDictionary(v => v.Item1, v => v.Item2), Look: "curves"));
+            using var image = renderer.RenderImage(project, 5);
+            return [.. new[] { 10, 30, 50, 65, 75 }.Select(x => TestImages.Pixel(image, x, 10))];
+        }
+
+        var looked = Render(1);
+        Near((64, 128, 127), looked[0]);
+        Near((128, 170, 85), looked[2]);
+        Near((0, 0, 255), looked[3], 0);
+        Near((255, 255, 0), looked[4], 0);
+        Near((96, 128, 128), Render(0.5)[0]);
+        Near((128, 128, 128), Render(0)[0], 0);
+
+        // After contrast: contrast 0 makes every swatch mid gray, which the look then colors.
+        Near((64, 128, 127), Render(1, ("contrast", 0))[3]);
+
+        // A frame looked through a LUT is drawn again once the LUT file changes.
+        var keyed = session.Snapshot();
+        ColorEditor.SetColor(keyed, "swatch", new ColorChange(new Dictionary<string, double>(), Look: "curves"));
+        var lutFile = ProjectStore.AssetPath(session.Directory, keyed.FindAsset("curves")!);
+        var key = new FrameKeys(keyed, session.Directory).Of(5);
+        File.AppendAllText(lutFile, "# edited\n");
+        File.SetLastWriteTimeUtc(lutFile, DateTime.UtcNow.AddMinutes(1));
+        Assert.NotEqual(key, new FrameKeys(keyed, session.Directory).Of(5));
+
+        // A LUT file that's gone stops the frame with the reason.
+        var project = session.Snapshot();
+        ColorEditor.SetColor(project, "swatch", new ColorChange(new Dictionary<string, double>(), Look: "curves"));
+        File.Delete(ProjectStore.AssetPath(session.Directory, project.FindAsset("curves")!));
+        using var fresh = new FrameRenderer(session.Directory);
+        Assert.StartsWith("LUT file is missing: ", Assert.Throws<ZeyoCutException>(() => fresh.RenderImage(project, 5)).Message);
+    }
+
+    // The wheels and a look over the swatches and on footage: exported as the preview draws them.
+    [Fact]
+    public void WheelsAndALookExportAsThePreviewDrawsThem()
+    {
+        var ffmpeg = Ffmpeg.Require();
+        var session = SwatchProject("color-look-export", duration: 3);
+        var cube = Path.Combine(session.Directory, "src_curves.cube");
+        File.WriteAllText(cube, ZeyoCut.Tests.Core.CubeLutTests.Curves());
+        session.Mutate("import", p => AssetImporter.Import(p, session.Directory, cube, "curves", new AssetProbe()));
+        var wheels = new Dictionary<string, double> { ["lift.red"] = -0.1, ["lift.blue"] = 0.15, ["gamma.green"] = 0.4, ["gain.red"] = 0.2, ["gain.blue"] = -0.3 };
+        Add(session, "wheeled", 0, 1);
+        session.Mutate("color", p => ColorEditor.SetColor(p, "wheeled", new ColorChange(wheels)));
+        Add(session, "looked", 1, 2);
+        session.Mutate("color", p => ColorEditor.SetColor(p, "looked", new ColorChange(new Dictionary<string, double> { ["look.amount"] = 0.7 }, Look: "curves")));
+        TestVideos.Import(session, TestVideos.Pattern(Path.Combine(session.Directory, "src_pattern.mp4"), seconds: 1, fps: 10, width: 80, height: 20), "pattern");
+        session.Mutate("clip", p => ProjectEditor.AddVideoLayer(p, new VideoLayerOptions { Asset = "pattern", Id = "clip", Start = 2, TrimIn = 0, TrimOut = 1 }));
+        session.Mutate("color", p => ColorEditor.SetColor(p, "clip", new ColorChange(new Dictionary<string, double>(wheels) { ["exposure"] = 0.3, ["look.amount"] = 0.6 }, Look: "curves")));
+
+        var project = session.Snapshot();
+        var output = Path.Combine(session.Directory, "exports", "looked.mp4");
+        Exporter.Export(project, session.Directory, output, 18, ffmpeg, cancellationToken: TestContext.Current.CancellationToken);
+        using var renderer = new FrameRenderer(session.Directory, () => ffmpeg.Ffmpeg);
+        for (var second = 0; second < 3; second++)
+        {
+            var frame = second * 10 + 5;
+            using var image = renderer.RenderImage(project, frame, new RenderOptions(Proxies: true));
+            var drawn = TestImages.Pixels(image);
+            var decoded = Ffmpeg.ExtractFrameRgba(ffmpeg, output, frame, 80, 20);
+            var error = second < 2 ? Ffmpeg.MeanAbsoluteError(drawn, decoded) : Ffmpeg.MeanLumaError(drawn, decoded);
+            _output.WriteLine($"{new[] { "wheels", "look", "everything on footage" }[second]}: mean error {error:0.00}");
+            Assert.True(error < 2.5, $"second {second}: the export differs from the preview by {error:0.00}/255 on average");
+        }
     }
 
     // Each control, one per second over the swatches, and all of them on a clip of footage: the

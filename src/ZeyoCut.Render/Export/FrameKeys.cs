@@ -158,6 +158,11 @@ public sealed class FrameKeys
         {
             yield return mask;
         }
+
+        if (ColorEditor.LookAsset(layer) is { } look)
+        {
+            yield return look;
+        }
     }
 
     private string AssetStamp(string id)

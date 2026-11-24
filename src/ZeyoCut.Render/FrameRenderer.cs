@@ -231,6 +231,14 @@ public sealed class FrameRenderer : IDisposable
         return _assets.GetImage(ProjectStore.AssetPath(ProjectDirectory, asset));
     }
 
+    // The LUT a layer's look uses.
+    private LookTable Look(Project project, Layer layer, string assetId)
+    {
+        var asset = project.FindAsset(assetId)
+            ?? throw new ZeyoCutException($"layer '{layer.Id}': look asset '{assetId}' not found");
+        return _assets.GetLook(ProjectStore.AssetPath(ProjectDirectory, asset));
+    }
+
     public SKImage RenderImage(Project project, int frame, RenderOptions? options = null)
     {
         var (width, height) = ScaledSize(project, options?.Scale ?? 1);
@@ -329,7 +337,7 @@ public sealed class FrameRenderer : IDisposable
             (float)((crop.Y + crop.Height) * toDecodedY));
         var destination = new SKRect(0, 0, (float)crop.Width, (float)crop.Height);
 
-        using var filter = ColorAdjust.Create(layer, time);
+        using var filter = ColorAdjust.Create(layer, time, id => Look(project, layer, id));
         using var paint = new SKPaint();
         paint.Color = SKColors.White.WithAlpha(SkiaConvert.Alpha(opacity));
         paint.IsAntialias = true;
@@ -411,7 +419,7 @@ public sealed class FrameRenderer : IDisposable
             canvas.Scale(-1, 1, (float)layer.AnchorX, 0);
         }
 
-        using var filter = ColorAdjust.Create(layer, time);
+        using var filter = ColorAdjust.Create(layer, time, id => Look(project, layer, id));
         using var paint = new SKPaint();
         paint.Color = SKColors.White.WithAlpha(SkiaConvert.Alpha(opacity));
         paint.IsAntialias = true;
