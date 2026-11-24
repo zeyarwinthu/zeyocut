@@ -23,14 +23,40 @@ public class TrackModelTests
             new() { Frame = frame, X = 20 + frame, Y = 40, Width = 30, Height = 20, Confidence = confidence, Lost = lost };
         var data = new Dictionary<string, TrackData>
         {
-            ["track_1"] = new() { Track = "track_1", Asset = "street", Width = 320, Height = 180,
-                Frames = Enumerable.Range(0, 90).Select(f => f is >= 60 and < 65 ? Box(f, 0, lost: true) : f is >= 65 and < 70 ? Box(f, 0.3) : Box(f)).ToList() },
+            ["track_1"] = new()
+            {
+                Track = "track_1",
+                Asset = "street",
+                Width = 320,
+                Height = 180,
+                Frames = Enumerable.Range(0, 90).Select(f => f is >= 60 and < 65 ? Box(f, 0, lost: true) : f is >= 65 and < 70 ? Box(f, 0.3) : Box(f)).ToList()
+            },
             ["track_2"] = new() { Track = "track_2", Asset = "street", Width = 320, Height = 180, Frames = Enumerable.Range(40, 50).Select(f => Box(f)).ToList() },
         };
-        project.Tracks.Add(new Track { Id = "track_1", Asset = "street", Layer = "b", Method = TrackMethod.Csrt, Direction = TrackDirection.Both, FirstFrame = 0, LastFrame = 89, Origin = 30,
-            File = "tracks/track_1-00000000.json", Anchors = [new TrackBox { Frame = 30, X = 50, Y = 40, Width = 30, Height = 20 }] });
-        project.Tracks.Add(new Track { Id = "track_2", Asset = "street", Layer = "b", Method = TrackMethod.Faces, FirstFrame = 40, LastFrame = 89, Origin = 40,
-            File = "tracks/track_2-00000000.json" });
+        project.Tracks.Add(new Track
+        {
+            Id = "track_1",
+            Asset = "street",
+            Layer = "b",
+            Method = TrackMethod.Csrt,
+            Direction = TrackDirection.Both,
+            FirstFrame = 0,
+            LastFrame = 89,
+            Origin = 30,
+            File = "tracks/track_1-00000000.json",
+            Anchors = [new TrackBox { Frame = 30, X = 50, Y = 40, Width = 30, Height = 20 }]
+        });
+        project.Tracks.Add(new Track
+        {
+            Id = "track_2",
+            Asset = "street",
+            Layer = "b",
+            Method = TrackMethod.Faces,
+            FirstFrame = 40,
+            LastFrame = 89,
+            Origin = 40,
+            File = "tracks/track_2-00000000.json"
+        });
         RedactionEditor.Apply(project, ["track_1"], new RedactionSettings(RedactionStyle.Blur, 50, 15, 4, 15, "#000000"));
         return (project, data);
     }

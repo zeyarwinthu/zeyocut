@@ -408,7 +408,8 @@ public static partial class InspectorFields
         var parts = new[] { first, second }.Select(p => Animated(project, layer, p.Property, time, p.Label, factor, unit, tip) with { Prefix = p.Prefix }).ToList();
         var keyed = parts.Any(p => p.Keyed);
         return new InspectorField(label, FieldKind.Row, "", Tip: keyed ? $"{InspectorField.KeyedTip}. {tip}" : tip, Keyed: keyed, KeyHere: parts.All(p => p.KeyHere),
-            ToggleKey: at => ValueEditor.ToggleKeyframes(project, layer.Id, [first.Property, second.Property], at)) { Parts = parts };
+            ToggleKey: at => ValueEditor.ToggleKeyframes(project, layer.Id, [first.Property, second.Property], at))
+        { Parts = parts };
     }
 
     // Where the layer is, its size, turn and opacity. A child's x and y are in its parent's pixels.

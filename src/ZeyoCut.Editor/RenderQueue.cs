@@ -292,7 +292,8 @@ public sealed class RenderQueue
             rows.Add(new QueueRow(record.Id, string.Join(", ", outputs.Select(o => Path.GetFileName(o))), true, Path.GetFileName(Path.TrimEndingDirectorySeparator(directory)),
                 presets.Count == 0 ? ExportChoices.ProjectSettings : string.Join(", ", presets), percent,
                 $"{char.ToUpperInvariant(stage[0])}{stage[1..]} {percent.ToString("0", CultureInfo.InvariantCulture)}%", QueueTone.Running,
-                left is { } time ? $"about {JobTime.Format(time)} left" : "just started", null, null) { Directory = directory });
+                left is { } time ? $"about {JobTime.Format(time)} left" : "just started", null, null)
+            { Directory = directory });
         }
 
         return rows;

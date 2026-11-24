@@ -410,7 +410,8 @@ public sealed class VolumeView : FrameworkElement
 
             any = true;
             var brush = new LinearGradientBrush(Color.FromArgb((byte)(Depth(v0) * 120), Ducked.R, Ducked.G, Ducked.B), Color.FromArgb((byte)(Depth(v1) * 120), Ducked.R, Ducked.G, Ducked.B),
-                new Point(X(t0), 0), new Point(X(t1), 0)) { MappingMode = BrushMappingMode.Absolute };
+                new Point(X(t0), 0), new Point(X(t1), 0))
+            { MappingMode = BrushMappingMode.Absolute };
             brush.Freeze();
             dc.DrawRectangle(brush, null, new Rect(X(from), rect.Y, X(to) - X(from), rect.Height));
         }

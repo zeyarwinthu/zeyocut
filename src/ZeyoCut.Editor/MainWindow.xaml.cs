@@ -686,7 +686,7 @@ public partial class MainWindow : Window
             ShowTrackButtons();
             ShowTrackPosition();
         }
-        : null;
+    : null;
 
     // Esc in the Animate view lets go of a drag of keyframes, or clears their selection.
     private Action? AnimateCancelHandler() =>
@@ -3421,64 +3421,64 @@ public partial class MainWindow : Window
         switch (_effectCategory)
         {
             case EffectCategory.Transitions:
-            {
-                var choice = EffectsPanel.Choice(EnumNames.Parse<TransitionType>(key, "transition"));
-                var lanes = TimelineLayout.Lanes(project);
-                var current = EffectsPanel.Current(lanes, _cut, project.Fps);
-                var lane = lanes.FirstOrDefault(l => l.Key == _cut?.Lane) ?? lanes.FirstOrDefault(l => l.Clips.Any(c => c.LayerId == _selectedLayer));
-                var cuts = lane is null ? [] : EffectsPanel.Cuts(lane, project.Fps);
-                EffectName.Text = choice.Name;
-                EffectTarget.Text = _cut?.Label ?? "No cut chosen";
-                if (!EffectDuration.IsKeyboardFocused)
                 {
-                    EffectDuration.Text = EffectsPanel.Seconds(_transitionLength);
+                    var choice = EffectsPanel.Choice(EnumNames.Parse<TransitionType>(key, "transition"));
+                    var lanes = TimelineLayout.Lanes(project);
+                    var current = EffectsPanel.Current(lanes, _cut, project.Fps);
+                    var lane = lanes.FirstOrDefault(l => l.Key == _cut?.Lane) ?? lanes.FirstOrDefault(l => l.Clips.Any(c => c.LayerId == _selectedLayer));
+                    var cuts = lane is null ? [] : EffectsPanel.Cuts(lane, project.Fps);
+                    EffectName.Text = choice.Name;
+                    EffectTarget.Text = _cut?.Label ?? "No cut chosen";
+                    if (!EffectDuration.IsKeyboardFocused)
+                    {
+                        EffectDuration.Text = EffectsPanel.Seconds(_transitionLength);
+                    }
+
+                    ShowDirections(choice);
+                    EffectApplyButton.Content = "Apply to selected cut";
+                    EffectApplyButton.IsEnabled = current is not null;
+                    EffectApplyButton.ToolTip = current is not null ? $"Puts it on {current.Label}, as one undo step"
+                        : _cut is null ? "Choose a cut first: click where two clips meet on the timeline" : $"{_cut.Label} isn't a cut now: the clips overlap or are apart";
+                    EffectEveryButton.Content = cuts.Count > 1 ? $"Apply to every cut ({cuts.Count})" : "Apply to every cut";
+                    EffectEveryButton.IsEnabled = cuts.Count > 0;
+                    EffectEveryButton.ToolTip = lane is null ? "Choose a cut, or select a clip, first" : $"Puts it on the {Count(cuts.Count, "cut")} of {lane.Title}, as one undo step";
+                    EffectNote.Text = "A transition is keyframes and fades on the two clips: adjust them in the Animate view, or undo (Ctrl+Z) to take it off.";
+                    CutTitle.Text = _cut is { } chosen ? $"Selected cut · {SourceViewer.Stamp(chosen.Time)}{(lane is null ? "" : $" · {lane.Title}")}"
+                        : lane is null ? "No cut chosen · click where two clips meet on the timeline" : $"No cut chosen · {lane.Title} has {Count(cuts.Count, "cut")}";
+                    CutStrip.Show(lane?.Clips ?? [], cuts, _cut, project.Duration);
+                    break;
                 }
 
-                ShowDirections(choice);
-                EffectApplyButton.Content = "Apply to selected cut";
-                EffectApplyButton.IsEnabled = current is not null;
-                EffectApplyButton.ToolTip = current is not null ? $"Puts it on {current.Label}, as one undo step"
-                    : _cut is null ? "Choose a cut first: click where two clips meet on the timeline" : $"{_cut.Label} isn't a cut now: the clips overlap or are apart";
-                EffectEveryButton.Content = cuts.Count > 1 ? $"Apply to every cut ({cuts.Count})" : "Apply to every cut";
-                EffectEveryButton.IsEnabled = cuts.Count > 0;
-                EffectEveryButton.ToolTip = lane is null ? "Choose a cut, or select a clip, first" : $"Puts it on the {Count(cuts.Count, "cut")} of {lane.Title}, as one undo step";
-                EffectNote.Text = "A transition is keyframes and fades on the two clips: adjust them in the Animate view, or undo (Ctrl+Z) to take it off.";
-                CutTitle.Text = _cut is { } chosen ? $"Selected cut · {SourceViewer.Stamp(chosen.Time)}{(lane is null ? "" : $" · {lane.Title}")}"
-                    : lane is null ? "No cut chosen · click where two clips meet on the timeline" : $"No cut chosen · {lane.Title} has {Count(cuts.Count, "cut")}";
-                CutStrip.Show(lane?.Clips ?? [], cuts, _cut, project.Duration);
-                break;
-            }
-
             case EffectCategory.VideoEffects:
-            {
-                var (kind, name, _) = EffectsPanel.Effects.First(e => EnumNames.ToName(e.Kind) == key);
-                var layer = _selectedLayer is { } id ? project.FindLayer(id) as VisualLayer : null;
-                var has = layer is not null && EffectsPanel.Has(layer, kind);
-                var what = name.ToLowerInvariant();
-                EffectName.Text = name;
-                EffectTarget.Text = layer?.Id ?? "No layer selected";
-                EffectApplyButton.Content = has ? $"Take the {what} off" : "Add to selected layer";
-                EffectApplyButton.IsEnabled = layer is not null;
-                EffectApplyButton.ToolTip = layer is null ? "Select a picture, text or video on the timeline first"
-                    : has ? $"Takes '{layer.Id}''s {what} away" : $"Gives '{layer.Id}' a {what}, as the inspector's switch does";
-                EffectNote.Text = "Its settings are in the inspector in the Edit view, where they can be keyframed. Undo (Ctrl+Z) takes it off.";
-                break;
-            }
+                {
+                    var (kind, name, _) = EffectsPanel.Effects.First(e => EnumNames.ToName(e.Kind) == key);
+                    var layer = _selectedLayer is { } id ? project.FindLayer(id) as VisualLayer : null;
+                    var has = layer is not null && EffectsPanel.Has(layer, kind);
+                    var what = name.ToLowerInvariant();
+                    EffectName.Text = name;
+                    EffectTarget.Text = layer?.Id ?? "No layer selected";
+                    EffectApplyButton.Content = has ? $"Take the {what} off" : "Add to selected layer";
+                    EffectApplyButton.IsEnabled = layer is not null;
+                    EffectApplyButton.ToolTip = layer is null ? "Select a picture, text or video on the timeline first"
+                        : has ? $"Takes '{layer.Id}''s {what} away" : $"Gives '{layer.Id}' a {what}, as the inspector's switch does";
+                    EffectNote.Text = "Its settings are in the inspector in the Edit view, where they can be keyframed. Undo (Ctrl+Z) takes it off.";
+                    break;
+                }
 
             default:
-            {
-                var animation = EnumNames.Parse<TitleAnimation>(key, "animation");
-                var layer = _selectedLayer is { } id ? project.FindLayer(id) as VisualLayer : null;
-                EffectName.Text = TitleAnimations.Name(animation);
-                EffectTarget.Text = layer is null ? "No layer selected"
-                    : $"{layer.Id} · in: {TitlesPanel.Shown(project, layer, TitleSide.In)} · out: {TitlesPanel.Shown(project, layer, TitleSide.Out)}";
-                EffectApplyButton.Content = "Use to come in";
-                EffectEveryButton.Content = "Use to go out";
-                EffectApplyButton.IsEnabled = EffectEveryButton.IsEnabled = layer is not null;
-                EffectApplyButton.ToolTip = EffectEveryButton.ToolTip = layer is null ? "Select a title, picture or video on the timeline first" : null;
-                EffectNote.Text = "Keyframes on its opacity, scale and position for half a second, or a third of a short layer, from its start or up to its end. Undo (Ctrl+Z) takes them off.";
-                break;
-            }
+                {
+                    var animation = EnumNames.Parse<TitleAnimation>(key, "animation");
+                    var layer = _selectedLayer is { } id ? project.FindLayer(id) as VisualLayer : null;
+                    EffectName.Text = TitleAnimations.Name(animation);
+                    EffectTarget.Text = layer is null ? "No layer selected"
+                        : $"{layer.Id} · in: {TitlesPanel.Shown(project, layer, TitleSide.In)} · out: {TitlesPanel.Shown(project, layer, TitleSide.Out)}";
+                    EffectApplyButton.Content = "Use to come in";
+                    EffectEveryButton.Content = "Use to go out";
+                    EffectApplyButton.IsEnabled = EffectEveryButton.IsEnabled = layer is not null;
+                    EffectApplyButton.ToolTip = EffectEveryButton.ToolTip = layer is null ? "Select a title, picture or video on the timeline first" : null;
+                    EffectNote.Text = "Keyframes on its opacity, scale and position for half a second, or a third of a short layer, from its start or up to its end. Undo (Ctrl+Z) takes them off.";
+                    break;
+                }
         }
     }
 

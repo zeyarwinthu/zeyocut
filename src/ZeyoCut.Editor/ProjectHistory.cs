@@ -177,7 +177,8 @@ public static class ProjectHistory
             .Select(b => (b.Before!.StartsWith(EditorPrefix, StringComparison.Ordinal)
                     ? new SavedChange(b.Time, b.Before[EditorPrefix.Length..], true)
                     : new SavedChange(b.Time, b.Before, false))
-                with { Backup = b });
+                with
+            { Backup = b });
 
     // The revision a copy of project.json holds, from the start of the file, where it's saved
     // second; null when it can't be read there.

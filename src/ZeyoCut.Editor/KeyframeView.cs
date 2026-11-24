@@ -416,7 +416,8 @@ public sealed class KeyframeView : FrameworkElement
         if (_layers.Count == 0)
         {
             var empty = new FormattedText("Nothing here is animated yet. Select a layer in the Edit view and use the diamond next to a value in its inspector, or ask Claude to animate it.",
-                CultureInfo.CurrentCulture, FlowDirection.LeftToRight, Face, 12, secondary, dpi) { MaxTextWidth = Math.Max(40, width - 48) };
+                CultureInfo.CurrentCulture, FlowDirection.LeftToRight, Face, 12, secondary, dpi)
+            { MaxTextWidth = Math.Max(40, width - 48) };
             dc.DrawText(empty, new Point(24, RulerHeight + 20));
             return;
         }
