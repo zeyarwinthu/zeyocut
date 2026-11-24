@@ -4,7 +4,7 @@
 
 ![The editor with the Tora Jumps example open: the media on the left, the frame at 0.967 seconds in the middle, the inspector on the right with Tora's position and rotation animated, and the timeline below with the keyframes on Tora's clip](editor-edit.png)
 
-It imports, browses and tags media, plays the edit with its sound, marks the part of a video or sound to use and inserts or overwrites it at the playhead, moves, trims and splits clips on a timeline, places, crops and animates layers with keyframes, retimes and eases keyframes on a dope sheet or as curves, sets effects, color adjustments and face-blur settings, tracks objects in footage and hides them with corrections where the tracker lost them, puts transitions on cuts, adds titles in the library's styles and its templates with a way in and out, edits captions, changes volumes and a video's speed, mixes the sound roles with volume keyframes and ducking, and exports, one after another in a render queue. Masks and motion paths stay with the model: ask it for those.
+It imports, browses and tags media, plays the edit with its sound, marks the part of a video or sound to use and inserts or overwrites it at the playhead, moves, trims and splits clips on a timeline, places, crops and animates layers with keyframes, retimes and eases keyframes on a dope sheet or as curves, sets effects, color adjustments and face-blur settings, grades a clip's color with the clip as shot beside it and scopes, tracks objects in footage and hides them with corrections where the tracker lost them, puts transitions on cuts, adds titles in the library's styles and its templates with a way in and out, edits captions, changes volumes and a video's speed, mixes the sound roles with volume keyframes and ducking, and exports, one after another in a render queue. Masks and motion paths stay with the model: ask it for those.
 
 ## Open a project
 
@@ -25,7 +25,7 @@ When a project opens with files missing (moved or renamed), the **Relink** view 
 
 The first time the editor starts, when it has no settings file yet, the **Welcome** view shows the projects folder and how to connect Claude: the `zeyocut` entry for Claude Desktop's `claude_desktop_config.json`, with the path of the `ZeyoCut.Mcp.exe` next to the editor, to copy, or the bundle to install instead. Its Connect step turns green when a client lists the server's tools after the Welcome opened (the server notes the last one in `connected.json` in its log folder). The last step copies the sample `examples\tora-jump` into the projects folder, unless a project of that name is there already, and opens it. Skip setup, or I'll do this later, goes to Home, and the Welcome doesn't open again.
 
-The header across the top names the project and whether it's saved ("Saved · rev N"). The logo and **Projects** close the project and go back to Home. In the middle, **Edit**, **Audio**, **Animate**, **Track & blur**, **Captions** and **Activity** switch views; on the right are Undo and Redo, when Claude last saved the project, and **Export**, which opens the Export view (Ctrl+1 to Ctrl+6 go to Edit, Audio, Animate, Track & blur, Captions and Activity, and Ctrl+E to Export; ? or F1 lists every key). The Media browser, the source viewer, Titles and Effects, like Export, have Back to edit in place of the views. The status bar at the bottom names the selected clip, counts the layers and lanes, and says what the last change did.
+The header across the top names the project and whether it's saved ("Saved · rev N"). The logo and **Projects** close the project and go back to Home. In the middle, **Edit**, **Audio**, **Animate**, **Track & blur**, **Captions** and **Activity** switch views; on the right are Undo and Redo, when Claude last saved the project, and **Export**, which opens the Export view (Ctrl+1 to Ctrl+6 go to Edit, Audio, Animate, Track & blur, Captions and Activity, and Ctrl+E to Export; ? or F1 lists every key). The Media browser, the source viewer, Titles, Effects and Color, like Export, have Back to edit in place of the views. The status bar at the bottom names the selected clip, counts the layers and lanes, and says what the last change did.
 
 ## Media
 
@@ -34,7 +34,7 @@ The media panel shows a tile for each asset: a picture made small, a video's fir
 - Import, above the media list (Ctrl+I), imports images, audio, fonts and video. Video that needs normalizing (variable frame rate, rotation, HDR) is converted first, as `import_video` does, with its progress in the media list. Files you pick yourself can come from any folder; the import folders limit only what the model can read.
 - Drag files from File Explorer onto the window to import them.
 - Drag media from the list onto a lane of the timeline, or right-click it → Add at the playhead. A video or picture dropped on a picture lane is drawn at that lane's level, and anywhere else on a level of its own on top. Sound takes the role of the sound lane it's dropped on, else music.
-- Double-click a video or a sound to open it in the [source viewer](#the-source-viewer). On the rail beside the panel, **Media** opens the [Media browser](#the-media-browser), and **Titles** and **Effects** open the [Titles](#titles) and [Effects](#effects) views.
+- Double-click a video or a sound to open it in the [source viewer](#the-source-viewer). On the rail beside the panel, **Media** opens the [Media browser](#the-media-browser), and **Titles**, **Effects** and **Color** open the [Titles](#titles), [Effects](#effects) and [Color](#color) views.
 
 ### The Media browser
 
@@ -80,6 +80,18 @@ The source viewer shows a video or a sound on its own (its frames drawn by the s
 - **Video effects**: Blur, Shadow, Border and Tint go on the selected picture, text or video, or come off it, as the inspector's switches do. Their settings are in the inspector.
 - **Text animations**: Fade, Pop and Slide up, for how the selected title, picture or video comes in at its start (**Use to come in**) or goes out at its end (**Use to go out**), as the Titles view's presets.
 
+## Color
+
+![The Color view with a demo project open on the clip street_b at 7.5 s: the street as shot left of the line and graded warmer and brighter right of it, the seven adjustments on the right at the grade's values (exposure +0.3, contrast +12, highlights −20, shadows +18, temperature +35, tint 0, saturation +20), and below the frame's waveform and vectorscope](editor-color.png)
+
+**Color** on the media panel's rail grades a clip as `set_color` does, and so does Color… on a clip's right-click menu. It works on the selected video or picture, else on the one drawn on top at the playhead; the header names it, and says so when it isn't at the playhead. ← and → step through frames and Home and End go to the first and last, but the view doesn't play.
+
+- **The viewer** draws the frame at the playhead with the same renderer as exports. **After** shows the clip as graded, **Before** as shot, and **Split** both, as shot left of the line and graded right of it; drag across the frame to move the line. The line and its tags are never in the frame or the export.
+- **Adjust** has Exposure in stops (−3 to +3) and Contrast, Highlights, Shadows, Temperature, Tint and Saturation from −100 to +100; 0 leaves the clip as it is. Contrast and saturation are the inspector's percentages less 100: +12 is 112%. The frame follows a slider while you drag it, and the change is saved when you let go, as one undo step. Click a value to type one (`+0.3`, `-20`, `15%`): typed, contrast and saturation go up to +300, and a value `set_color` doesn't take is refused with its range. A value with keyframes gets a keyframe at the playhead instead.
+- **Reset all** puts the clip back as shot, with no grade and its contrast and saturation at 100%, as `set_color` with `reset` does.
+- **Copy grade** remembers the clip, and **Paste grade** gives its color to the clip shown, as `set_color` with `from` does. **Apply to all street clips**, named for the clip's file, gives every clip of the same video or picture this clip's color, as `sameFootage` does. Each is one undo step.
+- **Waveform** draws the frame's brightness column by column, black at the bottom and white at the top, with lines at a quarter, half and three quarters. **Vectorscope** draws its colors by hue around the middle and by strength out from it, gray in the middle. Both are of the frame the viewer shows as graded, so they follow a slider as it moves.
+
 ## The preview
 
 The preview draws the frame at the playhead with the same renderer as exports, from proxies for footage over 2560 px. Its header names the canvas ("16:9 · 1920×1080 · 30 fps"); the list on the right sets the zoom: Fit, 50%, 100% or 200%.
@@ -113,7 +125,7 @@ Clips are drawn in their kind's color, a video's or picture's with its thumbnail
 - Drag a clip sideways to move it, or drag its edges to trim it; a video can show more as far as its source goes. Drag a video, picture or text clip up or down onto another lane to change what it's drawn over, or between two lanes to give it a level of its own. Escape cancels the drag.
 - Held at the left or right edge of the lanes, a drag scrolls them, faster the further in, so a clip can go anywhere in a long video. Scrubbing in the ruler does the same.
 - Clips snap to clip edges, the playhead and markers. The Snap button (N) turns it off.
-- S (or Ctrl+B) splits the selected clip at the playhead, and Delete removes it with its child layers (a child layer selected in the preview is removed with its own children). Right-click a clip for these, for Hide and Show (Mute and Unmute for sound), and to turn a video's own sound off or on. Ctrl+D duplicates the selected clip with its child layers, as `duplicate_layer` does, and selects the copy.
+- S (or Ctrl+B) splits the selected clip at the playhead, and Delete removes it with its child layers (a child layer selected in the preview is removed with its own children). Right-click a clip for these, for Hide and Show (Mute and Unmute for sound), to turn a video's own sound off or on, and for Color… on a video or picture, which opens the [Color](#color) view on it. Ctrl+D duplicates the selected clip with its child layers, as `duplicate_layer` does, and selects the copy.
 - Click or drag in the ruler to move the playhead. ↑ and ↓ jump to the previous and next clip edge.
 - The ruler and the lanes are shaded past the project's end: the export stops there, so what runs past it is cut. The project's Duration in the inspector moves the end.
 - The selected clip shows its layer's keyframes as white diamonds along its bottom edge. Click one to move the playhead there; Alt+← and Alt+→ jump to the previous and next.
@@ -124,7 +136,7 @@ Clips are drawn in their kind's color, a video's or picture's with its thumbnail
 
 The inspector shows the selected clip and changes it. With nothing selected, it shows the project: its Duration is changed there, as `update_project` changes it, and the rest is shown.
 
-Its header names the clip with a badge for its kind, and says where it comes from and what goes with it ("from street.mp4 · 1 child · 2 redactions"). The ⋯ button has the timeline's right-click menu: split, delete, hide or mute, and a video's sound. The fields are on tabs by kind, and the tab you chose stays chosen for the next clip that has it:
+Its header names the clip with a badge for its kind, and says where it comes from and what goes with it ("from street.mp4 · 1 child · 2 redactions"). The ⋯ button has the timeline's right-click menu: split, delete, hide or mute, a video's sound, and Color…. The fields are on tabs by kind, and the tab you chose stays chosen for the next clip that has it:
 
 | Clip | Tabs |
 |---|---|
@@ -143,7 +155,7 @@ Its header names the clip with a badge for its kind, and says where it comes fro
 - **Transform:** Position X and Y place the layer's anchor on the canvas (a child layer's, in its parent's pixels), Scale W and H size it in percent (negative flips it), Rotation turns it in degrees around the anchor, and Opacity is in percent, by its slider or typed. The slider saves when you let it go, as one undo step. A layer that follows a motion path shows Position: the path places it; ask the model to change the path. A caption's X and Y move every caption in its track by the same amount.
 - **Crop:** a video's Left, Top, Right and Bottom cut that many pixels of its file off each side. What's left of the picture stays where it was, and so do child layers on it. A crop the model animated is changed with keyframes; ask the model.
 - **Effects:** Blur, Shadow, Border (the outline effect) and Tint switch an effect on and off, as `set_effect` does. Switched on, each shows its settings: the blur's size each way; the shadow's color, offset, softness and opacity; the border's color and width; the tint's color and amount (a new tint is white). Captions don't have them.
-- **Color:** a video's or picture's Brightness, Contrast and Saturation, in percent: 0, 100 and 100 leave it as it is.
+- **Color:** a video's or picture's Brightness, Contrast and Saturation, in percent: 0, 100 and 100 leave it as it is. A graded clip shows its grade under them ("exposure 0.3, highlights -0.2, shadows 0.18, temperature 0.35"), which the [Color](#color) view changes.
 - **Face blur:** a video whose footage a redaction hides (`apply_redaction`) shows its settings: Style, Strength (pixelate and blur) or Fill color (solid), Padding, Feather, Hold frames, Shape and Smooth, a section for each redaction. They are the redaction's, so they change every clip of that footage. The Track & blur view sets most of them too.
 
 ![The title of Tora Jumps with a shadow switched on: the inspector's Effects tab shows the shadow's color, offset, blur and opacity, each number with a keyframe diamond](editor-effects.png)

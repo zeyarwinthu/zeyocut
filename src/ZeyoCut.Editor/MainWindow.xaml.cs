@@ -148,6 +148,21 @@ public partial class MainWindow : Window
     private BitmapSource? _trackPlain;
     private (Project Project, Project Plain)? _plainFrom;
     private bool _fillingTrack;
+
+    // The Color view: the clip it grades, the frame with that clip as shot (drawn by its own worker),
+    // the grade copied, a slider's value not saved yet, and the scopes of the preview's last frame.
+    private string? _colorClip;
+    private TrackFrames? _colorFrames;
+    private TrackFrameRequest? _colorAsked;
+    private BitmapSource? _colorBefore;
+    private (Project Shown, string Clip, Project Before)? _colorBeforeFrom;
+    private string? _gradeCopied;
+    private (string Clip, ColorSlider Slider, double Value)? _colorPending;
+    private bool _fillingColor;
+    private PreviewFrame? _lastFrame;
+    private byte[]? _scoped;
+    private WriteableBitmap? _waveform;
+    private WriteableBitmap? _vectorscope;
     private (string? Key, AudioLevelsReport? Report, string? Error)? _measured;
     private bool _settingDuck;
     private FileSystemWatcher? _watcher;
@@ -478,6 +493,8 @@ public partial class MainWindow : Window
 
     private bool Tracking => _document is not null && TrackMode.IsChecked == true;
 
+    private bool Coloring => _document is not null && ColorMode.IsChecked == true;
+
     private bool Browsing => _document is not null && MediaMode.IsChecked == true;
 
     // The source viewer is showing, with a file open in it.
@@ -588,7 +605,7 @@ public partial class MainWindow : Window
         var hearing = Hearing;
         var playable = editing || animating || hearing;
         var tracking = Tracking;
-        var stepping = playable || tracking;
+        var stepping = playable || tracking || Coloring;
         var source = Sourcing ? _source : null;
         return command switch
         {
@@ -936,6 +953,20 @@ public partial class MainWindow : Window
         _trackAsked = null;
         _trackPlain = null;
         _plainFrom = null;
+        if (_colorFrames is { } colorFrames)
+        {
+            _ = Task.Run(colorFrames.Dispose);
+        }
+
+        _colorFrames = null;
+        _colorAsked = null;
+        _colorBefore = null;
+        _colorBeforeFrom = null;
+        _colorClip = null;
+        _colorPending = null;
+        _gradeCopied = null;
+        _lastFrame = null;
+        _scoped = null;
         _trackData.Clear();
         _trackPending = null;
         _trackSelected = null;
@@ -1536,20 +1567,20 @@ public partial class MainWindow : Window
     }
 
     // The header: the way back to the projects, the project's path and its commands while one is
-    // open; the Export view, the Media browser, the source viewer and the Titles and Effects views have
-    // a way back to Edit in place of the tabs, and the Export view has it in place of the Export button
-    // too.
+    // open; the Export view, the Media browser, the source viewer and the Titles, Effects and Color
+    // views have a way back to Edit in place of the tabs, and the Export view has it in place of the
+    // Export button too.
     private void ShowHeader()
     {
         var open = _document is not null;
         var exporting = open && ExportMode.IsChecked == true;
-        var away = exporting || open && (MediaMode.IsChecked == true || SourceMode.IsChecked == true || TitlesMode.IsChecked == true || EffectsMode.IsChecked == true);
+        var away = exporting || open && (MediaMode.IsChecked == true || SourceMode.IsChecked == true || TitlesMode.IsChecked == true || EffectsMode.IsChecked == true || ColorMode.IsChecked == true);
         LogoButton.IsEnabled = open;
         AppName.Visibility = open ? Visibility.Collapsed : Visibility.Visible;
         Crumbs.Visibility = ProjectCommands.Visibility = open ? Visibility.Visible : Visibility.Collapsed;
         ModeBar.Visibility = open && !away ? Visibility.Visible : Visibility.Collapsed;
         ExportCrumb.Visibility = BackToEdit.Visibility = away ? Visibility.Visible : Visibility.Collapsed;
-        CrumbName.Text = exporting ? "Export" : MediaMode.IsChecked == true ? "Media" : TitlesMode.IsChecked == true ? "Titles" : EffectsMode.IsChecked == true ? "Effects" : "Source";
+        CrumbName.Text = exporting ? "Export" : MediaMode.IsChecked == true ? "Media" : TitlesMode.IsChecked == true ? "Titles" : EffectsMode.IsChecked == true ? "Effects" : ColorMode.IsChecked == true ? "Color" : "Source";
         ExportViewButton.Visibility = exporting ? Visibility.Collapsed : Visibility.Visible;
     }
 
@@ -1730,6 +1761,11 @@ public partial class MainWindow : Window
         {
             ShowSource();
         }
+
+        if (ColorMode.IsChecked == true)
+        {
+            ShowColor();
+        }
     }
 
     private void OnFrame(PreviewFrame frame)
@@ -1773,7 +1809,12 @@ public partial class MainWindow : Window
         PreviewImage.Visibility = Visibility.Visible;
         PreviewMessage.Visibility = Visibility.Collapsed;
         _outlines = frame.Outlines;
+        _lastFrame = frame;
         ShowSelection();
+        if (ColorMode.IsChecked == true)
+        {
+            ShowScopes();
+        }
     }
 
     // The timeline clip that holds a layer: its own, or the one of the layer it's attached to.
@@ -2449,7 +2490,7 @@ public partial class MainWindow : Window
         {
             ShowAnimate();
         }
-        else if (_document is not null && (TitlesMode.IsChecked == true || EffectsMode.IsChecked == true))
+        else if (_document is not null && (TitlesMode.IsChecked == true || EffectsMode.IsChecked == true || ColorMode.IsChecked == true))
         {
             ShowPage();
         }
@@ -2627,6 +2668,7 @@ public partial class MainWindow : Window
         CaptionsPage.Visibility = Visibility.Collapsed;
         ActivityPage.Visibility = Visibility.Collapsed;
         ExportPage.Visibility = Visibility.Collapsed;
+        ColorPage.Visibility = Visibility.Collapsed;
         StartPage.Visibility = Visibility.Visible;
         StartError.Text = error ?? "";
         StartError.Visibility = error is null ? Visibility.Collapsed : Visibility.Visible;
@@ -3254,6 +3296,8 @@ public partial class MainWindow : Window
     private void OnMediaBrowser(object sender, RoutedEventArgs e) => MediaMode.IsChecked = true;
 
     private void OnTitlesView(object sender, RoutedEventArgs e) => TitlesMode.IsChecked = true;
+
+    private void OnColorView(object sender, RoutedEventArgs e) => ColorMode.IsChecked = true;
 
     private void OnEffectsView(object sender, RoutedEventArgs e)
     {
@@ -4517,6 +4561,12 @@ public partial class MainWindow : Window
         SourcePage.Visibility = SourceMode.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
         TitlesPage.Visibility = TitlesMode.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
         EffectsPage.Visibility = EffectsMode.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
+        ColorPage.Visibility = ColorMode.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
+        if (ColorMode.IsChecked != true)
+        {
+            GradeViewer.Release();
+        }
+
         if (SourceMode.IsChecked != true)
         {
             _source?.Pause();
@@ -4532,8 +4582,8 @@ public partial class MainWindow : Window
         ShowPage();
     }
 
-    // Brings the Audio, Animate, Track & blur, Captions, Activity, Export, Media, Source, Titles or
-    // Effects view up to date when it is the one showing.
+    // Brings the Audio, Animate, Track & blur, Captions, Activity, Export, Media, Source, Titles,
+    // Effects or Color view up to date when it is the one showing.
     private void ShowPage()
     {
         if (_document is null)
@@ -4580,6 +4630,10 @@ public partial class MainWindow : Window
         else if (EffectsMode.IsChecked == true)
         {
             ShowEffects();
+        }
+        else if (ColorMode.IsChecked == true)
+        {
+            ShowColor();
         }
     }
 
@@ -6278,6 +6332,16 @@ public partial class MainWindow : Window
         {
             Add(clip.SoundOff ? "Turn its sound on" : "Turn its sound off", null, true, () =>
                 Apply(new UpdateLayerOperation(clip.LayerId, new JsonObject { ["muted"] = !clip.SoundOff })));
+        }
+
+        if (ColorPanel.Gradable(_document!.View.FindLayer(clip.LayerId)))
+        {
+            menu.Items.Add(new Separator());
+            Add("Color…", null, true, () =>
+            {
+                SelectLayer(clip.LayerId);
+                ColorMode.IsChecked = true;
+            });
         }
 
         menu.IsOpen = true;
@@ -8323,6 +8387,359 @@ public partial class MainWindow : Window
             });
         });
     }
+
+    // The Color view: the clip it grades (the one selected, else the one in front at the playhead),
+    // its controls' values at the playhead, what its buttons can do to it, the viewer and the scopes.
+    private void ShowColor()
+    {
+        var project = _document!.View;
+        var time = FrameMath.TimeOf(project, _frame);
+        var clip = _colorClip = ColorPanel.Target(project, _selectedLayer, time);
+        ColorRows.IsEnabled = ColorCopy.IsEnabled = clip is not null;
+        _fillingColor = true;
+        try
+        {
+            if (clip is null)
+            {
+                foreach (var slider in ColorPanel.Sliders)
+                {
+                    var (_, knob, readout) = ColorControlsOf(slider.Name);
+                    knob.Value = 0;
+                    readout.Text = "";
+                }
+            }
+            else
+            {
+                foreach (var row in ColorPanel.Rows(project, clip, time))
+                {
+                    var (label, knob, readout) = ColorControlsOf(row.Slider.Name);
+                    knob.Value = Math.Clamp(row.Slider.Shown(row.Value), row.Slider.Min, row.Slider.Max);
+                    readout.Text = row.Readout;
+                    label.Foreground = (Brush)FindResource(row.Keyed ? "AccentSoftTextBrush" : "IconTextBrush");
+                    label.ToolTip = knob.ToolTip = readout.ToolTip = $"{row.Slider.Tip}. From {ColorPanel.Range(row.Slider)}"
+                        + (row.Keyed ? "; it has keyframes, so a change sets one at the playhead" : "");
+                }
+            }
+        }
+        finally
+        {
+            _fillingColor = false;
+        }
+
+        if (clip is null)
+        {
+            ColorClipText.Text = "No clip";
+            ColorNote.Text = "Select a video or picture clip, or move the playhead onto one";
+            ColorReset.IsEnabled = ColorPaste.IsEnabled = ColorApply.IsEnabled = false;
+            ColorApply.Content = "Apply to all clips of this footage";
+        }
+        else
+        {
+            var layer = project.FindLayer(clip)!;
+            ColorClipText.Text = clip;
+            ColorNote.Text = SceneEvaluator.IsActive(layer, time, project.Duration) ? "Color · applies to this clip" : "Color · applies to this clip, which isn't at the playhead";
+            ColorReset.IsEnabled = ColorEditor.Graded((IColorAdjustable)layer);
+            ColorCopy.ToolTip = "Keep this clip's color to paste onto another clip";
+            ColorPaste.IsEnabled = _gradeCopied is { } copied && copied != clip && ColorPanel.Gradable(project.FindLayer(copied));
+            ColorPaste.ToolTip = _gradeCopied is { } from ? $"Give this clip the color '{from}' has now" : "Copy a clip's grade first";
+            var others = ColorPanel.Others(project, clip);
+            ColorApply.Content = ColorPanel.ApplyLabel(project, clip);
+            ColorApply.IsEnabled = others.Count > 0;
+            ColorApply.ToolTip = others.Count > 0 ? $"Give {string.Join(", ", others)} this clip's color" : "No other clip shows this footage";
+        }
+
+        RequestColorBefore();
+        ShowScopes();
+    }
+
+    private (TextBlock Label, Slider Slider, TextBox Readout) ColorControlsOf(string name) => name switch
+    {
+        "exposure" => (ColorExposureLabel, ColorExposure, ColorExposureText),
+        "contrast" => (ColorContrastLabel, ColorContrast, ColorContrastText),
+        "highlights" => (ColorHighlightsLabel, ColorHighlights, ColorHighlightsText),
+        "shadows" => (ColorShadowsLabel, ColorShadows, ColorShadowsText),
+        "temperature" => (ColorTemperatureLabel, ColorTemperature, ColorTemperatureText),
+        "tint" => (ColorTintLabel, ColorTint, ColorTintText),
+        _ => (ColorSaturationLabel, ColorSaturation, ColorSaturationText),
+    };
+
+    // The frame with the clip as shot, for the viewer's Split and Before: drawn on a worker thread
+    // and shown once it's done (OnColorBefore), the one before it meanwhile. A clip as shot needs
+    // none: both sides are the preview's frame.
+    private void RequestColorBefore()
+    {
+        var shown = Shown;
+        var canvas = new Size(shown.Width, shown.Height);
+        if (_colorClip is not { } clip)
+        {
+            _colorBefore = null;
+            _colorBeforeFrom = null;
+            GradeViewer.Show(canvas, null);
+            return;
+        }
+
+        if (_colorBeforeFrom is not { } from || !ReferenceEquals(from.Shown, shown) || from.Clip != clip)
+        {
+            if (_colorBeforeFrom?.Clip != clip)
+            {
+                _colorBefore = null;
+            }
+
+            _colorBeforeFrom = from = (shown, clip, ColorPanel.Before(shown, clip));
+        }
+
+        if (ReferenceEquals(from.Before, shown))
+        {
+            _colorAsked = null;
+            _colorBefore = null;
+            GradeViewer.Show(canvas, null);
+            return;
+        }
+
+        var scale = Math.Min(1, 1280.0 / Math.Max(shown.Width, shown.Height));
+        var asked = _colorAsked;
+        if (ColorAfter.IsChecked != true && (asked is null || !ReferenceEquals(asked.Project, from.Before) || asked.Frame != _frame || asked.Scale != scale))
+        {
+            if (_colorFrames is null)
+            {
+                TrackFrames? frames = null;
+                frames = new TrackFrames(_document!.Session.Directory, () => Ffmpeg().Ffmpeg, picture => Dispatcher.InvokeAsync(() =>
+                {
+                    if (ReferenceEquals(frames, _colorFrames))
+                    {
+                        OnColorBefore(picture);
+                    }
+                }));
+                _colorFrames = frames;
+            }
+
+            _colorAsked = new TrackFrameRequest(from.Before, _frame, scale);
+            _colorFrames.Request(_colorAsked);
+        }
+
+        GradeViewer.Show(canvas, _colorBefore);
+    }
+
+    private void OnColorBefore(TrackFramePicture picture)
+    {
+        if (!ReferenceEquals(picture.Request, _colorAsked) || _document is null)
+        {
+            return;
+        }
+
+        if (picture.Pixels is null)
+        {
+            _colorBefore = null;
+            Message($"Frame {picture.Request.Frame} can't be drawn as shot: {picture.Error}");
+        }
+        else
+        {
+            var bitmap = BitmapSource.Create(picture.Width, picture.Height, 96, 96, PixelFormats.Pbgra32, null, picture.Pixels, picture.Width * 4);
+            bitmap.Freeze();
+            _colorBefore = bitmap;
+        }
+
+        if (ColorMode.IsChecked == true)
+        {
+            GradeViewer.Show(new Size(Shown.Width, Shown.Height), _colorBefore);
+        }
+    }
+
+    private const int WaveformColumns = 320;
+    private const int WaveformRows = 160;
+    private const int VectorscopeSize = 151;
+
+    // The waveform and vectorscope of the frame the preview drew last.
+    private void ShowScopes()
+    {
+        if (_lastFrame is not { Pixels: { } pixels } frame)
+        {
+            WaveformImage.Source = VectorscopeImage.Source = null;
+            _scoped = null;
+            return;
+        }
+
+        if (ReferenceEquals(pixels, _scoped))
+        {
+            return;
+        }
+
+        _scoped = pixels;
+        WaveformImage.Source = ScopeBitmap(ref _waveform, Scopes.Waveform(pixels, frame.Width, frame.Height, WaveformColumns, WaveformRows));
+        VectorscopeImage.Source = ScopeBitmap(ref _vectorscope, Scopes.Vectorscope(pixels, frame.Width, frame.Height, VectorscopeSize));
+    }
+
+    private static WriteableBitmap ScopeBitmap(ref WriteableBitmap? bitmap, ScopePicture scope)
+    {
+        if (bitmap is null || bitmap.PixelWidth != scope.Width || bitmap.PixelHeight != scope.Height)
+        {
+            bitmap = new WriteableBitmap(scope.Width, scope.Height, 96, 96, PixelFormats.Pbgra32, null);
+        }
+
+        bitmap.WritePixels(new Int32Rect(0, 0, scope.Width, scope.Height), scope.Pixels, scope.Width * 4, 0);
+        return bitmap;
+    }
+
+    private void OnGradeViewMode(object sender, RoutedEventArgs e)
+    {
+        if (!IsLoaded || sender is not RadioButton { Tag: string mode })
+        {
+            return;
+        }
+
+        GradeViewer.Mode = Enum.Parse<GradeViewMode>(mode);
+        if (Coloring)
+        {
+            RequestColorBefore();
+        }
+    }
+
+    // A slider moving: its readout and the preview follow at once, the preview drawing a copy of the
+    // project with the change, and the change is saved when the slider is let go or its key comes up.
+    private void OnColorSlider(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (_fillingColor || !IsLoaded || _document is not { } document || _preview is null || _colorClip is not { } clip || sender is not Slider { Tag: string name })
+        {
+            return;
+        }
+
+        var slider = ColorPanel.Slider(name);
+        var value = Math.Clamp(slider.ValueOf(e.NewValue), slider.Control.Min, slider.Control.Max);
+        ColorControlsOf(name).Readout.Text = ColorPanel.Readout(slider, value);
+        _colorPending = (clip, slider, value);
+        try
+        {
+            var trial = ColorPanel.Trial(document.View, ColorPanel.Change(document.View, clip, slider, value, FrameMath.TimeOf(document.View, _frame)));
+            _preview.Request(_preview.Source(InShownLanguage(trial), 1), _frame);
+            _drawingSince ??= DateTime.UtcNow;
+        }
+        catch (ZeyoCutException ex)
+        {
+            Message(ex.Message);
+        }
+    }
+
+    private void OnColorSliderDone(object sender, MouseButtonEventArgs e) => CommitColor();
+
+    private void OnColorSliderKey(object sender, KeyEventArgs e) => CommitColor();
+
+    private void CommitColor()
+    {
+        if (_colorPending is { } pending)
+        {
+            _colorPending = null;
+            SetColor(pending.Clip, pending.Slider, pending.Value);
+        }
+    }
+
+    // Saves a control's value on a clip, as set_color sets it or as a keyframe at the playhead; a
+    // value it already has saves nothing.
+    private void SetColor(string clip, ColorSlider slider, double value) => WhenSaved(() =>
+    {
+        if (_document is not { } document || document.View.FindLayer(clip) is not IColorAdjustable layer)
+        {
+            return;
+        }
+
+        var project = document.View;
+        var time = FrameMath.TimeOf(project, _frame);
+        if (ColorEditor.Value(layer, slider.Control) is not { Keyframes.Count: > 0 } && Math.Abs(ColorEditor.At(layer, slider.Control, time) - value) < 1e-9)
+        {
+            RequestFrame();
+            return;
+        }
+
+        try
+        {
+            Apply(ColorPanel.Change(project, clip, slider, value, time));
+        }
+        catch (ZeyoCutException ex)
+        {
+            Message(ex.Message);
+            RequestFrame();
+            ShowColor();
+        }
+    });
+
+    private void OnColorReadoutKey(object sender, KeyEventArgs e)
+    {
+        if (sender is not TextBox box)
+        {
+            return;
+        }
+
+        if (e.Key == Key.Enter)
+        {
+            CommitReadout(box);
+            e.Handled = true;
+        }
+        else if (e.Key == Key.Escape)
+        {
+            ShowColor();
+            e.Handled = true;
+        }
+    }
+
+    private void OnColorReadoutLeft(object sender, KeyboardFocusChangedEventArgs e) => CommitReadout((TextBox)sender);
+
+    // A value typed in a readout is saved as the slider saves one; one set_color doesn't take puts
+    // the readout back and says what it takes.
+    private void CommitReadout(TextBox box)
+    {
+        if (_fillingColor || _document is not { } document || _colorClip is not { } clip || box.Tag is not string name || document.View.FindLayer(clip) is not IColorAdjustable layer)
+        {
+            return;
+        }
+
+        var slider = ColorPanel.Slider(name);
+        var now = ColorEditor.At(layer, slider.Control, FrameMath.TimeOf(document.View, _frame));
+        if (box.Text.Trim() == ColorPanel.Readout(slider, now))
+        {
+            return;
+        }
+
+        if (ColorPanel.Parse(slider, box.Text) is not { } value)
+        {
+            Message($"{slider.Label} is a number from {ColorPanel.Range(slider)}");
+            box.Text = ColorPanel.Readout(slider, now);
+            return;
+        }
+
+        SetColor(clip, slider, value);
+    }
+
+    private void OnColorReset(object sender, RoutedEventArgs e) => ColorEdit(ColorPanel.Reset);
+
+    private void OnColorApply(object sender, RoutedEventArgs e) => ColorEdit(ColorPanel.ApplyToFootage);
+
+    private void OnColorPaste(object sender, RoutedEventArgs e)
+    {
+        if (_gradeCopied is { } from)
+        {
+            ColorEdit(clip => ColorPanel.Paste(clip, from));
+        }
+    }
+
+    // Copy grade keeps the clip's id: Paste grade gives another clip the color it has then.
+    private void OnColorCopy(object sender, RoutedEventArgs e)
+    {
+        if (_document is not { } document || _colorClip is not { } clip)
+        {
+            return;
+        }
+
+        _gradeCopied = clip;
+        Message($"Copied the color of '{clip}' ({ColorEditor.Describe(ColorEditor.GetColorLayer(document.View, clip))}): Paste grade gives it to another clip");
+        ShowColor();
+    }
+
+    private void ColorEdit(Func<string, EditOperation> edit) => WhenSaved(() =>
+    {
+        if (Coloring && _colorClip is { } clip)
+        {
+            Apply(edit(clip));
+        }
+    });
 
     private const int MeterPerSecond = 50;
 

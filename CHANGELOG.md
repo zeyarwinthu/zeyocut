@@ -118,6 +118,14 @@ when they open.
     it, and Apply to selected cut or Apply to every cut (one undo step) puts it on as
     `add_transition` does, with the program at the cut shown. Blur, Shadow, Border and Tint go on
     or off the selected layer; Fade, Pop and Slide up are its way in or out.
+  - **Color** (on the media panel's rail, or Color… on a clip's menu): grades the selected video or
+    picture, or the one on top at the playhead, as `set_color` does. The viewer shows it as graded,
+    as shot, or split by a line you drag, drawn by the renderer. Exposure, contrast, highlights,
+    shadows, temperature, tint and saturation each have a slider, saved when let go as one undo step
+    while the frame follows the drag, and a value to type; a value with keyframes gets one at the
+    playhead. Reset all, Copy grade and Paste grade (`from`), and Apply to all clips of the same
+    footage (`sameFootage`). A waveform and a vectorscope of the frame shown. The inspector shows a
+    clip's grade.
   - **Source viewer** (double-click a video or sound): the file alone, drawn by the renderer and
     played with its sound, beside the program at the playhead. Mark in (I), Mark out (O) and Alt+X
     to clear them choose the part, which becomes the clip's trim in and out; Audio adds footage with

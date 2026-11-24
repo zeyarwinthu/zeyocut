@@ -2675,6 +2675,156 @@ public class WindowTests
         Assert.Equal(firstFile, Saved().File);
     });
 
+    // The Color view grades a clip as set_color does: a slider when it's let go, a value typed, Copy
+    // and Paste grade, Apply to all clips of the footage and Reset all; the viewer has the clip as
+    // shot beside the preview's frame, and the scopes are of that frame.
+    [Fact]
+    public void TheColorViewGradesAClipAsSetColorDoes() => TestWindow.Run("window-color", (window, folder) =>
+    {
+        var directory = Saved(folder, "graded");
+        ProjectSession.Open(directory).Mutate("add_image_layer", p =>
+        {
+            p.Duration = 3;
+            foreach (var (id, start) in new[] { ("card_a", 0.0), ("card_b", 1.0), ("card_c", 2.0) })
+            {
+                ProjectEditor.AddImageLayer(p, new ImageLayerOptions { Drawings = new Dictionary<string, string> { ["normal"] = "logo" }, Id = id, Start = start, End = start + 1, ZIndex = 0, ScaleX = 40, ScaleY = 20 });
+            }
+
+            ProjectEditor.AddTextLayer(p, new TextLayerOptions { Id = "title", Text = "Hi", Start = 0, End = 3, ZIndex = 1 });
+            return 0;
+        });
+        window.OpenProject(directory);
+        TestWindow.Pump();
+        Project Load() => ProjectStore.Load(directory);
+        ImageLayer Card(string id) => (ImageLayer)Load().FindLayer(id)!;
+
+        // The title is selected, so the view grades the picture in front at the playhead.
+        window.SelectLayer("title");
+        Click(window, "ColorButton");
+        TestWindow.Pump();
+        Assert.Equal(Visibility.Visible, Shown(window, "ColorPage"));
+        Assert.Equal(Visibility.Collapsed, Shown(window, "ModeBar"));
+        Assert.Equal("Color", ((System.Windows.Documents.Run)window.FindName("CrumbName")).Text);
+        Assert.Equal(("card_a", "Color · applies to this clip"), (Text(window, "ColorClipText"), Text(window, "ColorNote")));
+        TextBox Readout(string name) => (TextBox)window.FindName($"Color{name}Text");
+        Assert.All(new[] { "Exposure", "Contrast", "Highlights", "Shadows", "Temperature", "Tint", "Saturation" }, name => Assert.Equal("0", Readout(name).Text));
+        Button Button(string name) => (Button)window.FindName(name);
+        Assert.Equal((false, false, "Apply to all logo clips", true), (Button("ColorReset").IsEnabled, Button("ColorPaste").IsEnabled, Button("ColorApply").Content, Button("ColorApply").IsEnabled));
+        Assert.True(window.CanRun(Command.NextFrame));
+        Assert.False(window.CanRun(Command.Play));
+
+        // Exposure +0.5: the readout and the preview follow the slider, and it's saved when let go,
+        // as set_color saves it.
+        var before = Load();
+        var exposure = (Slider)window.FindName("ColorExposure");
+        Assert.All(new[] { ("Exposure", 0.01), ("Contrast", 1), ("Highlights", 1), ("Shadows", 1), ("Temperature", 1), ("Tint", 1), ("Saturation", 1) },
+            row => Assert.Equal((true, row.Item2), (((Slider)window.FindName("Color" + row.Item1)).IsSnapToTickEnabled, ((Slider)window.FindName("Color" + row.Item1)).TickFrequency)));
+        exposure.Value = 0.5;
+        Assert.Equal("+0.5", Readout("Exposure").Text);
+        WaitForSaves(window);
+        Assert.Null(Card("card_a").Grade);
+        exposure.RaiseEvent(new MouseButtonEventArgs(Mouse.PrimaryDevice, 0, MouseButton.Left) { RoutedEvent = UIElement.PreviewMouseLeftButtonUpEvent });
+        WaitForSaves(window);
+        new SetColorOperation("card_a", new ColorChange(new Dictionary<string, double> { ["exposure"] = 0.5 })).Apply(before);
+        var saved = Load();
+        before.Revision = saved.Revision;
+        Assert.Equal(ZeyoCut.Core.Serialization.ProjectJson.Serialize(before), ZeyoCut.Core.Serialization.ProjectJson.Serialize(saved));
+        Assert.True(Button("ColorReset").IsEnabled);
+
+        // Contrast typed as the readout shows it; a saturation set_color doesn't take is refused.
+        Readout("Contrast").Text = "+12";
+        TestWindow.Press(Readout("Contrast"), Key.Enter);
+        WaitForSaves(window);
+        Assert.Equal(1.12, Card("card_a").Contrast.Value, 9);
+        Readout("Saturation").Text = "500";
+        TestWindow.Press(Readout("Saturation"), Key.Enter);
+        WaitForSaves(window);
+        Assert.Equal(("0", "Saturation is a number from −100 to +300"), (Readout("Saturation").Text, Text(window, "MessageText")));
+        Assert.Equal(1, Card("card_a").Saturation.Value);
+
+        // The viewer: the clip as shot left of the line, the preview's frame right of it.
+        var viewer = (GradeView)window.FindName("GradeViewer");
+        for (var i = 0; i < 500 && viewer.Before is null; i++)
+        {
+            TestWindow.Pump(10);
+        }
+
+        static byte[] Pixels(BitmapSource bitmap)
+        {
+            var pixels = new byte[bitmap.PixelWidth * bitmap.PixelHeight * 4];
+            bitmap.CopyPixels(pixels, bitmap.PixelWidth * 4, 0);
+            return pixels;
+        }
+
+        var shot = Pixels((BitmapSource)viewer.Before!);
+        var graded = Pixels((BitmapSource)viewer.Frame!);
+        var middle = (90 * 320 + 160) * 4;
+        Assert.Equal((0, 165, 255), (shot[middle], shot[middle + 1], shot[middle + 2]));
+        Assert.True(graded[middle + 1] > 190, $"the graded orange's green is {graded[middle + 1]}");
+        Assert.Equal((GradeViewMode.Split, 0.5), (viewer.Mode, viewer.Split));
+        var frame = viewer.FrameRect;
+        viewer.Press(new Point(frame.X + frame.Width / 4, frame.Y + 10));
+        viewer.MoveTo(new Point(frame.X + frame.Width * 0.3, frame.Y + 10), pressed: true);
+        viewer.Release();
+        Assert.Equal(0.3, viewer.Split, 6);
+        foreach (var (name, mode) in new[] { ("ColorAfter", GradeViewMode.After), ("ColorBefore", GradeViewMode.Before), ("ColorSplit", GradeViewMode.Split) })
+        {
+            ((RadioButton)window.FindName(name)).IsChecked = true;
+            TestWindow.Pump();
+            Assert.Equal(mode, viewer.Mode);
+        }
+
+        // The scopes are of the preview's frame: mostly the gray background, and the orange.
+        var vectorscope = (BitmapSource)((Image)window.FindName("VectorscopeImage")).Source;
+        var scope = Pixels(vectorscope);
+        Assert.Equal((151, 151), (vectorscope.PixelWidth, vectorscope.PixelHeight));
+        var (ox, oy) = Scopes.Spot(graded[middle + 2], graded[middle + 1], graded[middle], 151);
+        Assert.True(scope[(oy * 151 + ox) * 4 + 3] > 0, "the orange isn't on the vectorscope");
+        Assert.NotNull(((Image)window.FindName("WaveformImage")).Source);
+
+        // Copy grade on card_a, Paste grade on card_c, then every logo clip gets card_c's color.
+        Click(window, "ColorCopy");
+        Click(window, "BackToEdit");
+        window.SelectLayer("card_c");
+        Click(window, "ColorButton");
+        TestWindow.Pump();
+        Assert.Equal(("card_c", "Color · applies to this clip, which isn't at the playhead"), (Text(window, "ColorClipText"), Text(window, "ColorNote")));
+        Assert.True(Button("ColorPaste").IsEnabled);
+        Click(window, "ColorPaste");
+        WaitForSaves(window);
+        Assert.Equal((0.5, 1.12), (Card("card_c").Grade!.Exposure.Value, Card("card_c").Contrast.Value));
+        Assert.Equal("+12", Readout("Contrast").Text);
+        Click(window, "ColorApply");
+        WaitForSaves(window);
+        Assert.Equal((0.5, 1.12), (Card("card_b").Grade!.Exposure.Value, Card("card_b").Contrast.Value));
+
+        // Reset all puts card_c back as shot; undo brings its color back.
+        Click(window, "ColorReset");
+        WaitForSaves(window);
+        Assert.False(ColorEditor.Graded(Card("card_c")));
+        Assert.NotNull(Card("card_b").Grade);
+        Assert.Equal("0", Readout("Exposure").Text);
+        Click(window, "UndoButton");
+        WaitForSaves(window);
+        Assert.Equal(0.5, Card("card_c").Grade!.Exposure.Value);
+        Assert.Equal("+0.5", Readout("Exposure").Text);
+
+        // Back in the Edit view, the inspector says what the grade is.
+        Click(window, "BackToEdit");
+        TestWindow.Pump();
+        Assert.Equal(Visibility.Collapsed, Shown(window, "ColorPage"));
+        var project = Load();
+        var grade = InspectorFields.Layer(project, project.FindLayer("card_c")!, null, 2.5).Single(f => f.Label == "Grade");
+        Assert.Equal((FieldKind.Info, "exposure 0.5"), (grade.Kind, grade.Value));
+
+        // Closed from the Color view, the project leaves Home showing.
+        Click(window, "ColorButton");
+        TestWindow.Pump();
+        Click(window, "LogoButton");
+        TestWindow.Pump();
+        Assert.Equal((Visibility.Visible, Visibility.Collapsed), (Shown(window, "StartPage"), Shown(window, "ColorPage")));
+    });
+
     [Fact]
     public void TheTitlesViewAddsTitlesAndTemplatesAsTheirToolsDo() => TestWindow.Run("window-titles", (window, folder) =>
     {

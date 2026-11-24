@@ -1277,6 +1277,7 @@
             <RadioButton x:Name="SourceMode" GroupName="Mode" Visibility="Collapsed" Checked="OnMode" />
             <RadioButton x:Name="TitlesMode" GroupName="Mode" Visibility="Collapsed" Checked="OnMode" />
             <RadioButton x:Name="EffectsMode" GroupName="Mode" Visibility="Collapsed" Checked="OnMode" />
+            <RadioButton x:Name="ColorMode" GroupName="Mode" Visibility="Collapsed" Checked="OnMode" />
           </StackPanel>
         </Border>
 
@@ -2736,6 +2737,168 @@
       </Border>
     </Grid>
 
+    <Grid x:Name="ColorPage" Grid.Row="1" Visibility="Collapsed">
+      <Grid.Resources>
+        <LinearGradientBrush x:Key="TemperatureTrack" StartPoint="0,0" EndPoint="1,0">
+          <GradientStop Color="#4B8BF0" Offset="0" />
+          <GradientStop Color="#E8EAEE" Offset="0.5" />
+          <GradientStop Color="#F0A94B" Offset="1" />
+        </LinearGradientBrush>
+        <LinearGradientBrush x:Key="TintTrack" StartPoint="0,0" EndPoint="1,0">
+          <GradientStop Color="#3DD68C" Offset="0" />
+          <GradientStop Color="#E8EAEE" Offset="0.5" />
+          <GradientStop Color="#E05BFF" Offset="1" />
+        </LinearGradientBrush>
+        <LinearGradientBrush x:Key="SaturationTrack" StartPoint="0,0" EndPoint="1,0">
+          <GradientStop Color="#7C8392" Offset="0" />
+          <GradientStop Color="#FF5D5D" Offset="1" />
+        </LinearGradientBrush>
+      </Grid.Resources>
+      <Grid.RowDefinitions>
+        <RowDefinition Height="*" MinHeight="280" />
+        <RowDefinition Height="Auto" />
+      </Grid.RowDefinitions>
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="*" MinWidth="420" />
+        <ColumnDefinition Width="340" />
+      </Grid.ColumnDefinitions>
+
+      <DockPanel Background="{StaticResource PreviewBrush}">
+        <Border DockPanel.Dock="Top" Height="40" BorderBrush="{StaticResource MenuBrush}" BorderThickness="0,0,0,1" Padding="12,0">
+          <DockPanel TextElement.FontSize="12">
+            <Border DockPanel.Dock="Right" Background="{StaticResource PanelBrush}" CornerRadius="7" Padding="2" VerticalAlignment="Center">
+              <StackPanel Orientation="Horizontal">
+                <RadioButton x:Name="ColorAfter" GroupName="GradeViewMode" Style="{StaticResource SegmentButton}" Content="After" Tag="After" Checked="OnGradeViewMode"
+                             ToolTip="The clip as graded, as it's exported" />
+                <RadioButton x:Name="ColorSplit" GroupName="GradeViewMode" Style="{StaticResource SegmentButton}" Content="Split" Tag="Split" IsChecked="True" Checked="OnGradeViewMode"
+                             ToolTip="The clip as shot left of the line and as graded right of it; drag to move the line" />
+                <RadioButton x:Name="ColorBefore" GroupName="GradeViewMode" Style="{StaticResource SegmentButton}" Content="Before" Tag="Before" Checked="OnGradeViewMode"
+                             ToolTip="The clip as shot, without its color changes" />
+              </StackPanel>
+            </Border>
+            <TextBlock x:Name="ColorClipText" Foreground="{StaticResource TextBrush}" FontWeight="Medium" VerticalAlignment="Center" />
+            <TextBlock x:Name="ColorNote" Foreground="{StaticResource SecondaryTextBrush}" Margin="10,0,0,0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+          </DockPanel>
+        </Border>
+        <local:GradeView x:Name="GradeViewer" Frame="{Binding Source, ElementName=PreviewImage}" RenderOptions.BitmapScalingMode="HighQuality" />
+      </DockPanel>
+
+      <Border Grid.Column="1" Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource DividerBrush}" BorderThickness="1,0,0,0">
+        <DockPanel Margin="16">
+          <StackPanel DockPanel.Dock="Bottom" Margin="0,16,0,0">
+            <UniformGrid Columns="2" Margin="0,0,0,8">
+              <Button x:Name="ColorCopy" Height="34" Margin="0,0,4,0" Content="Copy grade" Click="OnColorCopy" />
+              <Button x:Name="ColorPaste" Height="34" Margin="4,0,0,0" Content="Paste grade" Click="OnColorPaste" />
+            </UniformGrid>
+            <Button x:Name="ColorApply" Style="{StaticResource AccentButton}" Height="34" Click="OnColorApply" />
+          </StackPanel>
+          <DockPanel DockPanel.Dock="Top" Margin="0,0,0,16">
+            <Button x:Name="ColorReset" DockPanel.Dock="Right" Style="{StaticResource LinkButton}" Foreground="{StaticResource AccentSoftTextBrush}" FontSize="12" FontWeight="Medium" Content="Reset all" Click="OnColorReset"
+                    ToolTip="Put the clip's color back as shot: no grade, and contrast and saturation as they were" />
+            <TextBlock Text="Adjust" FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center" />
+          </DockPanel>
+          <Grid x:Name="ColorRows" VerticalAlignment="Top">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="92" />
+              <ColumnDefinition Width="*" />
+              <ColumnDefinition Width="58" />
+            </Grid.ColumnDefinitions>
+            <Grid.RowDefinitions>
+              <RowDefinition Height="Auto" />
+              <RowDefinition Height="Auto" />
+              <RowDefinition Height="Auto" />
+              <RowDefinition Height="Auto" />
+              <RowDefinition Height="Auto" />
+              <RowDefinition Height="Auto" />
+              <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+            <TextBlock x:Name="ColorExposureLabel" Grid.Row="0" Text="Exposure" Foreground="{StaticResource IconTextBrush}" Margin="0,0,0,0" VerticalAlignment="Center" />
+            <Slider x:Name="ColorExposure" Grid.Row="0" Grid.Column="1" Tag="exposure" Style="{StaticResource CenteredSlider}" Minimum="-3" Maximum="3" SmallChange="0.1" LargeChange="0.5" TickFrequency="0.01" IsSnapToTickEnabled="True" IsMoveToPointEnabled="True"
+                    Margin="0,0,0,0" ValueChanged="OnColorSlider" PreviewMouseLeftButtonUp="OnColorSliderDone" KeyUp="OnColorSliderKey" AutomationProperties.Name="Exposure" />
+            <TextBox x:Name="ColorExposureText" Grid.Row="0" Grid.Column="2" Tag="exposure" Margin="6,0,0,0" Padding="4,2" Background="Transparent" BorderBrush="Transparent"
+                     FontFamily="Consolas" FontSize="12" TextAlignment="Right" VerticalContentAlignment="Center" KeyDown="OnColorReadoutKey" LostKeyboardFocus="OnColorReadoutLeft"
+                     AutomationProperties.Name="Exposure value" />
+            <TextBlock x:Name="ColorContrastLabel" Grid.Row="1" Text="Contrast" Foreground="{StaticResource IconTextBrush}" Margin="0,12,0,0" VerticalAlignment="Center" />
+            <Slider x:Name="ColorContrast" Grid.Row="1" Grid.Column="1" Tag="contrast" Style="{StaticResource CenteredSlider}" Minimum="-100" Maximum="100" SmallChange="1" LargeChange="10" TickFrequency="1" IsSnapToTickEnabled="True" IsMoveToPointEnabled="True"
+                    Margin="0,12,0,0" ValueChanged="OnColorSlider" PreviewMouseLeftButtonUp="OnColorSliderDone" KeyUp="OnColorSliderKey" AutomationProperties.Name="Contrast" />
+            <TextBox x:Name="ColorContrastText" Grid.Row="1" Grid.Column="2" Tag="contrast" Margin="6,12,0,0" Padding="4,2" Background="Transparent" BorderBrush="Transparent"
+                     FontFamily="Consolas" FontSize="12" TextAlignment="Right" VerticalContentAlignment="Center" KeyDown="OnColorReadoutKey" LostKeyboardFocus="OnColorReadoutLeft"
+                     AutomationProperties.Name="Contrast value" />
+            <TextBlock x:Name="ColorHighlightsLabel" Grid.Row="2" Text="Highlights" Foreground="{StaticResource IconTextBrush}" Margin="0,12,0,0" VerticalAlignment="Center" />
+            <Slider x:Name="ColorHighlights" Grid.Row="2" Grid.Column="1" Tag="highlights" Style="{StaticResource CenteredSlider}" Minimum="-100" Maximum="100" SmallChange="1" LargeChange="10" TickFrequency="1" IsSnapToTickEnabled="True" IsMoveToPointEnabled="True"
+                    Margin="0,12,0,0" ValueChanged="OnColorSlider" PreviewMouseLeftButtonUp="OnColorSliderDone" KeyUp="OnColorSliderKey" AutomationProperties.Name="Highlights" />
+            <TextBox x:Name="ColorHighlightsText" Grid.Row="2" Grid.Column="2" Tag="highlights" Margin="6,12,0,0" Padding="4,2" Background="Transparent" BorderBrush="Transparent"
+                     FontFamily="Consolas" FontSize="12" TextAlignment="Right" VerticalContentAlignment="Center" KeyDown="OnColorReadoutKey" LostKeyboardFocus="OnColorReadoutLeft"
+                     AutomationProperties.Name="Highlights value" />
+            <TextBlock x:Name="ColorShadowsLabel" Grid.Row="3" Text="Shadows" Foreground="{StaticResource IconTextBrush}" Margin="0,12,0,0" VerticalAlignment="Center" />
+            <Slider x:Name="ColorShadows" Grid.Row="3" Grid.Column="1" Tag="shadows" Style="{StaticResource CenteredSlider}" Minimum="-100" Maximum="100" SmallChange="1" LargeChange="10" TickFrequency="1" IsSnapToTickEnabled="True" IsMoveToPointEnabled="True"
+                    Margin="0,12,0,0" ValueChanged="OnColorSlider" PreviewMouseLeftButtonUp="OnColorSliderDone" KeyUp="OnColorSliderKey" AutomationProperties.Name="Shadows" />
+            <TextBox x:Name="ColorShadowsText" Grid.Row="3" Grid.Column="2" Tag="shadows" Margin="6,12,0,0" Padding="4,2" Background="Transparent" BorderBrush="Transparent"
+                     FontFamily="Consolas" FontSize="12" TextAlignment="Right" VerticalContentAlignment="Center" KeyDown="OnColorReadoutKey" LostKeyboardFocus="OnColorReadoutLeft"
+                     AutomationProperties.Name="Shadows value" />
+            <TextBlock x:Name="ColorTemperatureLabel" Grid.Row="4" Text="Temperature" Foreground="{StaticResource IconTextBrush}" Margin="0,12,0,0" VerticalAlignment="Center" />
+            <Slider x:Name="ColorTemperature" Grid.Row="4" Grid.Column="1" Tag="temperature" Style="{StaticResource CenteredSlider}" Background="{StaticResource TemperatureTrack}" Minimum="-100" Maximum="100" SmallChange="1" LargeChange="10" TickFrequency="1" IsSnapToTickEnabled="True" IsMoveToPointEnabled="True"
+                    Margin="0,12,0,0" ValueChanged="OnColorSlider" PreviewMouseLeftButtonUp="OnColorSliderDone" KeyUp="OnColorSliderKey" AutomationProperties.Name="Temperature" />
+            <TextBox x:Name="ColorTemperatureText" Grid.Row="4" Grid.Column="2" Tag="temperature" Margin="6,12,0,0" Padding="4,2" Background="Transparent" BorderBrush="Transparent"
+                     FontFamily="Consolas" FontSize="12" TextAlignment="Right" VerticalContentAlignment="Center" KeyDown="OnColorReadoutKey" LostKeyboardFocus="OnColorReadoutLeft"
+                     AutomationProperties.Name="Temperature value" />
+            <TextBlock x:Name="ColorTintLabel" Grid.Row="5" Text="Tint" Foreground="{StaticResource IconTextBrush}" Margin="0,12,0,0" VerticalAlignment="Center" />
+            <Slider x:Name="ColorTint" Grid.Row="5" Grid.Column="1" Tag="tint" Style="{StaticResource CenteredSlider}" Background="{StaticResource TintTrack}" Minimum="-100" Maximum="100" SmallChange="1" LargeChange="10" TickFrequency="1" IsSnapToTickEnabled="True" IsMoveToPointEnabled="True"
+                    Margin="0,12,0,0" ValueChanged="OnColorSlider" PreviewMouseLeftButtonUp="OnColorSliderDone" KeyUp="OnColorSliderKey" AutomationProperties.Name="Tint" />
+            <TextBox x:Name="ColorTintText" Grid.Row="5" Grid.Column="2" Tag="tint" Margin="6,12,0,0" Padding="4,2" Background="Transparent" BorderBrush="Transparent"
+                     FontFamily="Consolas" FontSize="12" TextAlignment="Right" VerticalContentAlignment="Center" KeyDown="OnColorReadoutKey" LostKeyboardFocus="OnColorReadoutLeft"
+                     AutomationProperties.Name="Tint value" />
+            <TextBlock x:Name="ColorSaturationLabel" Grid.Row="6" Text="Saturation" Foreground="{StaticResource IconTextBrush}" Margin="0,12,0,0" VerticalAlignment="Center" />
+            <Slider x:Name="ColorSaturation" Grid.Row="6" Grid.Column="1" Tag="saturation" Style="{StaticResource CenteredSlider}" Background="{StaticResource SaturationTrack}" Minimum="-100" Maximum="100" SmallChange="1" LargeChange="10" TickFrequency="1" IsSnapToTickEnabled="True" IsMoveToPointEnabled="True"
+                    Margin="0,12,0,0" ValueChanged="OnColorSlider" PreviewMouseLeftButtonUp="OnColorSliderDone" KeyUp="OnColorSliderKey" AutomationProperties.Name="Saturation" />
+            <TextBox x:Name="ColorSaturationText" Grid.Row="6" Grid.Column="2" Tag="saturation" Margin="6,12,0,0" Padding="4,2" Background="Transparent" BorderBrush="Transparent"
+                     FontFamily="Consolas" FontSize="12" TextAlignment="Right" VerticalContentAlignment="Center" KeyDown="OnColorReadoutKey" LostKeyboardFocus="OnColorReadoutLeft"
+                     AutomationProperties.Name="Saturation value" />
+          </Grid>
+        </DockPanel>
+      </Border>
+
+      <Border Grid.Row="1" Grid.ColumnSpan="2" Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,1,0,0" Padding="24,14,24,18">
+        <Grid>
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="150" />
+          </Grid.ColumnDefinitions>
+          <DockPanel Margin="0,0,12,0">
+            <TextBlock DockPanel.Dock="Top" Text="Waveform" FontWeight="SemiBold" Margin="0,0,0,6"
+                       ToolTip="The frame's brightness, column by column: black at the bottom, white at the top" />
+            <Border Height="150" CornerRadius="8" Background="{StaticResource PreviewBrush}" BorderBrush="{StaticResource DividerBrush}" BorderThickness="1" ClipToBounds="True">
+              <Grid>
+                <Grid.RowDefinitions>
+                  <RowDefinition />
+                  <RowDefinition />
+                  <RowDefinition />
+                  <RowDefinition />
+                </Grid.RowDefinitions>
+                <Border BorderBrush="#1E2128" BorderThickness="0,0,0,1" />
+                <Border Grid.Row="1" BorderBrush="#1E2128" BorderThickness="0,0,0,1" />
+                <Border Grid.Row="2" BorderBrush="#1E2128" BorderThickness="0,0,0,1" />
+                <Image x:Name="WaveformImage" Grid.RowSpan="4" Stretch="Fill" RenderOptions.BitmapScalingMode="HighQuality" />
+              </Grid>
+            </Border>
+          </DockPanel>
+          <DockPanel Grid.Column="1">
+            <TextBlock DockPanel.Dock="Top" Text="Vectorscope" FontWeight="SemiBold" Margin="0,0,0,6"
+                       ToolTip="The frame's colors by hue around the middle and by strength out from it; gray is in the middle" />
+            <Grid Width="150" Height="150">
+              <Ellipse Fill="{StaticResource PreviewBrush}" Stroke="{StaticResource DividerBrush}" StrokeThickness="1" />
+              <Image x:Name="VectorscopeImage" Stretch="Fill" RenderOptions.BitmapScalingMode="HighQuality">
+                <Image.Clip>
+                  <EllipseGeometry Center="75,75" RadiusX="74" RadiusY="74" />
+                </Image.Clip>
+              </Image>
+              <Ellipse Width="4" Height="4" Fill="#5C6270" IsHitTestVisible="False" />
+            </Grid>
+          </DockPanel>
+        </Grid>
+      </Border>
+    </Grid>
+
     <Grid x:Name="TitlesPage" Grid.Row="1" Visibility="Collapsed">
       <Grid.ColumnDefinitions>
         <ColumnDefinition Width="*" MinWidth="360" />
@@ -2910,6 +3073,13 @@
               <StackPanel>
                 <local:Icon Data="{StaticResource EffectsShape}" Width="16" Height="16" />
                 <TextBlock Text="Effects" FontSize="10" Margin="0,4,0,0" HorizontalAlignment="Center" />
+              </StackPanel>
+            </Button>
+            <Button x:Name="ColorButton" Style="{StaticResource RailButton}" Click="OnColorView" AutomationProperties.Name="Open the color"
+                         ToolTip="Color: a clip's exposure, contrast, white balance and saturation, before and after, with scopes">
+              <StackPanel>
+                <local:Icon Data="{StaticResource ColorShape}" Width="16" Height="16" />
+                <TextBlock Text="Color" FontSize="10" Margin="0,4,0,0" HorizontalAlignment="Center" />
               </StackPanel>
             </Button>
           </StackPanel>

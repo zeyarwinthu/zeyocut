@@ -482,13 +482,19 @@ public static partial class InspectorFields
         }
     }
 
-    // A picture's brightness, contrast and saturation, animatable.
+    // A picture's brightness, contrast and saturation, animatable, and its grade when it has one,
+    // which the Color view changes.
     private static void AddAdjustments(List<InspectorField> fields, Project project, VisualLayer layer, double time)
     {
         fields.Add(Section("Adjustments"));
         fields.Add(Animated(project, layer, "brightness", time, "Brightness", 100, "%", "0 leaves it as it is; -100 is black, 100 is white", min: -100, max: 100));
         fields.Add(Animated(project, layer, "contrast", time, "Contrast", 100, "%", "100 leaves it as it is; 0 is flat gray", min: 0, max: 400));
         fields.Add(Animated(project, layer, "saturation", time, "Saturation", 100, "%", "100 leaves it as it is; 0 is black and white", min: 0, max: 400));
+        if (layer is IColorAdjustable { Grade: not null } graded)
+        {
+            fields.Add(new InspectorField("Grade", FieldKind.Info, ColorEditor.Describe(graded, grade: true),
+                Tip: "Exposure, highlights, shadows, temperature and tint: Color on the left rail changes them"));
+        }
     }
 
     // The face blurs (apply_redaction) that hide parts of the clip's footage, with their settings as

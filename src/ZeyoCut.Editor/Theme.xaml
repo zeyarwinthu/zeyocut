@@ -74,6 +74,7 @@
   <StreamGeometry x:Key="RowsShape">M9,6 H20 M9,12 H20 M9,18 H20 M4,6 H5 M4,12 H5 M4,18 H5</StreamGeometry>
   <StreamGeometry x:Key="TitleShape">M5,5 H19 M12,5 V19 M9,19 H15</StreamGeometry>
   <StreamGeometry x:Key="EffectsShape">M12,3 L13.8,10.2 L21,12 L13.8,13.8 L12,21 L10.2,13.8 L3,12 L10.2,10.2 Z</StreamGeometry>
+  <StreamGeometry x:Key="ColorShape">M3,12 A9,9 0 1 0 21,12 A9,9 0 1 0 3,12 Z M12,3 V21 M12,8 H19.5 M12,12 H21 M12,16 H19.5</StreamGeometry>
   <StreamGeometry x:Key="OnionShape">M4,12 A5,5 0 1 0 14,12 A5,5 0 1 0 4,12 Z M10,12 A5,5 0 1 0 20,12 A5,5 0 1 0 10,12 Z</StreamGeometry>
 
   <Style TargetType="Button">
@@ -443,6 +444,53 @@
           <ControlTemplate.Triggers>
             <Trigger Property="IsKeyboardFocused" Value="True">
               <Setter TargetName="PART_Track" Property="Opacity" Value="0.85" />
+            </Trigger>
+          </ControlTemplate.Triggers>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+  </Style>
+
+  <!-- A slider centered on a neutral value (the Color view's): a track in its Background with a mark
+       at the middle, and a white knob. -->
+  <Style x:Key="CenteredSlider" TargetType="Slider">
+    <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+    <Setter Property="Background" Value="{StaticResource BorderBrush}" />
+    <Setter Property="IsMoveToPointEnabled" Value="True" />
+    <Setter Property="Template">
+      <Setter.Value>
+        <ControlTemplate TargetType="Slider">
+          <Grid Background="Transparent" Height="22">
+            <Border Height="6" CornerRadius="3" Background="{TemplateBinding Background}" VerticalAlignment="Center" />
+            <Rectangle Width="1" Height="12" Fill="#5C6270" HorizontalAlignment="Center" VerticalAlignment="Center" />
+            <Track x:Name="PART_Track">
+              <Track.DecreaseRepeatButton>
+                <RepeatButton Command="Slider.DecreaseLarge" Style="{StaticResource SliderPart}" Background="Transparent" />
+              </Track.DecreaseRepeatButton>
+              <Track.IncreaseRepeatButton>
+                <RepeatButton Command="Slider.IncreaseLarge" Style="{StaticResource SliderPart}" Background="Transparent" />
+              </Track.IncreaseRepeatButton>
+              <Track.Thumb>
+                <Thumb>
+                  <Thumb.Template>
+                    <ControlTemplate TargetType="Thumb">
+                      <Ellipse x:Name="Knob" Width="16" Height="16" Fill="White">
+                        <Ellipse.Effect>
+                          <DropShadowEffect BlurRadius="4" ShadowDepth="1" Direction="270" Opacity="0.5" />
+                        </Ellipse.Effect>
+                      </Ellipse>
+                    </ControlTemplate>
+                  </Thumb.Template>
+                </Thumb>
+              </Track.Thumb>
+            </Track>
+          </Grid>
+          <ControlTemplate.Triggers>
+            <Trigger Property="IsKeyboardFocused" Value="True">
+              <Setter TargetName="PART_Track" Property="Opacity" Value="0.85" />
+            </Trigger>
+            <Trigger Property="IsEnabled" Value="False">
+              <Setter Property="Opacity" Value="0.4" />
             </Trigger>
           </ControlTemplate.Triggers>
         </ControlTemplate>
