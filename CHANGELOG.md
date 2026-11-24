@@ -246,6 +246,8 @@ when they open.
   each keeps its time from the template's start, ids the project has get a number, the layers go
   above the project's, and the files are copied in or reused. The editor's Titles view adds
   templates at the playhead the same way.
+- **App icon:** `ZeyoCut.Editor.exe` and `ZeyoCut.Mcp.exe` show Zeyo, the mascot, holding scissors
+  over a clapperboard, in Explorer, on the taskbar and in the editor's title bar.
 
 ### Changed
 

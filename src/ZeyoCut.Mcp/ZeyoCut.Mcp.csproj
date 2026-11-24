@@ -3,6 +3,7 @@
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <RootNamespace>ZeyoCut.Mcp</RootNamespace>
+    <ApplicationIcon>..\ZeyoCut.Editor\zeyocut.ico</ApplicationIcon>
   </PropertyGroup>
 
   <ItemGroup>

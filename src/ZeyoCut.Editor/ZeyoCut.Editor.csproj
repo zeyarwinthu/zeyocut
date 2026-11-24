@@ -6,6 +6,7 @@
     <UseWPF>true</UseWPF>
     <RootNamespace>ZeyoCut.Editor</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>zeyocut.ico</ApplicationIcon>
   </PropertyGroup>
 
   <ItemGroup>
