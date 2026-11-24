@@ -6,6 +6,9 @@ copyright: Copyright &copy; 2026 Zeyo. Released under the MIT License.
 
 theme:
   name: material
+  # The app's icon, Zeyo with scissors over a clapperboard, in the header and the browser tab.
+  logo: zeyocut-icon.png
+  favicon: favicon.ico
   # System fonts only: the site loads nothing from other sites.
   font: false
   palette:
@@ -36,6 +39,10 @@ extra:
       link: https://github.com/zeyarwinthu/zeyocut
       name: ZeyoCut on GitHub
   generator: false
+
+# The home page's buttons, one under another on phones.
+extra_css:
+  - extra.css
 
 # The manual editor's working plan is for the repository, not the site.
 exclude_docs: |

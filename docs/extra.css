@@ -1,0 +1,9 @@
+/* On phones (Material's narrowest layout, under 45em), the home page's buttons fill the width, one
+   under another, with room between them to tap. */
+@media screen and (max-width: 44.9375em) {
+  .md-typeset .md-button {
+    display: block;
+    margin-bottom: 0.6rem;
+    text-align: center;
+  }
+}

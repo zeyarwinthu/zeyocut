@@ -8,6 +8,20 @@
 
 ZeyoCut is free and open source under the MIT License, and runs entirely on your computer.
 
+## New in 0.2.0: the editor
+
+ZeyoCut 0.2.0, released on November 24, 2026, adds [the editor](editor.md), `ZeyoCut.Editor.exe`: a window for working on a project by hand while Claude edits the same project. Each change you make is saved at once, and what Claude changes shows in the window within a second.
+
+![The editor with the Tora Jumps example open: the media on the left, the frame in the middle, the inspector on the right and the timeline below](editor-edit.png)
+
+- **Timeline and keyframes.** Move, trim and split clips, place, crop and animate layers, and retime keyframes on a dope sheet or as curves.
+- **Sound and captions.** Mix voice, music and effects with volume keyframes and ducking, change a video's speed, and fix captions.
+- **Titles, effects and color.** Add titles in the library's styles, set effects, and grade a clip with color wheels, looks and scopes beside the clip as shot.
+- **Tracking and blur.** Track a face or an object in footage, hide it, and correct the frames where the tracker lost it.
+- **Export.** Export one video after another from a render queue.
+
+The editor is in the release zip and the bundle, next to the server. [Read about the editor](editor.md) or see [everything new in 0.2.0](https://github.com/zeyarwinthu/zeyocut/releases/tag/v0.2.0).
+
 ## What it does
 
 - **Cutout animation with rigs and actions.** Characters made of PNG parts in a parent–child hierarchy, with keyframes and easing (overshoot, bounce, elastic), squash and stretch, drawing swaps such as a face changing expression, and motion along curved paths. Save a character as a rig and a walk cycle or a jump as an action: the action plays on any copy of the rig, at any speed.
