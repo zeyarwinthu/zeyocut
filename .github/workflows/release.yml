@@ -58,10 +58,18 @@ jobs:
       - name: Test
         run: '& ./tests/ZeyoCut.Tests/bin/Release/net10.0/ZeyoCut.Tests.exe'
 
+      # A step of its own: a run step only fails on the exit code of its last command.
+      - name: Test the editor
+        run: '& ./tests/ZeyoCut.Editor.Tests/bin/Release/net10.0-windows/ZeyoCut.Editor.Tests.exe'
+
       - name: Publish the single-file exe
         run: dotnet publish src/ZeyoCut.Mcp -c Release -r win-x64 --self-contained -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o out/publish
 
-      # The notices of the native code inside the exe, from the NuGet packages it was built from.
+      # The editor's exe leaves out the AI natives (OpenCV, ONNX Runtime, DirectML): see its .csproj.
+      - name: Publish the editor
+        run: dotnet publish src/ZeyoCut.Editor -c Release -r win-x64 --self-contained -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o out/publish-editor
+
+      # The notices of the native code inside the exes, from the NuGet packages they were built from.
       - name: Collect the license files
         run: |
           $assets = Get-Content src/ZeyoCut.Mcp/obj/project.assets.json -Raw | ConvertFrom-Json
@@ -71,13 +79,19 @@ jobs:
             if (-not $key) { throw "$name isn't a dependency of ZeyoCut.Mcp" }
             Join-Path $nuget $key.ToLowerInvariant()
           }
-          # The runtime pack the publish used; its version is stored as a range, [10.0.12, 10.0.12].
-          $pack = @($assets.project.frameworks.PSObject.Properties.Value.downloadDependencies) | Where-Object { $_.name -eq "Microsoft.NETCore.App.Runtime.win-x64" } | Select-Object -First 1
-          if (-not $pack) { throw "the publish didn't restore the win-x64 runtime pack" }
-          $runtime = Join-Path $nuget "microsoft.netcore.app.runtime.win-x64/$($pack.version.Trim('[', ']').Split(',')[0].Trim())"
+          # The runtime pack a publish used; its version is stored as a range, [10.0.12, 10.0.12].
+          function RuntimePack($from, [string] $name) {
+            $pack = @($from.project.frameworks.PSObject.Properties.Value.downloadDependencies) | Where-Object { $_.name -eq $name } | Select-Object -First 1
+            if (-not $pack) { throw "the publish didn't restore the $name pack" }
+            Join-Path $nuget "$($name.ToLowerInvariant())/$($pack.version.Trim('[', ']').Split(',')[0].Trim())"
+          }
+          $runtime = RuntimePack $assets "Microsoft.NETCore.App.Runtime.win-x64"
+          $editor = Get-Content src/ZeyoCut.Editor/obj/project.assets.json -Raw | ConvertFrom-Json
+          $desktop = RuntimePack $editor "Microsoft.WindowsDesktop.App.Runtime.win-x64"
           $licenses = New-Item -ItemType Directory -Force out/licenses
           $files = [ordered]@{
             "dotnet-THIRD-PARTY-NOTICES.txt" = Join-Path $runtime "THIRD-PARTY-NOTICES.TXT"
+            "dotnet-windowsdesktop-LICENSE.txt" = Join-Path $desktop "LICENSE"
             "SkiaSharp-THIRD-PARTY-NOTICES.txt" = Join-Path (Package "SkiaSharp.NativeAssets.Win32") "THIRD-PARTY-NOTICES.txt"
             "onnxruntime-ThirdPartyNotices.txt" = Join-Path (Package "Microsoft.ML.OnnxRuntime.DirectML") "ThirdPartyNotices.txt"
             "DirectML-LICENSE.txt" = Join-Path (Package "Microsoft.AI.DirectML") "LICENSE.txt"
@@ -92,8 +106,10 @@ jobs:
         run: |
           $version = "${{ steps.version.outputs.version }}"
           $stage = New-Item -ItemType Directory -Force out/zip
-          Copy-Item out/publish/ZeyoCut.Mcp.exe, out/publish/appsettings.json, README.md, LICENSE, THIRD_PARTY_NOTICES.md, CHANGELOG.md -Destination $stage
+          Copy-Item out/publish/ZeyoCut.Mcp.exe, out/publish/appsettings.json, out/publish-editor/ZeyoCut.Editor.exe, README.md, LICENSE, THIRD_PARTY_NOTICES.md, CHANGELOG.md -Destination $stage
           Copy-Item out/licenses -Destination $stage -Recurse
+          # The editor's Welcome offers the sample next to it.
+          Copy-Item examples/tora-jump -Destination (New-Item -ItemType Directory -Force "$stage/examples") -Recurse
           $zip = "out/ZeyoCut-$version-win-x64.zip"
           Compress-Archive -Path "$stage/*" -DestinationPath $zip
           "file=$zip" >> $env:GITHUB_OUTPUT
@@ -105,7 +121,8 @@ jobs:
           $stage = New-Item -ItemType Directory -Force out/mcpb
           $server = New-Item -ItemType Directory -Force out/mcpb/server
           Copy-Item packaging/manifest.json -Destination $stage
-          Copy-Item out/publish/ZeyoCut.Mcp.exe, out/publish/appsettings.json -Destination $server
+          Copy-Item out/publish/ZeyoCut.Mcp.exe, out/publish/appsettings.json, out/publish-editor/ZeyoCut.Editor.exe -Destination $server
+          Copy-Item examples/tora-jump -Destination (New-Item -ItemType Directory -Force out/mcpb/server/examples) -Recurse
           Copy-Item README.md, LICENSE, THIRD_PARTY_NOTICES.md -Destination $stage
           Copy-Item out/licenses -Destination $stage -Recurse
           $bundle = "out/ZeyoCut-$version.mcpb"
@@ -114,6 +131,27 @@ jobs:
           npx --yes "@anthropic-ai/mcpb@$env:MCPB_VERSION" pack out/mcpb $bundle
           if ($LASTEXITCODE -ne 0) { throw "mcpb pack failed" }
           "file=$bundle" >> $env:GITHUB_OUTPUT
+
+      # The sizes go in the run's summary. The step fails when a file goes over its limit, which catches
+      # growth that shouldn't happen, such as the AI natives coming back into the editor (about 110 MiB).
+      - name: Check the sizes
+        run: |
+          $limits = [ordered]@{
+            "out/publish/ZeyoCut.Mcp.exe" = 200
+            "out/publish-editor/ZeyoCut.Editor.exe" = 170
+            "${{ steps.zip.outputs.file }}" = 160
+            "${{ steps.mcpb.outputs.file }}" = 160
+          }
+          $rows = @("| File | Size | Limit |", "|---|---|---|")
+          $over = @()
+          foreach ($entry in $limits.GetEnumerator()) {
+            $mib = (Get-Item $entry.Key).Length / 1MB
+            $rows += "| $(Split-Path -Leaf $entry.Key) | $($mib.ToString('0.0')) MiB | $($entry.Value) MiB |"
+            if ($mib -gt $entry.Value) { $over += "$(Split-Path -Leaf $entry.Key) is $($mib.ToString('0.0')) MiB, over its $($entry.Value) MiB limit" }
+          }
+          $rows | Out-File -Append -Encoding utf8 $env:GITHUB_STEP_SUMMARY
+          $rows
+          if ($over) { throw ($over -join "; ") }
 
       - name: Write checksums and release notes
         run: |

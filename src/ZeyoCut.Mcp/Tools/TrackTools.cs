@@ -7,10 +7,8 @@ using ZeyoCut.Core;
 using ZeyoCut.Core.Animation;
 using ZeyoCut.Core.Editing;
 using ZeyoCut.Core.Model;
-using ZeyoCut.Core.Serialization;
 using ZeyoCut.Render;
 using ZeyoCut.Render.Jobs;
-using ZeyoCut.Render.Video;
 using static ZeyoCut.Mcp.Tools.ToolSupport;
 
 namespace ZeyoCut.Mcp.Tools;
@@ -46,40 +44,19 @@ public static class TrackTools
         var way = EnumNames.Parse<TrackDirection>(direction, "direction");
         ArgumentNullException.ThrowIfNull(box);
         var session = state.Session;
+        TrackPlan plan;
         Track track;
         Asset asset;
-        string clip;
-        double shown;
-        List<TrackRun> runs;
         string headline;
         Func<string, Action<double>?, CancellationToken, string> work;
         BackgroundJob? job = null;
         lock (TrackGate)
         {
-            (track, asset, clip, shown) = session.Read(p =>
-            {
-                var (layer, footage) = TrackEditor.Clip(p, layerId);
-                var (frame, at) = TrackEditor.SourceFrameAt(p, layer, footage, time);
-                var anchor = TrackEditor.SourceBox(p, layer, footage, at, frame, box.X, box.Y, box.Width, box.Height);
-                var (first, last) = TrackEditor.Frames(layer, footage);
-                var made = new Track
-                {
-                    Id = TrackEditor.NewId(p, id, state.TrackWork.ContainsKey),
-                    Asset = footage.Id,
-                    Layer = layer.Id,
-                    Method = how,
-                    Direction = way,
-                    FirstFrame = way == TrackDirection.Forward ? frame : first,
-                    LastFrame = way == TrackDirection.Backward ? frame : last,
-                    Origin = frame,
-                    Anchors = [anchor],
-                };
-                return (made, footage, layer.Id, at);
-            });
-            runs = TrackEditor.Runs(way, track.Origin, track.FirstFrame, track.LastFrame);
-            work = Work(state, session, track, asset, null, runs, track.Anchors[0], "track_object");
-            var frames = runs.Sum(r => r.Frames);
-            headline = $"tracked the box on '{clip}' as {track.Id} with {EnumNames.ToName(how)}, {EnumNames.ToName(way)}";
+            plan = session.Read(p => TrackEditor.Plan(p, layerId, time, box.X, box.Y, box.Width, box.Height, way, how, id, state.TrackWork.ContainsKey));
+            (track, asset) = (plan.Track, plan.Asset);
+            work = Work(state, session, plan, null, "track_object");
+            var frames = plan.Frames;
+            headline = $"tracked the box on '{plan.Clip}' as {track.Id} with {EnumNames.ToName(how)}, {EnumNames.ToName(way)}";
             if (frames <= DirectFrames)
             {
                 state.TrackWork[track.Id] = null;
@@ -116,9 +93,9 @@ public static class TrackTools
             }
         }
 
-        var anchor = track.Anchors[0];
-        return $"tracking the box on '{clip}' as {track.Id} with {EnumNames.ToName(how)}, {EnumNames.ToName(way)}, in the background as {job.Id}: {runs.Sum(r => r.Frames)} frames of '{asset.Id}' (frames {track.FirstFrame}–{track.LastFrame})"
-            + $"\n- drawn at {Num(shown)}s: frame {anchor.Frame}, {Box(anchor.X, anchor.Y, anchor.Width, anchor.Height)} in the source pixels of '{asset.Id}'"
+        var anchor = plan.Anchor;
+        return $"tracking the box on '{plan.Clip}' as {track.Id} with {EnumNames.ToName(how)}, {EnumNames.ToName(way)}, in the background as {job.Id}: {plan.Frames} frames of '{asset.Id}' (frames {track.FirstFrame}–{track.LastFrame})"
+            + $"\n- drawn at {Num(plan.Shown)}s: frame {anchor.Frame}, {Box(anchor.X, anchor.Y, anchor.Width, anchor.Height)} in the source pixels of '{asset.Id}'"
             + $"\n- poll get_job_status with jobId \"{job.Id}\"; the track is added as its own undo step when it is done";
     });
 
@@ -133,12 +110,10 @@ public static class TrackTools
     {
         ArgumentNullException.ThrowIfNull(box);
         var session = state.Session;
+        TrackPlan plan;
         Track track;
         Asset asset;
-        string clip;
-        double shown;
         TrackBox anchor;
-        List<TrackRun> runs;
         string headline;
         Func<string, Action<double>?, CancellationToken, string> work;
         BackgroundJob? job = null;
@@ -149,47 +124,14 @@ public static class TrackTools
                 throw new ZeyoCutException($"track '{trackId}' is still being tracked{(running is null ? "" : $" by {running.Id} ({running.Percent}%)")}; correct it when that is done");
             }
 
-            (track, asset, clip, shown, anchor) = session.Read(p =>
-            {
-                var found = p.FindTrack(trackId)
-                    ?? throw new ZeyoCutException($"track '{trackId}' not found; tracks: {Ids.List(p.Tracks.Select(t => t.Id))}");
-                if (found.Method is TrackMethod.Faces or TrackMethod.Plates)
-                {
-                    throw new ZeyoCutException(
-                        $"track '{trackId}' was found on every frame by detect_and_track, not tracked from a box, so reanchor_track can't correct it; where it missed the face or plate, track_object makes a track from a box there, which apply_redaction can hide too");
-                }
-
-                if (layerId is null && (p.FindLayer(found.Layer) is not VideoLayer original || original.Asset != found.Asset))
-                {
-                    var clips = p.Layers.OfType<VideoLayer>().Where(v => v.Asset == found.Asset).Select(v => v.Id);
-                    throw new ZeyoCutException($"clip '{found.Layer}', which track '{trackId}' was made on, is gone or plays other footage; pass layerId, a clip of '{found.Asset}': {Ids.List(clips)}");
-                }
-
-                var (layer, footage) = TrackEditor.Clip(p, layerId ?? found.Layer);
-                if (layer.Asset != found.Asset)
-                {
-                    throw new ZeyoCutException($"clip '{layer.Id}' plays '{layer.Asset}', but track '{trackId}' follows '{found.Asset}'");
-                }
-
-                var (frame, at) = TrackEditor.SourceFrameAt(p, layer, footage, time);
-                if (frame < found.FirstFrame || frame > found.LastFrame)
-                {
-                    throw new ZeyoCutException(
-                        $"{Num(at)}s on '{layer.Id}' shows frame {frame} of '{footage.Id}', outside track '{trackId}' (frames {found.FirstFrame}–{found.LastFrame}); reanchor_track corrects frames inside a track, and track_object starts a new one");
-                }
-
-                var set = TrackEditor.SourceBox(p, layer, footage, at, frame, box.X, box.Y, box.Width, box.Height);
-                return (ProjectJson.Copy(found), footage, layer.Id, at, set);
-            });
+            plan = session.Read(p => TrackEditor.PlanCorrection(p, trackId, time, box.X, box.Y, box.Width, box.Height, layerId));
+            (track, asset, anchor) = (plan.Track, plan.Asset, plan.Anchor);
             var old = TrackFiles.Load(session.Directory, track);
-            runs = TrackEditor.Rerun(track, anchor.Frame);
-            var replacing = track.File;
-            track.Anchors = TrackEditor.WithAnchor(track.Anchors, anchor);
-            work = Work(state, session, track, asset, (old, replacing), runs, anchor, "reanchor_track");
-            var frames = runs.Sum(r => r.Frames);
-            var low = runs.Min(r => Math.Min(r.From, r.To));
-            var high = runs.Max(r => Math.Max(r.From, r.To));
-            headline = $"reanchored {track.Id} at frame {anchor.Frame} ({Num(shown)}s on '{clip}') and tracked frames {low}–{high} again with {EnumNames.ToName(track.Method)}; its other frames stayed as they were";
+            work = Work(state, session, plan, old, "reanchor_track");
+            var frames = plan.Frames;
+            var low = plan.Runs.Min(r => Math.Min(r.From, r.To));
+            var high = plan.Runs.Max(r => Math.Max(r.From, r.To));
+            headline = $"reanchored {track.Id} at frame {anchor.Frame} ({Num(plan.Shown)}s on '{plan.Clip}') and tracked frames {low}–{high} again with {EnumNames.ToName(track.Method)}; its other frames stayed as they were";
             if (frames <= DirectFrames)
             {
                 state.TrackWork[track.Id] = null;
@@ -226,7 +168,7 @@ public static class TrackTools
             }
         }
 
-        return $"reanchoring {track.Id} at frame {anchor.Frame} ({Num(shown)}s on '{clip}') in the background as {job.Id}: tracking {runs.Sum(r => r.Frames)} frames of '{asset.Id}' again with {EnumNames.ToName(track.Method)}"
+        return $"reanchoring {track.Id} at frame {anchor.Frame} ({Num(plan.Shown)}s on '{plan.Clip}') in the background as {job.Id}: tracking {plan.Frames} frames of '{asset.Id}' again with {EnumNames.ToName(track.Method)}"
             + $"\n- poll get_job_status with jobId \"{job.Id}\"; the corrected track replaces the old one as its own undo step when it is done";
     });
 
@@ -273,76 +215,18 @@ public static class TrackTools
         });
     });
 
-    // Tracks the runs, saves the boxes (over 'old', for reanchor_track) and puts the track in the
-    // project as one undo step; returns the reply.
-    private static Func<string, Action<double>?, CancellationToken, string> Work(
-        EditorState state,
-        ProjectSession session,
-        Track track,
-        Asset asset,
-        (TrackData Data, string File)? old,
-        List<TrackRun> runs,
-        TrackBox anchor,
-        string tool)
+    // Tracks the plan's runs, saves the boxes (over 'old', for reanchor_track) and puts the track in
+    // the project as one undo step; returns the reply.
+    private static Func<string, Action<double>?, CancellationToken, string> Work(EditorState state, ProjectSession session, TrackPlan plan, TrackData? old, string tool)
     {
-        var file = Proxies.Ready(session.Directory, asset) ?? ProjectStore.AssetPath(session.Directory, asset);
-        if (!File.Exists(file))
-        {
-            throw new ZeyoCutException($"the file of asset '{asset.Id}' is missing ({file})");
-        }
-
+        var file = TrackRunner.SourceFile(session.Directory, plan.Asset);
         var ffmpeg = state.RequireFfmpeg().Ffmpeg;
         return (headline, progress, ct) =>
         {
-            var frames = old?.Data.Frames.ToDictionary(f => f.Frame) ?? [];
-            var total = Math.Max(1, runs.Sum(r => r.Frames));
-            var done = 0;
-            foreach (var run in runs)
-            {
-                var offset = done;
-                var from = new TrackBox { Frame = run.From, X = anchor.X, Y = anchor.Y, Width = anchor.Width, Height = anchor.Height };
-                foreach (var frame in ObjectTracker.Track(ffmpeg, file, asset, from, track.Method, run.To, p => progress?.Invoke((offset + p * run.Frames) / total), ct))
-                {
-                    frames[frame.Frame] = frame;
-                }
-
-                done += run.Frames;
-            }
-
-            var data = new TrackData
-            {
-                Track = track.Id,
-                Asset = asset.Id,
-                Width = asset.Width ?? 0,
-                Height = asset.Height ?? 0,
-                Frames = frames.Values.Where(f => f.Frame >= track.FirstFrame && f.Frame <= track.LastFrame).OrderBy(f => f.Frame).ToList(),
-            };
-            track.File = TrackFiles.Save(session.Directory, data);
-            session.Mutate($"{tool} {track.Id}", p =>
-            {
-                if (old is { } before)
-                {
-                    var index = p.Tracks.FindIndex(t => t.Id == track.Id);
-                    if (index < 0 || p.Tracks[index].File != before.File)
-                    {
-                        throw new ZeyoCutException($"track '{track.Id}' changed or was removed while it was being tracked, so the correction wasn't saved; run reanchor_track again");
-                    }
-
-                    p.Tracks[index] = track;
-                }
-                else
-                {
-                    if (p.FindTrack(track.Id) is not null)
-                    {
-                        throw new ZeyoCutException($"a track '{track.Id}' appeared while this one was being tracked, so it wasn't saved; run track_object again");
-                    }
-
-                    p.Tracks.Add(track);
-                }
-
-                return 0;
-            });
-            return session.Read(p => Describe(p, track, data, headline));
+            var data = TrackRunner.Run(ffmpeg, session.Directory, file, plan, old, progress, ct);
+            var save = new SaveTrackOperation(plan.Track, plan.Replacing, tool);
+            session.Mutate(save.Label, save.Apply);
+            return session.Read(p => Describe(p, plan.Track, data, headline));
         };
     }
 
@@ -396,8 +280,7 @@ public static class TrackTools
         return $"source {Num(VideoTiming.TimeOfFrame(asset, first))}–{Num(VideoTiming.TimeOfFrame(asset, last))}s, which no clip shows";
     }
 
-    internal static double Timeline(VideoLayer clip, Asset asset, int frame) =>
-        VideoTiming.TimelineTime(clip, Math.Max(clip.TrimIn, VideoTiming.TimeOfFrame(asset, frame)));
+    internal static double Timeline(VideoLayer clip, Asset asset, int frame) => TrackEditor.TimelineTime(clip, asset, frame);
 
     private static string Box(double x, double y, double width, double height) => $"{Num(x)},{Num(y)} {Num(width)}x{Num(height)}";
 

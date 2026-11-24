@@ -32,30 +32,12 @@ public static class ExportTools
         [Description("Language version to export (en, ja, my, pt-BR): layers of other languages are left out and clips whose sound is in another language are muted. Default: every layer.")] string? language = null) => Guard(() =>
     {
         var chosen = string.IsNullOrWhiteSpace(preset) ? null : Presets.Get(preset);
-        if (string.IsNullOrWhiteSpace(fileName) || fileName.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0)
-        {
-            throw new ZeyoCutException($"fileName '{fileName}' must be a plain file name like \"jump.mp4\" without folders");
-        }
-
-        var name = fileName.Trim();
-        var extension = Path.GetExtension(name);
-        if (extension.Length == 0)
-        {
-            name += ".mp4";
-        }
-        else if (!extension.Equals(".mp4", StringComparison.OrdinalIgnoreCase))
-        {
-            throw new ZeyoCutException($"only .mp4 export is supported (got '{extension}')");
-        }
-
-        var ffmpeg = state.RequireFfmpeg();
+        var name = ExportStart.FileName(fileName);
+        state.RequireFfmpeg();
         var session = state.Session;
         var project = session.Snapshot();
-        var version = Languages.Choose(project, language, export: true);
-        var output = Path.Combine(session.Directory, ProjectStore.ExportsFolder, name);
         var logger = loggers.CreateLogger("ZeyoCut.Export");
-        Exporter.CheckPreset(project, chosen);
-        var job = state.Exports.Start(project, session.Directory, output, crf ?? chosen?.Crf ?? 18, ffmpeg, line => logger.LogInformation("{Line}", line), chosen);
+        var (job, output, version) = state.ExportStart.Start(state.Exports, project, session.Directory, name, crf, chosen, language, line => logger.LogInformation("{Line}", line));
         logger.LogInformation("started {Job} -> {Output}", job.Id, output);
         var size = chosen is null ? $"{project.Width}x{project.Height}" : $"{chosen.Width}x{chosen.Height}, preset {chosen.Name}";
         return WithWarnings($"started {job.Id}: {FrameMath.FrameCount(project)} frames ({size} @ {project.Fps} fps{version.Note}) -> {output}\npoll get_export_status with jobId \"{job.Id}\"", version.Warnings);
@@ -360,7 +342,7 @@ public static class ExportTools
         var (first, last) = FrameExport.Frames(project, startTime, endTime);
         var directory = session.Directory;
         MatteFiles.ThrowIfPending(project, directory);
-        var folder = Path.Combine(directory, ProjectStore.ExportsFolder, $"{ProjectTools.SafeFolderName(project.Name)}_frames");
+        var folder = Path.Combine(directory, ProjectStore.ExportsFolder, $"{ProjectStore.FolderName(project.Name)}_frames");
         var job = state.Jobs.Start("frames", $"export_frames f{first}–f{last} as {chosen}", (job, ct) =>
         {
             using var renderer = new FrameRenderer(directory, () => state.RequireFfmpeg().Ffmpeg, streamVideo: true);
@@ -613,7 +595,7 @@ public static class ExportTools
     {
         if (fileName is null)
         {
-            return ProjectTools.SafeFolderName(projectName);
+            return ProjectStore.FolderName(projectName);
         }
 
         var name = fileName.Trim();

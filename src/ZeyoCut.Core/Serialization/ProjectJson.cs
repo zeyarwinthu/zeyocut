@@ -74,9 +74,13 @@ public static class ProjectJson
     public static void Normalize(Project project)
     {
         project.FormatVersion = Math.Max(project.FormatVersion, Project.CurrentFormatVersion);
+        project.Revision = Math.Max(project.Revision, 0);
         project.Name ??= "";
         project.BackgroundColor ??= "#FFFFFF";
         project.Audio ??= new AudioSettings();
+        project.Audio.Voice ??= new RoleMix();
+        project.Audio.Music ??= new RoleMix();
+        project.Audio.Effects ??= new RoleMix();
         project.Assets ??= [];
         project.Layers ??= [];
         project.Tracks ??= [];
@@ -141,6 +145,29 @@ public static class ProjectJson
             color.Brightness = NormalizeValue(color.Brightness, 0);
             color.Contrast = NormalizeValue(color.Contrast, 1);
             color.Saturation = NormalizeValue(color.Saturation, 1);
+            if (color.Grade is { } grade)
+            {
+                grade.Exposure = NormalizeValue(grade.Exposure, 0);
+                grade.Highlights = NormalizeValue(grade.Highlights, 0);
+                grade.Shadows = NormalizeValue(grade.Shadows, 0);
+                grade.Temperature = NormalizeValue(grade.Temperature, 0);
+                grade.Tint = NormalizeValue(grade.Tint, 0);
+                foreach (var wheel in new[] { grade.Lift, grade.Gamma, grade.Gain })
+                {
+                    if (wheel is not null)
+                    {
+                        wheel.Red = NormalizeValue(wheel.Red, 0);
+                        wheel.Green = NormalizeValue(wheel.Green, 0);
+                        wheel.Blue = NormalizeValue(wheel.Blue, 0);
+                    }
+                }
+
+                if (grade.Look is { } look)
+                {
+                    look.Asset ??= "";
+                    look.Amount = NormalizeValue(look.Amount, 1);
+                }
+            }
         }
 
         switch (layer)
@@ -160,10 +187,12 @@ public static class ProjectJson
                 break;
             case AudioLayer audio:
                 audio.Asset ??= "";
+                audio.Volume = NormalizeValue(audio.Volume, 1);
                 break;
             case VideoLayer video:
                 video.Asset ??= "";
                 video.End = null;
+                video.Volume = NormalizeValue(video.Volume, 1);
                 video.CropX = NormalizeValue(video.CropX, 0);
                 video.CropY = NormalizeValue(video.CropY, 0);
                 break;
@@ -262,11 +291,66 @@ public static class ProjectJson
             ReadCommentHandling = JsonCommentHandling.Skip,
             AllowTrailingCommas = true,
             Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
-            TypeInfoResolver = new DefaultJsonTypeInfoResolver { Modifiers = { OmitEmptyKeyframes, OmitVideoEnd, OmitNoTracks } },
+            TypeInfoResolver = new DefaultJsonTypeInfoResolver { Modifiers = { OmitEmptyKeyframes, OmitBezier, OmitVideoEnd, OmitNoTracks } },
         };
         options.Converters.Add(new JsonStringEnumConverter(JsonNamingPolicy.CamelCase));
+        options.Converters.Add(new AnimatedValueConverter());
         options.MakeReadOnly();
         return options;
+    }
+
+    // A value and its keyframes, the keyframes left out while there are none. A plain number (how a
+    // volume was written before format 9) reads as a value without keyframes.
+    private sealed class AnimatedValueConverter : JsonConverter<AnimatedValue>
+    {
+        public override AnimatedValue? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+        {
+            switch (reader.TokenType)
+            {
+                case JsonTokenType.Null:
+                    return null;
+                case JsonTokenType.Number:
+                    return new AnimatedValue(reader.GetDouble());
+                case JsonTokenType.StartObject:
+                    break;
+                default:
+                    throw new JsonException($"expected a number or {{\"value\", \"keyframes\"}}, not {reader.TokenType}");
+            }
+
+            var value = new AnimatedValue();
+            while (reader.Read() && reader.TokenType != JsonTokenType.EndObject)
+            {
+                var name = reader.GetString();
+                reader.Read();
+                if (string.Equals(name, "value", StringComparison.OrdinalIgnoreCase))
+                {
+                    value.Value = reader.GetDouble();
+                }
+                else if (string.Equals(name, "keyframes", StringComparison.OrdinalIgnoreCase))
+                {
+                    value.Keyframes = JsonSerializer.Deserialize<List<Keyframe>>(ref reader, options) ?? [];
+                }
+                else
+                {
+                    reader.Skip();
+                }
+            }
+
+            return value;
+        }
+
+        public override void Write(Utf8JsonWriter writer, AnimatedValue value, JsonSerializerOptions options)
+        {
+            writer.WriteStartObject();
+            writer.WriteNumber("value", value.Value);
+            if (value.Keyframes is { Count: > 0 } keyframes)
+            {
+                writer.WritePropertyName("keyframes");
+                JsonSerializer.Serialize(writer, keyframes, options);
+            }
+
+            writer.WriteEndObject();
+        }
     }
 
     private static void OmitEmptyKeyframes(JsonTypeInfo info)
@@ -281,6 +365,23 @@ public static class ProjectJson
             if (property.Name == "keyframes")
             {
                 property.ShouldSerialize = static (_, value) => value is ICollection { Count: > 0 };
+            }
+        }
+    }
+
+    // A keyframe's bezier is written only while its easing is cubicBezier.
+    private static void OmitBezier(JsonTypeInfo info)
+    {
+        if (info.Type != typeof(Keyframe))
+        {
+            return;
+        }
+
+        foreach (var property in info.Properties)
+        {
+            if (property.Name == "bezier")
+            {
+                property.ShouldSerialize = static (owner, value) => value is not null && owner is Keyframe { Easing: Easing.CubicBezier };
             }
         }
     }

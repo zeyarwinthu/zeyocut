@@ -26,6 +26,22 @@ public static class ProjectMigrations
         new(5, _ => { }),
         // 6: markers and language tags.
         new(6, _ => { }),
+        // 7: revision, the count of saves.
+        new(7, _ => { }),
+        // 8: cubic bezier easing.
+        new(8, _ => { }),
+        // 9: each role's mix, the duck level and fades, and volume keyframes. A volume written as a
+        // number reads as a value without keyframes.
+        new(9, _ => { }),
+        // 10: asset tags.
+        new(10, _ => { }),
+        // 11: a redaction's shape and smoothing.
+        new(11, _ => { }),
+        // 12: a clip's color grade.
+        new(12, _ => { }),
+
+        // 13: a grade's color wheels and look, and LUT assets.
+        new(13, _ => { }),
     ];
 
     private static readonly JsonNodeOptions NodeOptions = new() { PropertyNameCaseInsensitive = true };

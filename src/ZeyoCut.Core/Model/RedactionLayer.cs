@@ -11,6 +11,13 @@ public enum RedactionStyle
     Solid
 }
 
+// What is hidden: the whole box, or the ellipse inside it (a face, say).
+public enum RedactionShape
+{
+    Rectangle,
+    Ellipse
+}
+
 // apply_redaction: hides the boxes of its tracks in every clip that plays their footage. It works on
 // the clip's video frame before the clip is drawn, so the clip's moves and effects, the camera and a
 // subject cutout of the clip all show it hidden; and it is in the footage's own frames, so splits,
@@ -40,6 +47,13 @@ public sealed class RedactionLayer : Layer
 
     // The fill of solid.
     public string Color { get; set; } = "#000000";
+
+    public RedactionShape Shape { get; set; } = RedactionShape.Rectangle;
+
+    // Keeps the box steady through a tracker's jitter: its center and size are averaged over the
+    // frames around it (RedactionCover.SmoothFrames on each side) rather than widened to every frame's
+    // padded box, and it always contains the track's own box.
+    public bool Smooth { get; set; }
 
     // tracks_to_keyframes: a track's box as keyframes in the footage's own seconds and pixels, used
     // instead of the box worked out from the track, from its first keyframe to its last.

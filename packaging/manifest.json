@@ -2,9 +2,9 @@
   "manifest_version": "0.3",
   "name": "zeyocut",
   "display_name": "ZeyoCut",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "A headless 2D animation and video editor for Windows, run through MCP tools: build a project, check rendered frames, export MP4.",
-  "long_description": "ZeyoCut has no editing window: Claude builds and edits the project through its tools, looks at rendered frames to check the work, and exports H.264 MP4 through FFmpeg. It does cutout and puppet animation with rigs and saved actions, comic-panel videos, footage editing with transcripts, captions in many languages (Burmese and Japanese shaped correctly), and privacy blur of faces and license plates with AI models that run on your computer. It needs FFmpeg (winget install Gyan.FFmpeg). ZeyoCut has no telemetry: its only network use is downloading the AI models from their original sources the first time a feature needs one.",
+  "long_description": "Claude builds and edits the project through ZeyoCut's tools, looks at rendered frames to check the work, and exports H.264 MP4 through FFmpeg. An editor window, which Claude can open for you, lets you trim clips, fix captions, change volumes and export by hand while Claude keeps working on the same project. It does cutout and puppet animation with rigs and saved actions, comic-panel videos, footage editing with transcripts, captions in many languages (Burmese and Japanese shaped correctly), and privacy blur of faces and license plates with AI models that run on your computer. It needs FFmpeg (winget install Gyan.FFmpeg). ZeyoCut has no telemetry: its only network use is downloading the AI models from their original sources the first time a feature needs one.",
   "author": {
     "name": "Zeyo",
     "url": "https://cut.zeyoapp.com"

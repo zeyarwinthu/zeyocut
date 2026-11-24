@@ -7,20 +7,31 @@ What a ZeyoCut release contains, and what it doesn't:
 
 - **In `ZeyoCut.Mcp.exe`:** the .NET runtime and the NuGet packages below, with the native libraries
   they carry (Skia, HarfBuzz, OpenCV, ONNX Runtime and DirectML).
+- **In `ZeyoCut.Editor.exe`:** the .NET runtime with its Windows Desktop part (WPF), and some of the
+  packages below: SkiaSharp and HarfBuzzSharp with Skia and HarfBuzz, System.Numerics.Tensors, and the
+  managed parts of OpenCvSharp4 and ONNX Runtime. The editor leaves out the native OpenCV, ONNX
+  Runtime and DirectML libraries: it doesn't run AI models.
 - **Downloaded on first use, never bundled:** the AI models, each from its own source (see
   [AI models](#ai-models-downloaded-on-first-use)).
 - **Installed by you, never bundled:** FFmpeg and, for transcripts, whisper.cpp. ZeyoCut runs them as
   separate programs (see [Programs you install](#programs-you-install)).
 
 The release zip also has a `licenses` folder with the full notice files of the bundled native code:
-the .NET runtime's, SkiaSharp's (Skia, HarfBuzz and the libraries they use), ONNX Runtime's, and
-DirectML's license and notices.
+the .NET runtime's notices and its Windows Desktop part's license, SkiaSharp's (Skia, HarfBuzz and the
+libraries they use), ONNX Runtime's, and DirectML's license and notices.
 
 ## .NET runtime
 
 ZeyoCut.Mcp.exe is self-contained: it includes the .NET 10 runtime, MIT License, Copyright (c)
 .NET Foundation and Contributors ([github.com/dotnet/runtime](https://github.com/dotnet/runtime)).
 Its third-party notices are `licenses/dotnet-THIRD-PARTY-NOTICES.txt` in the release zip.
+
+ZeyoCut.Editor.exe is self-contained too: the same runtime plus its Windows Desktop part with WPF,
+MIT License, Copyright (c) .NET Foundation and Contributors
+([github.com/dotnet/wpf](https://github.com/dotnet/wpf)). That part's license is
+`licenses/dotnet-windowsdesktop-LICENSE.txt`. It also carries the DirectX shader compiler
+(`D3DCompiler_47_cor3.dll`) and Visual C++ runtime (`vcruntime140_cor3.dll`) that WPF draws with, which
+Microsoft ships in the same runtime package.
 
 ## NuGet packages in the release
 

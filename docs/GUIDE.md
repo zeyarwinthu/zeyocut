@@ -1,14 +1,15 @@
 # ZeyoCut tool guide
 
-The `zeyocut` server has 90 tools, plus [`describe_clip`](#optional-describe_clip) when a clip describer is configured, and 4 [workflow prompts](#workflow-prompts). Every example below was run against the real server; paths are shortened to `C:\Users\you\...` and `C:\videos\...`.
+The `zeyocut` server has 96 tools, plus [`describe_clip`](#optional-describe_clip) when a clip describer is configured, and 4 [workflow prompts](#workflow-prompts). Every example below was run against the real server; paths are shortened to `C:\Users\you\...` and `C:\videos\...`.
 
 ## Conventions
 
 - **One project is open at a time.** Call `create_project` or `open_project` first. Every other tool works on the open project.
 - **Every editing tool saves `project.json` immediately and adds one undo step.** Edits are all-or-nothing: if any part of a call is invalid, nothing changes.
-    - Editing tools: `update_project`, `restore_backup`, `import_asset`, `import_folder`, `import_video`, `add_*_layer`, `update_layer`, `remove_layer`, `duplicate_layer`, `set_keyframes`, `remove_keyframes`, `clear_keyframes`, `split_layer`, `remove_range`, `move_layer`, `set_speed`, `add_transition`, `add_markers`, `remove_markers`, `remove_silences`, `cut_by_transcript`, `generate_captions`, `add_caption_track`, `import_srt`, `reframe_to_vertical`, `add_rig`, `apply_action`, `apply_style`, `add_sfx`, `auto_lip_flap`, `set_camera`, `camera_shake`, `set_effect`, `set_mask`, `set_motion_path`, `remove_background`, `refine_matte`, `text_behind_subject`, `track_object`, `reanchor_track`, `detect_and_track`, `attach_to_track`, `apply_redaction`, `tracks_to_keyframes`.
+    - Editing tools: `update_project`, `restore_backup`, `import_asset`, `import_folder`, `import_video`, `add_*_layer`, `update_layer`, `remove_layer`, `duplicate_layer`, `set_keyframes`, `remove_keyframes`, `clear_keyframes`, `split_layer`, `remove_range`, `move_layer`, `trim_layer`, `set_speed`, `add_transition`, `add_markers`, `remove_markers`, `remove_silences`, `cut_by_transcript`, `generate_captions`, `add_caption_track`, `import_srt`, `reframe_to_vertical`, `add_rig`, `apply_action`, `apply_style`, `add_sfx`, `auto_lip_flap`, `set_camera`, `camera_shake`, `set_effect`, `set_color`, `set_mask`, `set_motion_path`, `remove_background`, `refine_matte`, `text_behind_subject`, `track_object`, `reanchor_track`, `detect_and_track`, `attach_to_track`, `apply_redaction`, `tracks_to_keyframes`.
     - `build_from_script` creates a project, and its build is one undo step on top of the empty project.
     - Library saves (`save_rig`, `save_action`, `save_style`, `save_template`) write to the shared library and don't change the project, so they aren't undo steps.
+- **Another program may save the open project too,** such as a second server or the ZeyoCut editor. Before each tool runs, the server takes the newer `project.json`, and the reply starts with a note that lists what changed. Edits are made on top of the other program's, never over them, and undo takes back only this server's own changes. See [`undo` / `redo`](#undo-redo) for an example, and [Saving alongside another program](project-format.md#saving-alongside-another-program).
 - **Long work runs in the background** and returns a job id right away: `import_video` when the file needs normalizing (`import_N`), `analyze_video` (`analyze_N`), `frame_diff` over more than 150 frames (`framediff_N`), `audio_levels` over more than 120s (`audiolevels_N`), `detect_beats` on more than 120s of sound (`beats_N`), `export_batch` (`batch_N`), `export_language_versions` (`versions_N`), `export_frames` (`frames_N`), `prerender_layers` (`prerender_N`), `remove_background`, `text_behind_subject` or `generate_captions` with an AI method (`matte_N`), `text_occlusion` over more than 150 frames (`occlusion_N`), `generate_captions` with `behindSubject=auto` over more than 600 caption frames or before its matte is computed (`captions_N`), `system_check` (`syscheck_N`), `track_object` and `reanchor_track` over more than 150 frames (`tracking_N`), `detect_and_track` (`detect_N`), the [proxy](#import_video) of footage over 2560 px (`proxy_N`), `start_export` (`export_N`) and, when configured, `describe_clip` (`describe_N`). Poll `get_job_status` (or `get_export_status` for exports). A running job's status estimates the time left.
 - **Jobs outlast a restart of the server.** Each one is written to the jobs folder (see the README's Configuration). An export (`export_N`, `batch_N`, `versions_N`) that was running when the server stopped starts again under its id when the server next starts; any other running job shows as failed, saying how far it got. See [`get_job_status`](#get_job_status).
 - **AI jobs say how long they should take,** from [`system_check`](#system_check)'s benchmark, or a rough guess before it. One that would take more than 5 minutes isn't started: the reply gives the estimate and nothing changes, so the user hears first how long it takes. Calling again with `confirmLongJob: true` starts it. This applies to `remove_background`, `text_behind_subject` and `generate_captions` with an AI method, and to `detect_and_track`.
@@ -23,12 +24,12 @@ The `zeyocut` server has 90 tools, plus [`describe_clip`](#optional-describe_cli
 
 Contents:
 
-- [Project](#project): `create_project`, `open_project`, `update_project`, `get_project`, `list_projects`, `undo`, `redo`, `restore_backup`
+- [Project](#project): `create_project`, `open_project`, `update_project`, `get_project`, `list_projects`, `open_in_editor`, `undo`, `redo`, `restore_backup`
 - [Assets](#assets): `import_asset`, `import_folder`, `list_assets`
 - [Layers](#layers): `add_image_layer`, `add_text_layer`, `add_audio_layer`, `update_layer`, `remove_layer`, `duplicate_layer`, `list_layers`
 - [Animation](#animation): `set_keyframes`, `remove_keyframes`, `clear_keyframes`
 - [Camera](#camera): `set_camera`, `camera_shake`
-- [Effects and motion](#effects-and-motion): `set_effect`, `set_mask`, `set_motion_path`
+- [Effects and motion](#effects-and-motion): `set_effect`, `set_color`, `set_mask`, `set_motion_path`
 - [System check](#system-check): `system_check`, `get_logs`
 - [Background removal](#background-removal): `remove_background`, `refine_matte`
 - [Text behind the subject](#text-behind-the-subject): `text_behind_subject`, `text_occlusion`
@@ -36,13 +37,13 @@ Contents:
 - [Redaction](#redaction): `apply_redaction`, `tracks_to_keyframes`, `redaction_report`
 - [Preview](#preview): `render_frame`, `render_contact_sheet`, `preview_server`
 - [Video](#video): `import_video`, `add_video_layer`, `get_job_status`, `reframe_to_vertical`
-- [Editing](#editing): `split_layer`, `remove_range`, `move_layer`, `set_speed`, `add_transition`
+- [Editing](#editing): `split_layer`, `remove_range`, `move_layer`, `trim_layer`, `set_speed`, `add_transition`
 - [Markers](#markers): `add_markers`, `remove_markers`, `export_markers`
 - [Analysis and cutting](#analysis-and-cutting): `analyze_video`, `get_transcript`, `view_source`, `remove_silences`, `cut_by_transcript`
 - [Optional: describe_clip](#optional-describe_clip): `describe_clip`, only when a clip describer is configured
 - [Captions](#captions): `generate_captions`, `add_caption_track`, `import_srt`, `export_srt`
 - [Languages](#languages): language tags, one version per language, a font per language
-- [Library](#library): `save_rig`, `add_rig`, `save_action`, `apply_action`, `save_style`, `apply_style`, `save_template`, `new_project_from_template`, `list_library`
+- [Library](#library): `save_rig`, `add_rig`, `save_action`, `apply_action`, `save_style`, `apply_style`, `save_template`, `new_project_from_template`, `add_template`, `list_library`
 - [Audio for animation](#audio-for-animation): `list_sfx`, `add_sfx`, `detect_beats`, `auto_lip_flap`
 - [Episode scripts](#episode-scripts): `build_from_script`
 - [Checks](#checks): `frame_diff`, `audio_levels`, `check_project`
@@ -93,7 +94,7 @@ next: import_asset / import_video, then add_image_layer / add_text_layer / add_a
 
 Opens an existing project and returns its layer tree. Undo history starts fresh.
 
-A project saved by an older ZeyoCut is updated to the current format (6) as it opens, without losing anything, and the reply says so. The file as it was is kept in the project's `backups` folder as `project-v<format>-<time>.json`.
+A project saved by an older ZeyoCut is updated to the current format (7) as it opens, without losing anything, and the reply says so. The file as it was is kept in the project's `backups` folder as `project-v<format>-<time>.json`.
 
 Footage over 2560 px that has no [proxy](#import_video) yet gets one in the background, and the reply ends with a line like `making a 1920 px proxy of 'street' in the background as proxy_2: previews and object tracking read it once it is done, exports always read the original`.
 
@@ -122,7 +123,7 @@ A project saved by Phase 1 (format 1):
 ```
 ```text
 opened C:\Users\you\ZeyoCut\projects\tora-jumps
-updated project.json from format 1 (saved by an older ZeyoCut) to 6; the file as it was is kept as backups\project-v1-20261104-160855.json
+updated project.json from format 1 (saved by an older ZeyoCut) to 7; the file as it was is kept as backups\project-v1-20261104-160855.json
 Tora Jumps: 1280x720 @ 30 fps, 3s, 11 layer(s), 9 asset(s)
 clouds [image]  z=1  t=0–end  drawings=normal  anchor=(0,0)  keys: x(2)
 ground [image]  z=2  t=0–end  drawings=normal  anchor=(0,0)
@@ -153,6 +154,12 @@ Changes the open project's settings. Only the parameters you pass change, and at
 | `preset` | string | `youtube_1080p` or `shorts_1080p`: sets width, height, fps and loudness (other parameters you pass win) |
 | `loudnessTarget` | number | Export loudness in LUFS, -40 to -5 (-14 suits YouTube and most platforms). `0` turns normalization off |
 | `ducking` | bool | Lower music (role `music`) under voice (role `voice`) in the export |
+| `duckLevel` | number | How far the music goes down where a voice clip plays, in dB: 0 to -40 (default -12) |
+| `duckFadeIn`, `duckFadeOut` | number | Seconds the music takes to go down before a voice clip starts and to come back up after it ends, 0–5 (defaults 0.5 and 1.5) |
+| `role` | string | `voice`, `music` or `effects`: the mixer strip that `gain`, `pan` and `muted` change |
+| `gain` | number | The role's level in dB, -60 to +6 (0 as recorded), on top of each clip's volume |
+| `pan` | number | -1 (left only) to 1 (right only), 0 centered |
+| `muted` | bool | Leave the role's sound out of the export and the preview |
 
 The result lists each change and warns about:
 
@@ -194,6 +201,14 @@ Warnings:
 ```
 ```text
 An error occurred invoking 'update_project': nothing changed; the project already is 1920x1080 @ 30 fps, 6s, background #FFF4E0, loudness -14 LUFS, ducking on
+```
+The mixer: music a little quieter and further under the voice.
+```json
+{ "role": "music", "gain": -6, "duckLevel": -18 }
+```
+```text
+updated project 'tora-test': duck level -12 dB → -18 dB; music gain 0 dB → -6 dB
+1920x1080 @ 30 fps, 6s (180 frames), background #FFF4E0
 ```
 A landscape video project switched to vertical:
 ```json
@@ -265,6 +280,32 @@ projects root: C:\Users\you\ZeyoCut\projects
 - tora-test: "tora-test" 1280x720 @ 30 fps, 3s, 6 layer(s), modified 2026-11-02 01:29  [open]
 ```
 
+### `open_in_editor`
+
+Opens a project in ZeyoCut's editor window on the user's computer, so they can fine-tune it by hand: move, trim and split clips on a timeline, place, crop and animate layers with keyframes, set effects, color adjustments and face-blur settings, edit caption text and style, change volumes, export. Masks, motion paths, transitions and speed stay with the tools. The [editor guide](editor.md) shows it. The editor saves each change to `project.json` as it is made. The next tool call's reply starts with a note of what the user changed (see [`undo` / `redo`](#undo-redo)), edits made with the tools go on top of theirs, and the editor shows them within a second. A project that is already open in the editor comes to the front instead of opening twice.
+
+The editor is `ZeyoCut.Editor.exe` next to the server, or the one the `EditorPath` setting (`ZEYOCUT_EDITOR_PATH`) names. It gets the server's settings, and it runs on its own: it stays open when the server stops.
+
+| Parameter | Type | Notes |
+|---|---|---|
+| `project` | string | A name from `list_projects`, or an absolute folder path. Default: the open project |
+
+```json
+{}
+```
+```text
+opened C:\Users\you\ZeyoCut\projects\timeline-demo in the editor (C:\Tools\ZeyoCut\ZeyoCut.Editor.exe, process 33540); the user can now edit it by hand while you keep working on it
+```
+
+A project that doesn't exist:
+
+```json
+{ "project": "street" }
+```
+```text
+An error occurred invoking 'open_in_editor': no project found at 'C:\Users\you\ZeyoCut\projects\street'; projects: empty-short, street-demo, timeline-demo
+```
+
 ### `undo` / `redo`
 
 These undo or redo the last change. History holds up to 200 steps for the current session. They take no parameters.
@@ -279,11 +320,50 @@ undid: remove_layer mimi_body (18 more undo step(s), 1 redo step(s))
 redid: remove_layer mimi_body (19 undo step(s), 0 more redo step(s))
 ```
 
+When another program, such as the ZeyoCut editor, saves `project.json` too, undo still takes back this server's steps one at a time, but only what each step changed: the other program's changes stay. Undo is refused when the other program changed the same layer or setting since, because putting the step's version back would throw that change away. Redo works the same way.
+
+After a refused `undo`, the next one steps over that step: it stays as it is, the step before it is undone, and the reply names the step it stepped over. A step that was stepped over is undone after all once the other program's change is gone. For example, when the editor changed `sub` after this server's `update_layer sub`:
+
+```text
+undid: update_layer title (3 more undo step(s), 1 redo step(s)). Stepped over 'update_layer sub', which can't be undone on top of another program's changes
+```
+
+`redo` steps over a refused step in the same way: the step stays undone, the one undone before it is redone, and the reply names the step it stepped over.
+
+Here the project has three text layers, and the editor saved three edits between two calls. The next call, `list_layers`, starts with a note:
+
+```text
+project.json was changed outside this server since your last call (now revision 7; saved: editor update_layer title, editor remove_layer subtitle, editor add_markers (1 marker)). What changed:
+- changed layer 'title'
+- removed layer 'subtitle'
+- added marker 'intro' (Intro)
+Re-read with get_project or list_layers before relying on earlier details.
+tora-test: 1280x720 @ 30 fps, 6s, 2 layer(s), 0 asset(s)
+markers: intro chapter at 0s "Intro"
+title [text]  z=0  t=0–4  text="Tora Jumps!"  font=Segoe UI 72px  anchor=(177.82,47.883)
+credits [text]  z=2  t=0–end  text="by Mimi"  font=Segoe UI 48px  anchor=(86.156,31.922)
+```
+
+After one more edit (`update_layer title`), the first `undo` takes it back. The second takes back adding `credits`, which the editor didn't touch, and keeps the editor's changes:
+
+```text
+undid: update_layer title (3 more undo step(s), 1 redo step(s))
+```
+```text
+undid: add_text_layer credits (2 more undo step(s), 2 redo step(s))
+```
+
+The third would take back adding `subtitle`, which the editor removed since:
+
+```text
+An error occurred invoking 'undo': can't undo 'add_text_layer subtitle': another program removed layer 'subtitle' since that edit (saved: editor update_layer title, editor remove_layer subtitle, editor add_markers (1 marker)), and undoing it would throw that change away. restore_backup lists the copies of project.json kept before each save. The next undo steps over this step and goes on to the one before it
+```
+
 ### `restore_backup`
 
 Lists the open project's backups, newest first, or puts one back.
 
-- **Before every save,** the `project.json` being replaced is copied to the project's `backups` folder as `project-<time> before <edit>.json`, where `<edit>` is the change that was saved over it. Undo and redo are saves too. The last 20 are kept.
+- **Before every save,** the `project.json` being replaced is copied to the project's `backups` folder as `project-<time> before <edit>.json`, where `<edit>` is the change that was saved over it. Undo and redo are saves too. The last 20 are kept, and the last 20 the ZeyoCut editor saved besides (labelled `editor ...`), so a burst of edits there can't push out the server's. The editor's backup made right after the server's last save holds the project as the server left it, and it stays however many editor saves follow; the same goes for the server's backup made right after the editor's last save.
 - **When `open_project` updates a file from an older ZeyoCut,** the file as it was stays there as `project-v<format>-<time>.json`, and these are never removed.
 - **Backups hold `project.json` only,** not the assets. They outlast a restart, unlike the undo history.
 - **Restoring is one undo step,** and the file it replaces is backed up like any other save.
@@ -459,6 +539,55 @@ Lists assets and the layers that use them. It takes no parameters.
 - boing [audio] assets/boing.wav (0.6s); used by: boing
 ```
 
+### `relink_asset`
+
+Points an asset at another file of the same kind, such as its file found somewhere else after it was moved or deleted from `assets\`. `check_project` lists assets with no file. The file is copied into `assets\` as `import_asset` copies it. The asset keeps its id, so every layer that uses it uses the new file.
+
+The asset takes the new file's size, length or font family, with a warning when they differ. A file of another kind is refused before anything is copied. A video must need no normalizing; import one that does with `import_video` instead. The editor's Relink dialog does the same.
+
+| Parameter | Type | Notes |
+|---|---|---|
+| `assetId` | string | The asset to point at the file |
+| `path` | string | Absolute path of the file |
+
+```json
+{ "assetId": "clouds", "path": "C:\\Users\\you\\Pictures\\moved\\clouds.png" }
+```
+```text
+relinked clouds [image] assets/clouds.png (60x20 px)
+Warnings:
+- 'clouds' was 40x20 px and is now 60x20 px
+```
+```json
+{ "assetId": "clouds", "path": "C:\\Users\\you\\Music\\tone.wav" }
+```
+```text
+An error occurred invoking 'relink_asset': 'tone.wav' is an audio file, and asset 'clouds' needs an image
+```
+
+### `tag_assets`
+
+Adds tags to assets and takes tags off them. Tags group assets the way bins do, such as a character's parts or the sound effects, and the editor's Media browser lists each tag as a bin. A tag is up to 40 characters, and tags that differ only in case are the same tag. `list_assets` shows each asset's tags.
+
+| Parameter | Type | Notes |
+|---|---|---|
+| `assetIds` | string[] | The assets to tag |
+| `add` | string[] | Tags to add |
+| `remove` | string[] | Tags to take off |
+
+```json
+{ "assetIds": ["tora_body", "tora_head"], "add": ["Tora rig"] }
+```
+```text
+'tora_body' tags: none → Tora rig; 'tora_head' tags: none → Tora rig
+```
+```json
+{ "assetIds": ["boing"], "add": ["sfx"] }
+```
+```text
+An error occurred invoking 'tag_assets': nothing changed; 'boing' has tags: SFX, Cartoon
+```
+
 ---
 
 ## Layers
@@ -490,6 +619,7 @@ Extra parameters:
 
 - `drawing`: the drawing shown initially
 - `flipX`: mirror around `anchorX`; children are not flipped
+- `edit`: `overlay` (the default), `insert` or `overwrite`, for a picture with an `end`: see [Insert and overwrite](#insert-and-overwrite)
 
 ```json
 { "asset": "tora_body", "id": "tora_body", "x": 640, "y": 600, "anchorX": 110, "anchorY": 234 }
@@ -527,6 +657,7 @@ Adds a title or subtitle. Text is shaped with HarfBuzz, and each layer uses one 
 | `lineHeight` | 1 | Multiple of the font's natural line spacing |
 | `box` | | Background `{ "color": "#000000B3", "padding": 16, "cornerRadius": 0 }` |
 | `style` | | A library style ([`save_style`](#save_style)). It fills every look parameter you leave out, scaled to the canvas |
+| `animateIn`, `animateOut` | none | How it comes in at its start and goes out at its end: `fade`, `pop` or `slideUp`. See [Title animations](#title-animations) |
 
 ```json
 { "text": "မင်္ဂလာပါ", "id": "subtitle_my", "fontFamily": "Myanmar Text", "fontSize": 56, "color": "#FFFFFF",
@@ -548,6 +679,26 @@ Warnings:
 - font 'Segoe UI' has no glyphs for "こんにちは"; pick a font that covers this script (Burmese: "Myanmar Text", Japanese: "Yu Gothic")
 ```
 
+#### Title animations
+
+`animateIn` and `animateOut` add keyframes on the text's `opacity`, `scaleX`, `scaleY` and `y`. Each plays for 0.5 s from the layer's start or up to its end, or for a third of the layer when that's shorter, so the two never meet. They come in to, and go out from, the values the layer has there.
+
+| Preset | In | Out |
+|---|---|---|
+| `fade` | `opacity` from 0, easing out | `opacity` to 0, easing in |
+| `pop` | `scaleX` and `scaleY` from 0, with a small overshoot (`easeOutBack`) | `scaleX` and `scaleY` to 0, easing in |
+| `slideUp` | rises 5% of the canvas height into place while it fades in | rises 5% more while it fades out |
+
+They are ordinary keyframes: change them with `set_keyframes`, or take them off with `remove_keyframes`. A preset replaces the keyframes those four values had in its time. The editor's Titles view puts the same presets on a selected text.
+
+```json
+{ "text": "Episode 3", "id": "title", "fontSize": 96, "color": "#FFFFFF", "start": 1, "end": 4, "animateIn": "pop", "animateOut": "fade" }
+```
+```text
+added text layer 'title', box 410.063x127.688 px, anchor (205.031,63.844), z=0
+{"type":"text","id":"title", ... ,"scaleX":{"value":1,"keyframes":[{"time":1,"value":0,"easing":"easeOutBack"},{"time":1.5,"value":1,"easing":"linear"}]}, ... ,"opacity":{"value":1,"keyframes":[{"time":3.5,"value":1,"easing":"easeIn"},{"time":4,"value":0,"easing":"linear"}]}}
+```
+
 ### `add_audio_layer`
 
 Adds voice, music or a sound effect from an audio asset. It is heard only in the export.
@@ -562,13 +713,14 @@ Adds voice, music or a sound effect from an audio asset. It is heard only in the
 | `role` | `music` | `voice`, `music` or `effects`. With ducking on, music is lowered while voice plays |
 | `fadeIn`, `fadeOut` | 0 | Seconds |
 | `language` | every version | The sound is only in that [language's version](#languages), such as a dubbed voice |
+| `edit` | `overlay` | `overlay`, `insert` or `overwrite` on the role's lane: see [Insert and overwrite](#insert-and-overwrite) |
 
 ```json
 { "asset": "music", "volume": 0.6, "fadeOut": 1 }
 ```
 ```text
 added audio layer 'music' at 0s
-{"type":"audio","id":"music","name":"music","start":0,"end":null,"zIndex":0,"parentId":null,"visible":true,"asset":"music","trimIn":0,"trimOut":null,"volume":0.6,"role":"music","fadeIn":0,"fadeOut":1}
+{"type":"audio","id":"music","name":"music","start":0,"end":null,"zIndex":0,"parentId":null,"visible":true,"asset":"music","trimIn":0,"trimOut":null,"volume":{"value":0.6},"role":"music","fadeIn":0,"fadeOut":1}
 ```
 
 ### `update_layer`
@@ -676,7 +828,9 @@ Properties are `x`, `y`, `rotation`, `scaleX`, `scaleY` and `opacity`, plus:
 
 - `drawing` on image layers
 - `brightness` (-1 to 1, 0 = unchanged, -1 = black), `contrast` and `saturation` (0 to 4, 1 = unchanged) on image and video layers
+- `grade.exposure`, `grade.highlights`, `grade.shadows`, `grade.temperature`, `grade.tint` on image and video layers with a grade, `grade.lift.red`, `grade.lift.green`, `grade.lift.blue` and the same for `grade.gamma` and `grade.gain` once that wheel is set, and `grade.look.amount` once the layer has a look (see [`set_color`](#set_color))
 - `cropX`, `cropY` on video layers with a crop (source pixels), for example to follow a subject after `reframe_to_vertical`
+- `volume` on audio layers and on video layers' own sound (1 as recorded, 0 silent, up to 10), to ride a level by hand: an audio layer has only this one
 - `shadow.x`, `shadow.y`, `shadow.blur`, `shadow.opacity`, `outline.width`, `blur.x`, `blur.y`, `tint.amount` on layers with that effect, and `mask.x`, `mask.y`, `mask.width`, `mask.height`, `mask.feather` on layers with a mask (see [Effects and motion](#effects-and-motion))
 - `<track>.x`, `<track>.y`, `<track>.width`, `<track>.height` on a [redaction](#redaction) after `tracks_to_keyframes`, with time in the footage's own seconds
 
@@ -688,6 +842,7 @@ Properties are `x`, `y`, `rotation`, `scaleX`, `scaleY` and `opacity`, plus:
 - `easeOutBack` (overshoot)
 - `easeOutBounce`
 - `easeOutElastic`
+- `cubicBezier`, with the keyframe's `bezier`: `[x1, y1, x2, y2]` as CSS's `cubic-bezier()` takes them, x1 and x2 from 0 to 1. `[0.25, 0.1, 0.25, 1]` is CSS's ease; a y past 1, as in `[0.34, 1.56, 0.64, 1]`, overshoots
 
 **Holding values.** Before the first keyframe and after the last, a property holds that keyframe's value. `drawing` keyframes always hold; add one at time 0 for the starting drawing.
 
@@ -700,6 +855,7 @@ Adds or replaces many keyframes in one call. A keyframe at the same layer, prope
 | `layerId`, `property`, `time` | `layerId` `"camera"` animates the [camera](#camera) |
 | `value` | A number, or a drawing name for `drawing` |
 | `easing` | Optional, default `linear` |
+| `bezier` | Optional: a `cubicBezier` easing's four numbers, which make the easing `cubicBezier` when `easing` is left out |
 
 This example sets squash before takeoff, a rise and fall, an easeOutBack landing and a face swap:
 ```json
@@ -727,7 +883,7 @@ set 10 keyframe(s) (10 added, 0 replaced) on tora_body.y, tora_body.scaleY, tora
 ```
 ```text
 An error occurred invoking 'set_keyframes': 2 of 2 entries are invalid, so nothing was changed:
-- entry 0 (tora_tail.rotation @ 0s): unknown easing 'bouncy'; valid values: linear, hold, easeIn, easeOut, easeInOut, easeOutBack, easeOutBounce, easeOutElastic
+- entry 0 (tora_tail.rotation @ 0s): unknown easing 'bouncy'; valid values: linear, hold, easeIn, easeOut, easeInOut, easeOutBack, easeOutBounce, easeOutElastic, cubicBezier
 - entry 1 (tora_hed.x @ 0s): layer 'tora_hed' not found; existing layers: tora_body, tora_head, tora_tail, subtitle_my, subtitle_ja, boing
 ```
 
@@ -965,6 +1121,148 @@ An error occurred invoking 'set_effect': outline takes color, width; x is not fo
 ```
 ```text
 An error occurred invoking 'set_effect': a new tint needs a color, e.g. #FF0000
+```
+
+### `set_color`
+
+Grades an image or video clip: the controls of a color panel, as one undo step. Values you leave out keep theirs.
+
+| Control | Range (as shot) | What it does |
+|---|---|---|
+| `exposure` | -3 to 3 (0) | Stops of light: 1 doubles it, -1 halves it |
+| `contrast` | 0 to 4 (1) | Around mid gray; 0 is flat gray |
+| `highlights` | -1 to 1 (0) | Darkens or brightens the light parts, most at two thirds of the way up |
+| `shadows` | -1 to 1 (0) | Deepens or lifts the dark parts, most at a third of the way up |
+| `temperature` | -1 to 1 (0) | Bluer to warmer: red and blue go half a stop each way at 1 |
+| `tint` | -1 to 1 (0) | Greener to more magenta: green goes half a stop at 1 |
+| `saturation` | 0 to 4 (1) | 0 is black and white |
+| `lift` | `red`, `green`, `blue`: -1 to 1 (0) | The shadows wheel: moves black up or down and keeps white |
+| `gamma` | `red`, `green`, `blue`: -1 to 1 (0) | The midtones wheel: bends the middle and keeps black and white |
+| `gain` | `red`, `green`, `blue`: -1 to 1 (0) | The highlights wheel: scales the light and keeps black |
+| `look` | a LUT asset, or `"none"` | A 3D LUT from a `.cube` file (`import_asset`) laid over the clip |
+| `lookAmount` | 0 to 1 (1) | How much of the look shows |
+
+- **Order:** exposure and the white balance work on the light itself, then the highlights and shadows curves, which keep black and white where they are, then the lift, gamma and gain wheels on each channel, then saturation, contrast and the layer's `brightness`, and the look last. Brightness isn't part of the color here; `update_layer` sets it.
+- **The grade:** exposure, highlights, shadows, temperature, tint, the wheels and the look are kept in the layer's `grade`, which a clip has only while one of them does something. A wheel is kept only while one of its channels isn't 0, so a channel you leave out of a wheel keeps its value. `set_keyframes` animates `grade.exposure`, `grade.highlights`, `grade.shadows`, `grade.temperature` and `grade.tint` once the clip has a grade, `grade.lift.red` (and the other channels and wheels) once that wheel is set, and `grade.look.amount` once the clip has a look.
+- **Looks:** `import_asset` takes a 3D LUT as a `.cube` file (2 to 129 points a side, with `DOMAIN_MIN` and `DOMAIN_MAX` if it has them) and keeps it in the project, so the project still renders on another computer. A 1D LUT is refused. `look: "none"` takes the look off, and its amount with it.
+- **`from`** copies another clip's color: contrast, saturation and grade, wheels and look included, as fixed values. A clip whose color has keyframes can't be copied.
+- **`sameFootage`** then gives every other clip of the same video (or of the same picture) the clip's color, and takes their color keyframes away.
+- **`reset`** puts the clip back as shot first: contrast and saturation 1, no grade.
+- The editor's Color view sets the same values.
+
+| Parameter | Default |
+|---|---|
+| `layerId` | required |
+| `exposure`, `contrast`, `highlights`, `shadows`, `temperature`, `tint`, `saturation` | unchanged |
+| `lift`, `gamma`, `gain` (each `{ "red", "green", "blue" }`) | unchanged |
+| `look`, `lookAmount` | unchanged; a new look starts at 1 |
+| `from` | none |
+| `reset`, `sameFootage` | false |
+
+```json
+{ "layerId": "street_b", "exposure": 0.3, "contrast": 1.12, "highlights": -0.2, "shadows": 0.18, "temperature": 0.35, "saturation": 1.2 }
+```
+```text
+color of 'street_b': exposure 0.3, contrast 1.12, highlights -0.2, shadows 0.18, temperature 0.35, saturation 1.2
+```
+```json
+{ "layerId": "street_b", "sameFootage": true }
+```
+```text
+color of 'street_b': exposure 0.3, contrast 1.12, highlights -0.2, shadows 0.18, temperature 0.35, saturation 1.2; the same on street, street_2 (every clip of 'street')
+```
+`list_layers` then shows each clip's grade:
+```text
+street_2 [video]  z=0  t=3–6  asset=street source=3–6s speed=1  volume=1  anchor=(640,360)  effects: grade(exposure 0.3, highlights -0.2, shadows 0.18, temperature 0.35)  tracks=track_3
+```
+Warming the first clip in over two seconds (`set_keyframes`), then setting a value that the keyframes hide:
+```json
+{ "entries": [
+  { "layerId": "street", "property": "grade.temperature", "time": 0, "value": 0 },
+  { "layerId": "street", "property": "grade.temperature", "time": 2, "value": 0.35, "easing": "easeInOut" }
+] }
+```
+```text
+set 2 keyframe(s) (2 added, 0 replaced) on street.grade.temperature
+```
+```json
+{ "layerId": "street", "temperature": 0.5 }
+```
+```text
+color of 'street': exposure 0.3, contrast 1.12, highlights -0.2, shadows 0.18, temperature animated (2 keyframes), saturation 1.2
+Warnings:
+- grade.temperature has 2 keyframe(s), so the value you set is only used after clear_keyframes
+```
+```json
+{ "layerId": "street_2", "from": "street" }
+```
+```text
+An error occurred invoking 'set_color': 'street' animates its temperature with keyframes; its color is copied as fixed values, so clear_keyframes first
+```
+```json
+{ "layerId": "street_2", "exposure": 4 }
+```
+```text
+An error occurred invoking 'set_color': exposure must be between -3 and 3 (got 4)
+```
+```json
+{ "layerId": "title", "exposure": 1 }
+```
+```text
+An error occurred invoking 'set_color': 'title' is a text layer; color is for image and video layers
+```
+The wheels and a look: a `.cube` file goes in with `import_asset`, then onto the clip at 60%:
+```json
+{ "path": "C:\\Users\\you\\Documents\\Looks\\warm_film.cube" }
+```
+```text
+imported warm_film [lut] assets/warm_film.cube (a look for set_color)
+```
+```json
+{ "layerId": "street_b", "lift": { "red": -0.02, "blue": 0.04 }, "gain": { "red": 0.06, "green": 0.03 }, "look": "warm_film", "lookAmount": 0.6 }
+```
+```text
+color of 'street_b': exposure 0.3, contrast 1.12, highlights -0.2, shadows 0.18, temperature 0.35, saturation 1.2, lift.red -0.02, lift.blue 0.04, gain.red 0.06, gain.green 0.03, look warm_film at 0.6
+```
+Fading the look in over the clip's first second, and a wheel that isn't set yet:
+```json
+{ "entries": [
+  { "layerId": "street_b", "property": "grade.look.amount", "time": 6, "value": 0 },
+  { "layerId": "street_b", "property": "grade.look.amount", "time": 7, "value": 0.6 }
+] }
+```
+```text
+set 2 keyframe(s) (2 added, 0 replaced) on street_b.grade.look.amount
+```
+```json
+{ "entries": [{ "layerId": "street_b", "property": "grade.gamma.red", "time": 6, "value": 0.1 }] }
+```
+```text
+An error occurred invoking 'set_keyframes': 1 of 1 entries are invalid, so nothing was changed:
+- entry 0 (street_b.grade.gamma.red @ 6s): 'street_b' has no gamma wheel; set_color's gamma sets it
+```
+A 1D LUT, an amount without a look, and a look that isn't a LUT:
+```text
+An error occurred invoking 'import_asset': 'lift_1d.cube' is a 1D LUT (LUT_1D_SIZE); ZeyoCut takes 3D LUTs, with LUT_3D_SIZE
+An error occurred invoking 'set_color': look.amount is how much of the look shows, and 'street_2' has no look: give look, a LUT asset (import_asset takes .cube files)
+An error occurred invoking 'set_color': look 'street' is a video, not a LUT; LUT assets: warm_film. import_asset takes .cube files
+```
+Taking the look off takes its keyframes with it:
+```json
+{ "layerId": "street_b", "look": "none" }
+```
+```text
+color of 'street_b': exposure 0.3, contrast 1.12, highlights -0.2, shadows 0.18, temperature 0.35, saturation 1.2, lift.red -0.02, lift.blue 0.04, gain.red 0.06, gain.green 0.03
+Warnings:
+- 'street_b' lost its keyframes on look.amount
+```
+```json
+{ "layerId": "street", "reset": true }
+```
+```text
+put the color of 'street' back as shot
+Warnings:
+- 'street' lost its keyframes on temperature
 ```
 
 ### `set_mask`
@@ -1755,7 +2053,7 @@ hid face_1, face_2, face_3, face_4 with 'redaction_1': pixelate, strength 50 (12
 - face_2: frames 0–95 of 'crew' covered (0–3.958s on 'crew'): 93 detected, 3 filled between detections, 0 held
 - face_3: frames 0–95 of 'crew' covered (0–3.958s on 'crew'): 93 detected, 3 filled between detections, 0 held
 - face_4: frames 0–95 of 'crew' covered (0–3.958s on 'crew'): 93 detected, 3 filled between detections, 0 held
-- check it with render_frame; update_layer changes its style, strength, paddingPercent, feather, holdFrames, color and visible; tracks_to_keyframes turns a track's box into keyframes to edit by hand
+- check it with render_frame; update_layer changes its style, strength, paddingPercent, feather, holdFrames, color, shape, smooth and visible; tracks_to_keyframes turns a track's box into keyframes to edit by hand
 ```
 `render_frame` at 2.083 s, while the bar hides `face_3`, shows the other three faces pixelated.
 
@@ -1798,7 +2096,7 @@ hid plate_1, plate_2, plate_3 with 'redaction_1': pixelate, strength 50 (12 bloc
 - plate_1: frames 0–95 of 'vans' covered (0–3.958s on 'vans'): 93 detected, 3 filled between detections, 0 held
 - plate_2: frames 0–95 of 'vans' covered (0–3.958s on 'vans'): 94 detected, 2 filled between detections, 0 held
 - plate_3: frames 0–95 of 'vans' covered (0–3.958s on 'vans'): 92 detected, 4 filled between detections, 0 held
-- check it with render_frame; update_layer changes its style, strength, paddingPercent, feather, holdFrames, color and visible; tracks_to_keyframes turns a track's box into keyframes to edit by hand
+- check it with render_frame; update_layer changes its style, strength, paddingPercent, feather, holdFrames, color, shape, smooth and visible; tracks_to_keyframes turns a track's box into keyframes to edit by hand
 ```
 `render_frame` at 1 s shows the three plates pixelated and the badge as it is.
 
@@ -1933,7 +2231,7 @@ The presenter from [Tracking](#tracking), with `track_1` corrected by `reanchor_
 hid track_1 with 'redaction_1': pixelate, strength 50 (12 blocks across each box), padding 15%, feather 4 px, held 15 frames before and after
 - it hides them on the video frame before a clip is drawn, in every clip that plays the footage ('walk' plays in 'guest'), so moves, effects, the camera and subject cutouts all show it hidden
 - track_1: frames 0–95 of 'walk' covered (0–3.958s on 'guest'): 96 detected, 0 filled between detections, 0 held
-- check it with render_frame; update_layer changes its style, strength, paddingPercent, feather, holdFrames, color and visible; tracks_to_keyframes turns a track's box into keyframes to edit by hand
+- check it with render_frame; update_layer changes its style, strength, paddingPercent, feather, holdFrames, color, shape, smooth and visible; tracks_to_keyframes turns a track's box into keyframes to edit by hand
 ```
 `render_frame` at 1 s shows the face pixelated. At 2.25 s it stays hidden while the walker passes.
 
@@ -1945,7 +2243,7 @@ hid track_1 with 'redaction_1': pixelate, strength 50 (12 blocks across each box
 hid track_2 with 'redaction_2': solid #000000, padding 15%, feather 4 px, held 15 frames before and after
 - it hides them on the video frame before a clip is drawn, in every clip that plays the footage ('walk' plays in 'guest'), so moves, effects, the camera and subject cutouts all show it hidden
 - track_2: frames 0–95 of 'walk' covered (0–3.958s on 'guest'): 96 detected, 0 filled between detections, 0 held
-- check it with render_frame; update_layer changes its style, strength, paddingPercent, feather, holdFrames, color and visible; tracks_to_keyframes turns a track's box into keyframes to edit by hand
+- check it with render_frame; update_layer changes its style, strength, paddingPercent, feather, holdFrames, color, shape, smooth and visible; tracks_to_keyframes turns a track's box into keyframes to edit by hand
 ```
 At 2.25 s the smoothed box is stretched wide over the frames where the box drifted, and the face stays covered.
 
@@ -1955,7 +2253,7 @@ At 2.25 s the smoothed box is stretched wide over the frames where the box drift
 ```
 ```text
 updated layer 'redaction_1'
-{"type":"redaction","id":"redaction_1","name":"redaction_1","start":0,"end":null,"zIndex":0,"parentId":null,"visible":true,"tracks":["track_1"],"style":"blur","strength":70,"paddingPercent":15,"feather":4,"holdFrames":15,"color":"#000000"}
+{"type":"redaction","id":"redaction_1","name":"redaction_1","start":0,"end":null,"zIndex":0,"parentId":null,"visible":true,"tracks":["track_1"],"style":"blur","strength":70,"paddingPercent":15,"feather":4,"holdFrames":15,"color":"#000000","shape":"rectangle","smooth":false}
 ```
 After `split_layer` at 2 s and `set_speed` 0.5 on the second piece, `render_frame` at 3 s still shows the face blurred.
 
@@ -1970,7 +2268,7 @@ hid track_1, track_2 with 'redaction_1': solid #202428, padding 15%, feather 4 p
 - track_2: frames 0–95 of 'walk' covered (0–1.958s on 'guest', 2–5.917s on 'guest_2'): 96 detected, 0 filled between detections, 0 held
 - removed 'redaction_1', which hid only track_1
 - removed 'redaction_2', which hid only track_2
-- check it with render_frame; update_layer changes its style, strength, paddingPercent, feather, holdFrames, color and visible; tracks_to_keyframes turns a track's box into keyframes to edit by hand
+- check it with render_frame; update_layer changes its style, strength, paddingPercent, feather, holdFrames, color, shape, smooth and visible; tracks_to_keyframes turns a track's box into keyframes to edit by hand
 ```
 
 A clip with a hard cut: 2 s of a face, then 2 s of vans, at 24 fps. Before `analyze_video` has run, `face_1`'s box is held 15 frames into the vans' shot, where it pixelates the middle of a van:
@@ -1981,7 +2279,7 @@ A clip with a hard cut: 2 s of a face, then 2 s of vans, at 24 fps. Before `anal
 hid face_1 with 'redaction_1': pixelate, strength 50 (12 blocks across each box), padding 15%, feather 4 px, held 15 frames before and after
 - it hides them on the video frame before a clip is drawn, in every clip that plays the footage ('street' plays in 'street'), so moves, effects, the camera and subject cutouts all show it hidden
 - face_1: frames 0–62 of 'street' covered (0–2.583s on 'street'): 48 detected, 0 filled between detections, 15 held
-- check it with render_frame; update_layer changes its style, strength, paddingPercent, feather, holdFrames, color and visible; tracks_to_keyframes turns a track's box into keyframes to edit by hand
+- check it with render_frame; update_layer changes its style, strength, paddingPercent, feather, holdFrames, color, shape, smooth and visible; tracks_to_keyframes turns a track's box into keyframes to edit by hand
 ```
 After `analyze_video` found the cut at 2 s, the same call ends the hold there, and the van shows:
 ```text
@@ -1989,7 +2287,7 @@ changed how 'redaction_1' hides face_1: pixelate, strength 50 (12 blocks across 
 - it hides them on the video frame before a clip is drawn, in every clip that plays the footage ('street' plays in 'street'), so moves, effects, the camera and subject cutouts all show it hidden
 - face_1: frames 0–48 of 'street' covered (0–2s on 'street'): 48 detected, 0 filled between detections, 1 held
 - face_1: the box isn't held across the scene cut that analyze_video found at 2s on 'street'
-- check it with render_frame; update_layer changes its style, strength, paddingPercent, feather, holdFrames, color and visible; tracks_to_keyframes turns a track's box into keyframes to edit by hand
+- check it with render_frame; update_layer changes its style, strength, paddingPercent, feather, holdFrames, color, shape, smooth and visible; tracks_to_keyframes turns a track's box into keyframes to edit by hand
 ```
 
 Errors:
@@ -1997,7 +2295,7 @@ Errors:
 An error occurred invoking 'apply_redaction': track 'track_9' not found; tracks: track_1, track_2
 ```
 ```text
-An error occurred invoking 'update_layer': 'redaction_1' is a redaction of track_1, track_2: it isn't drawn or placed on the timeline itself, it hides those tracks' boxes in every clip that plays their footage, so make this change on the clips (its own settings are name, visible, style, strength, paddingPercent, feather, holdFrames, color; apply_redaction changes its tracks and tracks_to_keyframes its boxes)
+An error occurred invoking 'update_layer': 'redaction_1' is a redaction of track_1, track_2: it isn't drawn or placed on the timeline itself, it hides those tracks' boxes in every clip that plays their footage, so make this change on the clips (its own settings are name, visible, style, strength, paddingPercent, feather, holdFrames, color, shape, smooth; apply_redaction changes its tracks and tracks_to_keyframes its boxes)
 ```
 
 ### `tracks_to_keyframes`
@@ -2331,6 +2629,7 @@ Adds a clip. By default it is centered and scaled to fit the canvas. If it runs 
 | `role` | `voice` | `voice`, `music` or `effects`, for ducking |
 | `fadeIn`, `fadeOut` | 0 | Sound fades, seconds |
 | `language` | every version | The language of the clip's sound: the other [languages' versions](#languages) mute it. Its picture is in every version |
+| `edit` | `overlay` | `overlay`, `insert` or `overwrite`: see [Insert and overwrite](#insert-and-overwrite) |
 | `id`, `name`, `parentId`, `x`, `y`, `anchorX`, `anchorY`, `rotation`, `scaleX`, `scaleY`, `opacity`, `zIndex` | | As for image layers. Scale defaults to fit the canvas |
 
 `cropWidth`/`cropHeight` (set with `update_layer`) show only part of the frame; `cropX`/`cropY` place that window and can be keyframed.
@@ -2341,7 +2640,7 @@ Adds a clip. By default it is centered and scaled to fit the canvas. If it runs 
 ```text
 added video layer 'talk': source 0–15.933s at 1x → timeline 0–15.933s, scale 1.5, z=0
 the project was extended from 5s to 15.933s to fit the clip
-{"type":"video","id":"talk","name":"talk","start":0,"zIndex":0,"parentId":null,"visible":true,"anchorX":640,"anchorY":360,"asset":"talk","trimIn":0,"trimOut":15.933333333333334,"speed":1,"volume":1,"muted":false,"role":"voice","fadeIn":0,"fadeOut":0,"cropWidth":null,"cropHeight":null,"x":{"value":960},"y":{"value":540},"rotation":{"value":0},"scaleX":{"value":1.5},"scaleY":{"value":1.5},"opacity":{"value":1},"brightness":{"value":0},"contrast":{"value":1},"saturation":{"value":1},"cropX":{"value":0},"cropY":{"value":0}}
+{"type":"video","id":"talk","name":"talk","start":0,"zIndex":0,"parentId":null,"visible":true,"anchorX":640,"anchorY":360,"asset":"talk","trimIn":0,"trimOut":15.933333333333334,"speed":1,"volume":{"value":1},"muted":false,"role":"voice","fadeIn":0,"fadeOut":0,"cropWidth":null,"cropHeight":null,"x":{"value":960},"y":{"value":540},"rotation":{"value":0},"scaleX":{"value":1.5},"scaleY":{"value":1.5},"opacity":{"value":1},"brightness":{"value":0},"contrast":{"value":1},"saturation":{"value":1},"cropX":{"value":0},"cropY":{"value":0}}
 ```
 
 ### `get_job_status`
@@ -2464,6 +2763,32 @@ cut: street_2
 new pieces: street_3 (from street_2)
 ```
 
+### Insert and overwrite
+
+`add_video_layer`, `add_audio_layer` and `add_image_layer` take `edit`, which says how a new clip makes room on its lane. A lane is one track of the editor's timeline: the layers without a parent on the clip's draw level (`zIndex`), leaving out caption tracks, cutouts and redactions, or the sound of the clip's role.
+
+- `overlay` (the default) adds the clip over what's there.
+- `insert` splits the clip its lane has at the new clip's start, then moves every layer that starts there or later, on any lane, later by the new clip's length, with its children, its keyframes, the camera's keyframes and the [markers](#markers). The project gets that much longer. Layers that started earlier, such as music under the whole video, stay where they are.
+- `overwrite` cuts what the lane has under the new clip, as `remove_range` does with `ripple` false. A clip it covers completely is removed.
+
+A picture needs an `end` for either. Without `zIndex`, footage and pictures go on a level of their own on top, so nothing is under them to split or cut.
+
+Here a 6 s clip `street` is on draw level 0:
+```json
+{ "assetId": "broll", "timelineStart": 3, "trimIn": 1, "trimOut": 3, "zIndex": 0, "edit": "insert" }
+```
+```text
+inserted video layer 'broll': source 1–3s at 1x → timeline 3–5s, scale 1.5, z=0
+split 'street' at 3s into 'street' and 'street_2'; moved 1 later layer(s) 2s later; the project is 8s long (was 6s)
+{"type":"video","id":"broll", ...}
+```
+With `"edit": "overwrite"` instead:
+```text
+added video layer 'broll': source 1–3s at 1x → timeline 3–5s, scale 1.5, z=0
+cut 'street' under it; new pieces: street_2 (from street)
+{"type":"video","id":"broll", ...}
+```
+
 ### `move_layer`
 
 Moves a layer to a new start time. The project grows if the layer now runs past the end.
@@ -2473,6 +2798,39 @@ Moves a layer to a new start time. The project grows if the layer now runs past 
 ```
 ```text
 moved 'street_2' by +0.5s: now 2.5–3.5s
+```
+
+### `trim_layer`
+
+Trims a layer's `start`, `end` or both, as dragging the edge of a clip does. The rest of the layer stays where it is on the timeline.
+
+- **Trimming in** cuts the layer and its children shorter, keyframes included. A child with nothing left is removed.
+- **Trimming out** shows more: a video or audio layer as far as its source goes, any other layer as far as you like. Its children stay as they are.
+- **Fades stay** at the new edges, and the project grows if the layer now runs past the end.
+
+Here `street` shows its 6 s source from 1 s to 4 s, at 0–3 s on the timeline:
+
+```json
+{ "layerId": "street", "end": 2.5 }
+```
+```text
+trimmed 'street': now 0–2.5s (was 0–3s)
+```
+```json
+{ "layerId": "street", "start": 0.5, "end": 4 }
+```
+```text
+trimmed 'street': now 0.5–4s (was 0–2.5s)
+duration 3s → 4s
+```
+
+It now shows the source from 1.5 s to 5 s, so it can end 1 s later at most:
+
+```json
+{ "layerId": "street", "end": 6 }
+```
+```text
+An error occurred invoking 'trim_layer': 'street' can end at 5s at the latest: its source has nothing after that
 ```
 
 ### `set_speed`
@@ -2987,7 +3345,7 @@ captions don't follow later cuts; run generate_captions again after editing (it 
     - the cutout fades out over 0.25 s, finished when such a span starts, and back in over 0.25 s after it ends;
     - spans less than 0.5 s apart join, so the person doesn't flicker over the text;
     - with a clip that is its own subject there is nothing to fade, so a caption it would cover too much draws in front of it for its whole time.
-- **Up to 600 caption frames, with the matte computed,** `auto` answers directly. Otherwise the captions are added at once (behind the person), and a background job (`captions_N`) waits for the matte, measures them and adds the fades as their own undo step. If the project changes in the meantime, the job refuses; run the tool again.
+- **Up to 600 caption frames, with the matte computed,** `auto` answers directly. Otherwise the captions are added at once (behind the person), and a background job (`captions_N`) waits for the matte, measures them and adds the fades as their own undo step. If the captions or what covers them change while they're measured (the cutout, the clip it follows and its footage, a layer they move with, the order they draw in, the canvas size, the frame rate or the camera), the tool or the job refuses; run the tool again. An edit to another layer, in the editor or with a tool, doesn't stop it.
 
 The examples use the presenter from [Text behind the subject](#text-behind-the-subject), now talking: a 13 s clip (`presenter`, from the asset `talk`) with a four-sentence transcript.
 
@@ -3005,7 +3363,7 @@ put the captions behind the subject of 'presenter': cutout 'captions_subject' dr
 - the cutout follows the clip that plays 'talk' ('presenter'): its timing, trims, speed, moves, effects and keyframes; its own settings are only name, zIndex, visible and opacity
 - the matte is computed in the background as matte_1: 318 frames of clip 'talk' with Robust Video Matting (MobileNetV3) on the CPU, about 40 s (a rough guess; system_check measures this computer)
 - until it is done, the subject isn't drawn over the text in previews yet (the text shows in front) and exports refuse; poll get_job_status with jobId "matte_1"
-- auto: 191 caption frames are measured in the background as captions_1 once matte_1 is done, and the fades are added as their own undo step (an edit made meanwhile makes it refuse, so run generate_captions again then); until then the captions are behind the subject the whole time; poll get_job_status with jobId "captions_1"
+- auto: 191 caption frames are measured in the background as captions_1 once matte_1 is done, and the fades are added as their own undo step (an edit made meanwhile to the captions or to what covers them makes it refuse, so run generate_captions again then); until then the captions are behind the subject the whole time; poll get_job_status with jobId "captions_1"
 - check it with render_frame (layerId="captions_subject" checkerboard=true shows the subject alone; refine_matte shrinks or softens its edge); text_occlusion measures how much of a caption it covers
 ```
 `bold_center` puts the captions on the presenter's face, so each one is covered too much somewhere and shows in front for its whole time:
@@ -3539,6 +3897,31 @@ handle [text]  z=3  t=0–end  text="@tora_cat"  font=Segoe UI 28px  anchor=(62.
 endcard [text]  z=4  t=7–end  text="Subscribe!"  font=Segoe UI 64px  anchor=(145.875,42.563)
 ```
 
+### `add_template`
+
+Adds a template's layers to the open project as one block that starts at `at`, in one undo step: a lower third, a chapter card or an end screen in the middle of a video.
+
+- each layer keeps its time from the template's start; one that ran to the template's end ends where the template does, `at` plus the template's length
+- pictures, text and footage go on draw levels above the project's, in their own order
+- a layer whose id the project has already gets a number (`title_2`), and its children follow it
+- the template's files are copied into the project's `assets`, or the project's own copy of the same file is used
+- `pinToEnd` doesn't apply here: the whole block goes where `at` puts it
+
+A template with tracked footage (tracks and redactions) only makes new projects. A template of another canvas size is added as it is, with a warning. The editor's Titles view adds a template at the playhead the same way.
+
+| Parameter | Default | Notes |
+|---|---|---|
+| `name` | required | Template name |
+| `at` | 0 | Where the template's start goes, timeline seconds |
+
+In `tora-ep2`, which already has the template's layers:
+```json
+{ "name": "tora show", "at": 4 }
+```
+```text
+added template 'tora show' at 4s: 3 layer(s): title_2, handle_2, endcard_2
+```
+
 ### `list_library`
 
 Lists the library's rigs, actions, styles and templates, with a short description of each. `type` is `rigs`, `actions`, `styles`, `templates` or `all` (the default).
@@ -3618,14 +4001,14 @@ Places a sound effect at a time, as an audio layer with role `effects`, in one u
 ```
 ```text
 added sound effect 'cartoon/boing' as audio layer 'boing' at 0.4s (volume 1, role effects, 0.6s long); imported 'cartoon/boing' as asset 'boing'
-{"type":"audio","id":"boing","name":"boing","start":0.4,"end":null,"zIndex":0,"parentId":null,"visible":true,"asset":"boing","trimIn":0,"trimOut":null,"volume":1,"role":"effects","fadeIn":0,"fadeOut":0}
+{"type":"audio","id":"boing","name":"boing","start":0.4,"end":null,"zIndex":0,"parentId":null,"visible":true,"asset":"boing","trimIn":0,"trimOut":null,"volume":{"value":1},"role":"effects","fadeIn":0,"fadeOut":0}
 ```
 ```json
 { "name": "cartoon/boing", "time": 3 }
 ```
 ```text
 added sound effect 'cartoon/boing' as audio layer 'boing_2' at 3s (volume 1, role effects, 0.6s long); reused asset 'boing'
-{"type":"audio","id":"boing_2","name":"boing_2","start":3,"end":null,"zIndex":0,"parentId":null,"visible":true,"asset":"boing","trimIn":0,"trimOut":null,"volume":1,"role":"effects","fadeIn":0,"fadeOut":0}
+{"type":"audio","id":"boing_2","name":"boing_2","start":3,"end":null,"zIndex":0,"parentId":null,"visible":true,"asset":"boing","trimIn":0,"trimOut":null,"volume":{"value":1},"role":"effects","fadeIn":0,"fadeOut":0}
 ```
 ```json
 { "name": "thu", "time": 1 }
@@ -4023,7 +4406,7 @@ Checks every frame of the open project. No parameters.
 ```text
 check_project: 4 problem(s) in 'tora-checks' (120 frames checked)
 missing files (1):
-- asset 'rock' (assets/rock.png) has no file; used by rock, which won't render or export; put the file back, or import it again
+- asset 'rock' (assets/rock.png) has no file; used by rock, which won't render or export; put the file back, or point the asset at it with relink_asset
 off the canvas (1):
 - 'bird' is never on the canvas while it's shown (0–4s); check its x/y, its parent and the camera
 text outside the safe area (1):
@@ -4058,12 +4441,14 @@ Starts a background export of the open project to `exports\<fileName>`.
 
 - **Video:** H.264, yuv420p, BT.709, from the GPU's encoder where one works, else libx264 `-preset veryfast` (see **Encoder** below).
 - **Audio:** all audio layers and the sound of video layers, mixed to AAC 48 kHz stereo.
-    - **Ducking:** music (role `music`) is lowered under voice (role `voice`) with a sidechain compressor. It is on by default and can be turned off with `update_project` `ducking=false`.
+    - **Mixer:** each clip's volume (and its `volume` keyframes), then its role's `gain` and `pan` from `update_project`; a muted role is left out.
+    - **Ducking:** music (role `music`) goes down by `duckLevel` (-12 dB by default) wherever a voice clip (role `voice`) plays, over `duckFadeIn` (0.5 s) before the clip and back up over `duckFadeOut` (1.5 s) after it. It is on by default and can be turned off with `update_project` `ducking=false`.
     - **Loudness:** the mix is normalized with two-pass `loudnorm` to the project's target (-14 LUFS by default), with true peak at most -1 dBTP.
 - **Presets:** `youtube_1080p` and `shorts_1080p` encode for upload: H.264 high profile, `-preset medium` (or the GPU encoder's matching preset), 2 B-frames, a keyframe every half second, scaled to the preset size. The canvas must have the preset's aspect ratio; [`export_batch`](#export_batch) also fits other shapes.
-- **Encoder:** with the `VideoEncoder` setting at `auto` (the default), the first export on a computer tries NVIDIA NVENC, Intel Quick Sync and AMD AMF, in that order, with a half-second test encode, and uses the first that works; if none does, libx264. What the tests found is kept in the library's `encoders.json` for this computer and this FFmpeg, so they run again only after a hardware or FFmpeg change. The setting can instead name `x264`, `nvenc`, `qsv` or `amf`; a GPU encoder that doesn't work falls back to libx264.
+- **Encoder:** with the `VideoEncoder` setting at `auto` (the default), the first export on a computer tries NVIDIA NVENC, Intel Quick Sync and AMD AMF, in that order, with a half-second test encode (tried up to three times, as a GPU encoder's failure can come and go), and uses the first that works; if none does, libx264. What the tests found is kept in the library's `encoders.json` for this computer and this FFmpeg, so they run again only after a hardware or FFmpeg change. The setting can instead name `x264`, `nvenc`, `qsv` or `amf`; a GPU encoder that doesn't work falls back to libx264.
     - The quality follows `crf`. Quick Sync uses `global_quality` `crf` + 1, which gave libx264's quality (SSIM) at about the same size on an Intel Core Ultra 9 285H. NVENC (`-cq` `crf` + 1) and AMF (QP `crf` + 1) get the equivalent settings but weren't tested. `crf` 0 (lossless) always uses libx264.
     - On that laptop, Quick Sync took a third of libx264's CPU time and 40% less memory, but exports were only slightly faster, because decoding and drawing the frames took most of the time.
+    - A GPU encoder that fails on a chunk is given the chunk again, up to 4 times in all, and the export's notes say how often it failed. On that laptop, Quick Sync now and then hands back an empty frame ("Invalid FrameType:0") when frames come faster than it encodes them, and encodes the same frames the next time. libx264 isn't tried again.
     - The export's notes say which encoder it used and why:
 ```text
 processing: encoder: h264_qsv (Intel Quick Sync, global_quality 19): the first GPU encoder that works on this computer
@@ -4163,7 +4548,7 @@ resolution: 1080x1920
 fps: 30
 video: h264 yuv420p, 267 frames
 audio: aac 2ch 48000 Hz (4 clip(s) mixed)
-processing: music ducked under voice
+processing: music ducked -12 dB under voice
 processing: loudness: -19.6 LUFS → -14 LUFS (true peak at most -1 dBTP)
 processing: preset shorts_1080p: 1080x1920, H.264 high profile, CRF 18, AAC 192k
 processing: encoder: h264_qsv (Intel Quick Sync, global_quality 19): the first GPU encoder that works on this computer

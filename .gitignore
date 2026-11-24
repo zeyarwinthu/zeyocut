@@ -54,6 +54,10 @@ ggml-*.bin
 # Website build
 site/
 
+# Local design files and screenshots
+/Logo/
+/screenshots/
+
 # OS files
 Thumbs.db
 Desktop.ini

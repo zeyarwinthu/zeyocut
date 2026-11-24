@@ -54,7 +54,7 @@ public class SoundEffectTests
         Assert.True(first.Imported);
         Assert.Equal("boom", first.Layer.Id);
         Assert.Equal(1.2, first.Layer.Start);
-        Assert.Equal(0.8, first.Layer.Volume);
+        Assert.Equal(0.8, first.Layer.Volume.Value);
         Assert.Equal(AudioRole.Effects, first.Layer.Role);
         Assert.Equal("boom", first.Layer.Asset);
         Assert.Equal(AssetType.Audio, first.Asset.Type);

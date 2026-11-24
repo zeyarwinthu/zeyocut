@@ -151,6 +151,48 @@ public class RedactionTests
         Assert.True(smoothMoves < rawMoves * 0.7, $"the left edge moved {smoothMoves:0.#} px in all, the track's {rawMoves:0.#}");
     }
 
+    // A tracker's jitter: up to 4 px either way, a different amount each frame.
+    private static double Jitter(int frame) => (frame * 7919 + 13) % 9 - 4;
+
+    // S19's smoothing: through a jittering 40 px box, the smoothed box keeps one size and its center
+    // on the steady motion, where the envelope widens to every frame's padded box and so changes
+    // size; it always contains the track's own box. Steady motion is kept as it is, at the ends too.
+    [Fact]
+    public void SmoothingKeepsTheBoxsSizeAndCenterSteadyAndContainsTheTracksOwnBox()
+    {
+        var frames = Enumerable.Range(0, 40).Select(f => new TrackedFrame { Frame = f, X = 100 + 2 * f + Jitter(f), Y = 50, Width = 40, Height = 40, Confidence = 1 }).ToList();
+        var smooth = RedactionCover.Of(frames, 40, 15, 0, smooth: true);
+        var envelope = RedactionCover.Of(frames, 40, 15, 0);
+        var middle = Enumerable.Range(RedactionCover.SmoothFrames, frames.Count - 2 * RedactionCover.SmoothFrames).ToList();
+        foreach (var f in frames)
+        {
+            var box = smooth.At(f.Frame)!.Value;
+            Assert.True(Contains(box, f.X, f.Y, f.Width, f.Height), $"frame {f.Frame}");
+            Assert.Equal(CoverKind.Detected, box.Kind);
+        }
+
+        foreach (var i in middle)
+        {
+            var box = smooth.At(i)!.Value;
+            Assert.InRange(box.X + box.Width / 2, 100 + 2 * i + 20 - 1, 100 + 2 * i + 20 + 1);
+        }
+
+        double Spread(RedactionCover cover) => middle.Max(i => cover.At(i)!.Value.Width) - middle.Min(i => cover.At(i)!.Value.Width);
+        Assert.True(Spread(smooth) <= 1, $"smoothed, the box's width changed by {Spread(smooth):0.##} px");
+        Assert.True(Spread(envelope) >= 4, $"the envelope's width changed by {Spread(envelope):0.##} px");
+
+        var steady = Moving(Enumerable.Range(0, 30));
+        var kept = RedactionCover.Of(steady, 90, 15, 0, smooth: true);
+        foreach (var f in steady)
+        {
+            var box = kept.At(f.Frame)!.Value;
+            Assert.Equal(f.X - 6, box.X, 9);
+            Assert.Equal(f.Y - 6, box.Y, 9);
+            Assert.Equal(52, box.Width, 9);
+            Assert.Equal(52, box.Height, 9);
+        }
+    }
+
     // The spec's test: the pixelate block scales with the box, so a small box gets as many blocks
     // across as a big one (20 at strength 0 down to 4 at 100), never under 4 source pixels.
     [Fact]
@@ -251,7 +293,7 @@ public class RedactionTests
     {
         var project = WithTracks();
         RedactionEditor.Apply(project, ["track_1"], Settings());
-        var follows = "'redaction_1' is a redaction of track_1: it isn't drawn or placed on the timeline itself, it hides those tracks' boxes in every clip that plays their footage, so make this change on the clips (its own settings are name, visible, style, strength, paddingPercent, feather, holdFrames, color; apply_redaction changes its tracks and tracks_to_keyframes its boxes)";
+        var follows = "'redaction_1' is a redaction of track_1: it isn't drawn or placed on the timeline itself, it hides those tracks' boxes in every clip that plays their footage, so make this change on the clips (its own settings are name, visible, style, strength, paddingPercent, feather, holdFrames, color, shape, smooth; apply_redaction changes its tracks and tracks_to_keyframes its boxes)";
         Assert.Equal(follows, Assert.Throws<ZeyoCutException>(() => TimelineEditor.SplitLayer(project, "redaction_1", 1)).Message);
         Assert.Equal(follows, Assert.Throws<ZeyoCutException>(() => TimelineEditor.MoveLayer(project, "redaction_1", 1)).Message);
         Assert.Equal(follows, Assert.Throws<ZeyoCutException>(() => ProjectEditor.DuplicateLayer(project, new DuplicateOptions { LayerId = "redaction_1" })).Message);

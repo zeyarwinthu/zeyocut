@@ -11,8 +11,27 @@ namespace ZeyoCut.Tests.Core;
 
 public class EditingTests
 {
-    private static KeyframeEntry Key(string layer, string property, double time, object value, string? easing = null) =>
-        new(layer, property, time, JsonSerializer.SerializeToElement(value), easing);
+    private static KeyframeEntry Key(string layer, string property, double time, object value, string? easing = null, double[]? bezier = null) =>
+        new(layer, property, time, JsonSerializer.SerializeToElement(value), easing, bezier);
+
+    // A new project, as create_project and the editor's New project make it.
+    [Fact]
+    public void ANewProjectTakesItsPresetAndWhatIsGivenOverIt()
+    {
+        var plain = ProjectEditor.NewProject(new NewProjectOptions { Name = "  Tora episode 4 " });
+        Assert.Equal(("Tora episode 4", 1920, 1080, 30, 10.0, "#FFFFFF"), (plain.Name, plain.Width, plain.Height, plain.Fps, plain.Duration, plain.BackgroundColor));
+        Assert.Equal(AudioSettings.DefaultLoudness, plain.Audio.LoudnessTarget);
+
+        var vertical = ProjectEditor.NewProject(new NewProjectOptions { Name = "short", Preset = "shorts_1080p", Fps = 60, Duration = 30, BackgroundColor = "#00000000" });
+        Assert.Equal((1080, 1920, 60, 30.0, "#00000000"), (vertical.Width, vertical.Height, vertical.Fps, vertical.Duration, vertical.BackgroundColor));
+        Assert.Equal(Presets.Shorts1080p.Loudness, vertical.Audio.LoudnessTarget);
+
+        Assert.Equal("name is required", Assert.Throws<ZeyoCutException>(() => ProjectEditor.NewProject(new NewProjectOptions { Name = " " })).Message);
+        Assert.StartsWith("unknown preset 'square'", Assert.Throws<ZeyoCutException>(() => ProjectEditor.NewProject(new NewProjectOptions { Name = "a", Preset = "square" })).Message);
+
+        Assert.Equal("Tora_ episode", ProjectStore.FolderName(" Tora: episode. "));
+        Assert.Equal("project", ProjectStore.FolderName(" .. "));
+    }
 
     [Fact]
     public void ImageLayerDefaults()
@@ -78,6 +97,63 @@ public class EditingTests
         Assert.Equal(-5, head.Rotation.Keyframes[1].Value);
         Assert.Equal(Easing.EaseInOut, head.Rotation.Keyframes[1].Easing);
         Assert.Equal("shocked", head.Drawing.Keyframes.Single().Value);
+    }
+
+    // A cubic bezier easing is four numbers, saved with the keyframe only while its easing is cubicBezier.
+    [Fact]
+    public void SetKeyframesTakesACubicBezierAndSavesItWithTheKeyframe()
+    {
+        var project = TestProjects.Rig();
+        KeyframeEditor.SetKeyframes(project,
+        [
+            Key("tora_head", "y", 0, 100, bezier: [0, 0, 0.4, 1]),
+            Key("tora_head", "y", 1, 200),
+            Key("camera", "zoom", 0, 1, "cubicBezier", [0.25, 0.1, 0.25, 1]),
+            Key("camera", "zoom", 2, 2),
+        ]);
+
+        var head = (ImageLayer)project.FindLayer("tora_head")!;
+        Assert.Equal(Easing.CubicBezier, head.Y.Keyframes[0].Easing);
+        Assert.Equal([0, 0, 0.4, 1], head.Y.Keyframes[0].Bezier!);
+        Assert.Equal(100 + 100 * 0.765988682530208, ZeyoCut.Core.Animation.Interpolator.Evaluate(head.Y, 0.5), 1e-7);
+        Assert.Equal(1 + 0.802403387584857, ZeyoCut.Core.Animation.Interpolator.Evaluate(project.Camera!.Zoom, 1), 1e-7);
+
+        var json = JsonNode.Parse(ZeyoCut.Core.Serialization.ProjectJson.LayerToJson(head))!;
+        Assert.Equal("""{"time":0,"value":100,"easing":"cubicBezier","bezier":[0,0,0.4,1]}""", json["y"]!["keyframes"]![0]!.ToJsonString());
+        Assert.Equal("""{"time":1,"value":200,"easing":"linear"}""", json["y"]!["keyframes"]![1]!.ToJsonString());
+        Assert.Empty(ProjectValidator.Validate(project));
+
+        // Another easing over it: the numbers stay off the file and out of the curve.
+        KeyframeEditor.SetKeyframes(project, [Key("tora_head", "y", 0, 100, "easeIn")]);
+        Assert.Null(head.Y.Keyframes[0].Bezier);
+        head.Y.Keyframes[0].Bezier = [0, 0, 0.4, 1];
+        Assert.DoesNotContain("bezier", ZeyoCut.Core.Serialization.ProjectJson.LayerToJson(head));
+        Assert.Equal(112.5, ZeyoCut.Core.Animation.Interpolator.Evaluate(head.Y, 0.5), 1e-9);
+
+        var ex = Assert.Throws<ZeyoCutException>(() => KeyframeEditor.SetKeyframes(project,
+        [
+            Key("tora_head", "y", 0, 100, "cubicBezier"),
+            Key("tora_head", "y", 0, 100, "easeIn", [0, 0, 0.4, 1]),
+            Key("tora_head", "y", 0, 100, bezier: [1.5, 0, 0.4, 1]),
+            Key("tora_head", "y", 0, 100, bezier: [0, 0, 1]),
+        ]));
+        Assert.Contains("4 of 4 entries are invalid", ex.Message);
+        Assert.Contains("easing cubicBezier needs bezier [x1, y1, x2, y2], such as [0.42, 0, 0.58, 1]", ex.Message);
+        Assert.Contains("bezier goes with easing cubicBezier, not easeIn; leave easing out", ex.Message);
+        Assert.Contains("bezier's x1 and x2 must be from 0 to 1, so the curve has one value at each time (got [1.5, 0, 0.4, 1])", ex.Message);
+        Assert.Contains("bezier must be 4 numbers, [x1, y1, x2, y2] (got [0, 0, 1])", ex.Message);
+    }
+
+    [Fact]
+    public void AProjectWithACubicBezierKeyframeWithoutItsNumbersIsInvalid()
+    {
+        var project = TestProjects.Rig();
+        KeyframeEditor.SetKeyframes(project, [Key("tora_head", "y", 0, 100, bezier: [0, 0, 0.4, 1]), Key("tora_head", "y", 1, 200)]);
+        var head = (ImageLayer)project.FindLayer("tora_head")!;
+        head.Y.Keyframes[0].Bezier = null;
+        Assert.Contains("layer 'tora_head'.y: the keyframe at 0s has easing cubicBezier and bezier must be 4 numbers, [x1, y1, x2, y2] (got none)", ProjectValidator.Validate(project));
+        head.Y.Keyframes[0].Bezier = [0, 0, 2, 1];
+        Assert.Contains("layer 'tora_head'.y: the keyframe at 0s has easing cubicBezier and bezier's x1 and x2 must be from 0 to 1, so the curve has one value at each time (got [0, 0, 2, 1])", ProjectValidator.Validate(project));
     }
 
     [Fact]
@@ -270,6 +346,59 @@ public class EditingTests
 
         var missing = Assert.Throws<ZeyoCutException>(() => session.Mutate("import", p => AssetImporter.Import(p, directory, "C:\\nope\\x.png", null, new FakeAssetProbe())));
         Assert.StartsWith("file not found", missing.Message);
+    }
+
+    // A file is copied in before the change that adds it takes project.lock, so another program's
+    // saves don't wait for a big copy.
+    [Fact]
+    public void AFileIsCopiedInWithoutTheProjectLock()
+    {
+        var directory = TestPaths.NewDirectory("editing-prepare");
+        var source = Path.Combine(TestPaths.NewDirectory("editing-prepare-src"), "Tora Body.png");
+        File.WriteAllBytes(source, [1, 2, 3]);
+        var session = ProjectSession.Create(directory, TestProjects.Empty());
+
+        PreparedAsset prepared;
+        using (ProjectLock.Acquire(directory, TimeSpan.Zero))
+        {
+            prepared = AssetImporter.Prepare(directory, source, new FakeAssetProbe());
+        }
+
+        var assets = Path.Combine(directory, "assets");
+        Assert.Equal(Path.Combine(assets, "Tora_Body.png"), prepared.Path);
+        Assert.Equal([1, 2, 3], File.ReadAllBytes(prepared.Path));
+        Assert.Equal(["Tora_Body.png"], Directory.GetFiles(assets).Select(Path.GetFileName));
+        var asset = session.Mutate("import", p => AssetImporter.Add(p, prepared, null));
+        Assert.Equal(("tora_body", "assets/Tora_Body.png", 200), (asset.Id, asset.File, asset.Width));
+
+        // The same file again is used as it is; another file of that name gets its own.
+        Assert.Equal(prepared.Path, AssetImporter.Prepare(directory, source, new FakeAssetProbe()).Path);
+        var other = Path.Combine(TestPaths.NewDirectory("editing-prepare-other"), "Tora Body.png");
+        File.WriteAllBytes(other, [4, 5]);
+        Assert.Equal(Path.Combine(assets, "Tora_Body_2.png"), AssetImporter.Prepare(directory, other, new FakeAssetProbe()).Path);
+    }
+
+    [Fact]
+    public async Task ProgramsCopyingInFilesOfTheSameNameAtOnceEachGetOne()
+    {
+        var directory = TestPaths.NewDirectory("editing-prepare-race");
+        var sources = Enumerable.Range(0, 8).Select(i =>
+        {
+            var file = Path.Combine(TestPaths.NewDirectory($"editing-prepare-race-{i}"), "clip.png");
+            File.WriteAllBytes(file, Enumerable.Repeat((byte)i, 1_000_000).ToArray());
+            return file;
+        }).ToList();
+
+        var ct = TestContext.Current.CancellationToken;
+        var paths = await Task.WhenAll(sources.Select(s => Task.Run(() => AssetImporter.Prepare(directory, s, new FakeAssetProbe()).Path, ct)));
+
+        Assert.Equal(8, paths.Distinct(StringComparer.OrdinalIgnoreCase).Count());
+        for (var i = 0; i < sources.Count; i++)
+        {
+            Assert.Equal(File.ReadAllBytes(sources[i]), File.ReadAllBytes(paths[i]));
+        }
+
+        Assert.Equal(8, Directory.GetFiles(Path.Combine(directory, "assets")).Length);
     }
 
     [Fact]

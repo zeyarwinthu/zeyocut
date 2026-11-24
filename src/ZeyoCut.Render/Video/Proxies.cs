@@ -50,6 +50,9 @@ public static class Proxies
         return Path.Combine(projectDirectory, Folder, $"{Path.GetFileNameWithoutExtension(asset.File)}.{hash}.mp4");
     }
 
+    // Open, for no other, while a program makes the proxy (MakingLock).
+    public static string LockOf(string proxy) => proxy + ".lock";
+
     // The proxy to read for the asset, or null when it has none (yet).
     public static string? Ready(string projectDirectory, Asset asset) =>
         Wanted(asset) && PathOf(projectDirectory, asset) is var path && File.Exists(path) ? path : null;
@@ -74,8 +77,11 @@ public static class Proxies
         ];
     }
 
-    // Makes the asset's proxy (written as .partial.mp4 and renamed when done) and returns its path.
-    public static string Make(string ffmpeg, string projectDirectory, Asset asset, Action<double>? progress = null, CancellationToken cancellationToken = default)
+    // Makes the asset's proxy (written as a .partial.mp4 of its own and renamed when done) and returns
+    // its path. While another program makes the same proxy, it waits for it (calling waiting) and
+    // returns the proxy that program made, or makes it if that program didn't. A proxy another
+    // program put there in the meantime is kept.
+    public static string Make(string ffmpeg, string projectDirectory, Asset asset, Action<double>? progress = null, CancellationToken cancellationToken = default, Action? waiting = null)
     {
         var source = ProjectStore.AssetPath(projectDirectory, asset);
         if (!File.Exists(source))
@@ -85,7 +91,13 @@ public static class Proxies
 
         var output = PathOf(projectDirectory, asset);
         Directory.CreateDirectory(Path.GetDirectoryName(output)!);
-        var temp = Path.ChangeExtension(output, ".partial.mp4");
+        using var making = MakingLock.Hold(output, waiting, cancellationToken);
+        if (File.Exists(output))
+        {
+            return output;
+        }
+
+        var temp = PartialFile.For(output);
         var duration = asset.Duration ?? 0;
         using var process = Process.Start(ProcessRunner.StartInfo(ffmpeg, Arguments(source, asset, temp)))
             ?? throw new ZeyoCutException($"could not start {ffmpeg}");
@@ -109,7 +121,20 @@ public static class Proxies
                 throw new ZeyoCutException($"ffmpeg could not make the proxy of '{asset.Id}' (exit code {process.ExitCode}): {stderr.Result.Trim()}");
             }
 
-            File.Move(temp, output, overwrite: true);
+            try
+            {
+                File.Move(temp, output);
+            }
+            catch (IOException) when (File.Exists(output))
+            {
+                try
+                {
+                    File.Delete(temp);
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                }
+            }
         }
         catch
         {
@@ -138,5 +163,50 @@ public static class Proxies
 
         progress?.Invoke(1);
         return output;
+    }
+
+    // <proxy>.lock, open for no other program while one makes the proxy, so another waits instead of
+    // making it too. As with project.lock, a program that stops lets go of it, and the file means
+    // nothing while no program has it open; it's deleted when let go, unless another holds it then.
+    private sealed class MakingLock(FileStream stream, string path) : IDisposable
+    {
+        private const int SharingViolation = 32;
+        private const int LockViolation = 33;
+
+        public static MakingLock Hold(string proxy, Action? waiting, CancellationToken cancellationToken)
+        {
+            var path = LockOf(proxy);
+            for (var attempt = 1; ; attempt++)
+            {
+                try
+                {
+                    return new MakingLock(new FileStream(path, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None), path);
+                }
+                catch (IOException ex) when ((ex.HResult & 0xFFFF) is SharingViolation or LockViolation)
+                {
+                    if (attempt == 1)
+                    {
+                        waiting?.Invoke();
+                    }
+
+                    if (cancellationToken.WaitHandle.WaitOne(250))
+                    {
+                        cancellationToken.ThrowIfCancellationRequested();
+                    }
+                }
+            }
+        }
+
+        public void Dispose()
+        {
+            stream.Dispose();
+            try
+            {
+                File.Delete(path);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+            }
+        }
     }
 }

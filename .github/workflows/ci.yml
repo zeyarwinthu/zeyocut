@@ -41,6 +41,10 @@ jobs:
       - name: Test
         run: '& ./tests/ZeyoCut.Tests/bin/Release/net10.0/ZeyoCut.Tests.exe'
 
+      # A step of its own: a run step only fails on the exit code of its last command.
+      - name: Test the editor
+        run: '& ./tests/ZeyoCut.Editor.Tests/bin/Release/net10.0-windows/ZeyoCut.Editor.Tests.exe'
+
       - name: Check whitespace
         run: dotnet format whitespace ZeyoCut.slnx --verify-no-changes
 

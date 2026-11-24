@@ -102,7 +102,7 @@ public static class ProjectChecker
 
             var users = Users(project, asset.Id).ToList();
             issues.Add(new CheckIssue(CheckKind.MissingFile, asset.Id,
-                $"asset '{asset.Id}' ({asset.File}) has no file{(users.Count > 0 ? $"; used by {Ids.List(users)}, which won't render or export" : "")}; put the file back, or import it again"));
+                $"asset '{asset.Id}' ({asset.File}) has no file{(users.Count > 0 ? $"; used by {Ids.List(users)}, which won't render or export" : "")}; put the file back, or point the asset at it with relink_asset"));
         }
 
         foreach (var pending in MatteFiles.Pending(project, projectDirectory))
@@ -147,7 +147,8 @@ public static class ProjectChecker
         }
     }
 
-    private static IEnumerable<string> Users(Project project, string assetId) =>
+    // The layers that show or play an asset: as its clip, sound, drawing, font, mask or look.
+    public static IEnumerable<string> Users(Project project, string assetId) =>
         project.Layers.Where(l => l switch
         {
             ImageLayer image => image.Drawings.Values.Contains(assetId),
@@ -155,7 +156,7 @@ public static class ProjectChecker
             AudioLayer audio => audio.Asset == assetId,
             VideoLayer video => video.Asset == assetId,
             _ => false,
-        } || l is VisualLayer { Mask.Asset: { } mask } && mask == assetId).Select(l => l.Id);
+        } || l is VisualLayer { Mask.Asset: { } mask } && mask == assetId || ColorEditor.LookAsset(l) == assetId).Select(l => l.Id);
 
     // Every frame: which layers show content, where it lands, and whether anything shows at all.
     private static void Layout(Project project, ITextMeasurer? measurer, List<CheckIssue> issues)
@@ -224,6 +225,19 @@ public static class ProjectChecker
             issues.Add(new CheckIssue(CheckKind.EmptyFrames, $"{range.First}",
                 $"nothing but the background shows at {Span(project, range.First, range.Last)} ({count} frame{(count == 1 ? "" : "s")})"));
         }
+    }
+
+    // What's left of the canvas inside the strips text should stay out of (SafeZones), in canvas
+    // pixels: the editor draws it over the preview, as check_project checks it.
+    public static (double Left, double Top, double Right, double Bottom) SafeArea(Project project)
+    {
+        double w = project.Width, h = project.Height;
+        var zones = SafeZones(project).Select(z => z.Area).ToList();
+        var left = zones.Where(z => z.Left <= 0 && z.Top <= 0 && z.Bottom >= h && z.Right < w).Select(z => z.Right).DefaultIfEmpty(0).Max();
+        var right = zones.Where(z => z.Right >= w && z.Top <= 0 && z.Bottom >= h && z.Left > 0).Select(z => z.Left).DefaultIfEmpty(w).Min();
+        var top = zones.Where(z => z.Top <= 0 && z.Left <= 0 && z.Right >= w && z.Bottom < h).Select(z => z.Bottom).DefaultIfEmpty(0).Max();
+        var bottom = zones.Where(z => z.Bottom >= h && z.Left <= 0 && z.Right >= w && z.Top > 0).Select(z => z.Top).DefaultIfEmpty(h).Min();
+        return (left, top, right, bottom);
     }
 
     // The strips text should stay out of: the title-safe margins, plus the Shorts player's buttons

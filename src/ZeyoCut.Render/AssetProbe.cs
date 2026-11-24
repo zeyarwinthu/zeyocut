@@ -4,6 +4,7 @@ using SkiaSharp;
 using ZeyoCut.Core;
 using ZeyoCut.Core.Editing;
 using ZeyoCut.Core.Model;
+using ZeyoCut.Core.Serialization;
 
 namespace ZeyoCut.Render;
 
@@ -33,6 +34,11 @@ public sealed class AssetProbe : IAssetProbe
                     var typeface = SKTypeface.FromFile(path)
                         ?? throw new ZeyoCutException($"not a readable font file: {path}");
                     return new AssetInfo(FontFamily: typeface.FamilyName);
+                }
+            case AssetType.Lut:
+                {
+                    CubeLut.Load(path);
+                    return new AssetInfo();
                 }
             case AssetType.Video:
                 {

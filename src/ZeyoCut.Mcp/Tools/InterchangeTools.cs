@@ -20,7 +20,7 @@ public static class InterchangeTools
     private static readonly SemaphoreSlim PrerenderGate = new(1, 1);
 
     internal static string PrerenderFolder(string projectDirectory, Project project) =>
-        Path.Combine(projectDirectory, ProjectStore.ExportsFolder, $"{ProjectTools.SafeFolderName(project.Name)}_prerender");
+        Path.Combine(projectDirectory, ProjectStore.ExportsFolder, $"{ProjectStore.FolderName(project.Name)}_prerender");
 
     [McpServerTool(Name = "prerender_layers")]
     [Description("Render layers alone, each with its children, on a transparent background as ProRes 4444 .mov files with alpha in exports/<project>_prerender/<layer id>.mov: every frame the layer is on, as render_frame draws it with layerId and a transparent background. They are for an editor that opens the timeline of export_otio or export_fcpxml, which put each prerendered layer on a track above the clips, so its text, keyframed motion, effects and camera move carry over. A layer whose prerender is current (nothing it shows has changed) isn't drawn again. Runs in the background and returns a jobId (prerender_N) for get_job_status.")]
@@ -133,7 +133,7 @@ public static class InterchangeTools
 
     private static string OutputPath(string directory, Project project, string? fileName, string extension, string tool)
     {
-        var name = $"{ProjectTools.SafeFolderName(project.Name)}{extension}";
+        var name = $"{ProjectStore.FolderName(project.Name)}{extension}";
         if (fileName is not null)
         {
             if (string.IsNullOrWhiteSpace(fileName) || fileName.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0)

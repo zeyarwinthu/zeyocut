@@ -51,4 +51,5 @@ Then ask for a video. Put your files in your Pictures, Videos, Music, Documents,
 
 - [Examples](examples.md): three projects to open, with the prompts that made them, and the steps for cleaning up a talking-head video.
 - [Guide](GUIDE.md): every tool, with an example call and its real response.
+- [Editor](editor.md): the window for fine-tuning a project by hand while the model works on it.
 - [Project format](project-format.md): how projects, animation, text, video and audio work.

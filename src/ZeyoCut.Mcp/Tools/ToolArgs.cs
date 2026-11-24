@@ -13,7 +13,7 @@ public sealed class KeyframeArg
     public string LayerId { get; set; } = "";
 
     [JsonPropertyName("property")]
-    [Description("x, y, rotation, scaleX, scaleY, opacity; brightness, contrast, saturation (image and video layers); cropX, cropY (video layers); drawing (image layers); shadow.x, shadow.y, shadow.blur, shadow.opacity, outline.width, blur.x, blur.y, tint.amount (after set_effect); mask.x, mask.y, mask.width, mask.height, mask.feather (after set_mask). Camera: x, y (the scene point at the frame's center), zoom, rotation, shakeX, shakeY, shakeRotation.")]
+    [Description("x, y, rotation, scaleX, scaleY, opacity; brightness, contrast, saturation (image and video layers); grade.exposure, grade.highlights, grade.shadows, grade.temperature, grade.tint (after set_color), grade.lift.red, grade.lift.green, grade.lift.blue and the same for grade.gamma and grade.gain (once set_color sets that wheel), grade.look.amount (once it has a look); cropX, cropY (video layers); drawing (image layers); shadow.x, shadow.y, shadow.blur, shadow.opacity, outline.width, blur.x, blur.y, tint.amount (after set_effect); mask.x, mask.y, mask.width, mask.height, mask.feather (after set_mask). Camera: x, y (the scene point at the frame's center), zoom, rotation, shakeX, shakeY, shakeRotation.")]
     public string Property { get; set; } = "";
 
     [JsonPropertyName("time")]
@@ -25,8 +25,12 @@ public sealed class KeyframeArg
     public JsonElement Value { get; set; }
 
     [JsonPropertyName("easing")]
-    [Description("Easing of the segment that STARTS at this keyframe: linear (default), hold, easeIn, easeOut, easeInOut, easeOutBack, easeOutBounce, easeOutElastic. Ignored for drawing (always hold).")]
+    [Description("Easing of the segment that STARTS at this keyframe: linear (default), hold, easeIn, easeOut, easeInOut, easeOutBack, easeOutBounce, easeOutElastic, or cubicBezier with bezier. Ignored for drawing (always hold).")]
     public string? Easing { get; set; }
+
+    [JsonPropertyName("bezier")]
+    [Description("A cubicBezier easing's curve as CSS's cubic-bezier() takes it: [x1, y1, x2, y2], x1 and x2 from 0 to 1, y1 and y2 past 0 or 1 to overshoot; [0.42, 0, 0.58, 1] eases in and out. Easing can be left out.")]
+    public double[]? Bezier { get; set; }
 }
 
 public sealed class PathPointArg
@@ -112,7 +116,7 @@ public sealed class KeyframeRefArg
     public string LayerId { get; set; } = "";
 
     [JsonPropertyName("property")]
-    [Description("x, y, rotation, scaleX, scaleY, opacity, brightness, contrast, saturation, cropX, cropY, drawing, or an effect or mask property such as shadow.x or mask.width; for the camera x, y, zoom, rotation, shakeX, shakeY or shakeRotation.")]
+    [Description("x, y, rotation, scaleX, scaleY, opacity, brightness, contrast, saturation, cropX, cropY, drawing, or a grade, effect or mask property such as grade.exposure, shadow.x or mask.width; for the camera x, y, zoom, rotation, shakeX, shakeY or shakeRotation.")]
     public string Property { get; set; } = "";
 
     [JsonPropertyName("time")]
@@ -152,6 +156,21 @@ public sealed class CueArg
     [JsonPropertyName("text")]
     [Description("The caption's text; \\n breaks the line.")]
     public string Text { get; set; } = "";
+}
+
+public sealed class ColorWheelArg
+{
+    [JsonPropertyName("red")]
+    [Description("-1 to 1: less or more red there (0 as shot).")]
+    public double? Red { get; set; }
+
+    [JsonPropertyName("green")]
+    [Description("-1 to 1: less or more green there.")]
+    public double? Green { get; set; }
+
+    [JsonPropertyName("blue")]
+    [Description("-1 to 1: less or more blue there.")]
+    public double? Blue { get; set; }
 }
 
 public sealed class TextBoxArg

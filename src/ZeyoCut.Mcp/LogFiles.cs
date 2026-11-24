@@ -10,6 +10,7 @@ using Microsoft.Extensions.Logging;
 using ModelContextProtocol;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
+using ZeyoCut.Core;
 
 namespace ZeyoCut.Mcp;
 
@@ -116,6 +117,23 @@ public static class LogFiles
             || entry.Exception?.Contains(text, StringComparison.OrdinalIgnoreCase) == true
             || entry.Fields?.Values.Any(v => v?.ToString()?.Contains(text, StringComparison.OrdinalIgnoreCase) == true) == true;
     }
+}
+
+// Notes the client in the log folder's connected.json each time one lists the tools, as clients do
+// once they connect (ClientConnection). Its name is read from the request, which has it both after
+// the initialize handshake and on protocol revisions that send it with every request.
+public static class ConnectionNote
+{
+    public static McpRequestHandler<ListToolsRequestParams, ListToolsResult> Filter(McpRequestHandler<ListToolsRequestParams, ListToolsResult> next) => async (request, ct) =>
+    {
+        if (request.Services?.GetService<Settings>() is { } settings)
+        {
+            var client = request.Server.ClientInfo;
+            ClientConnection.Write(settings.LogDirectory, new ClientConnection(client?.Name is { Length: > 0 } name ? name : "an MCP client", client?.Version, DateTimeOffset.Now));
+        }
+
+        return await next(request, ct);
+    };
 }
 
 // Logs every tool call: its arguments, how long it took, and the error when it failed.

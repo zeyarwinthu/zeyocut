@@ -1,6 +1,6 @@
 # Project format
 
-A ZeyoCut project is a folder. `project.json` in it is the single source of truth: every tool call validates the change, saves it atomically and adds an undo step. Before each save, the file it replaces is copied to `backups\`, and the last 20 are kept; `restore_backup` lists them and puts one back.
+A ZeyoCut project is a folder. `project.json` in it is the single source of truth: every tool call validates the change, saves it atomically and adds an undo step. Before each save, the file it replaces is copied to `backups\`, and the last 20 are kept (and the last 20 the editor saved besides); `restore_backup` lists them and puts one back. Another program can save the same project at the same time; see [Saving alongside another program](#saving-alongside-another-program).
 
 This page describes the folder, the file, and how ZeyoCut reads what is in it: space and time, transforms, the camera, animation, text, video, captions, languages, the library and audio. The [guide](GUIDE.md) shows the tools that change it.
 
@@ -21,7 +21,10 @@ my-project\
                    and as an older ZeyoCut saved it (project-v<format>-<time>.json)
   cache\chunks\    the 2 s chunks of earlier exports, reused by the next export (at most 2 GB)
   cache\preview\   the sound mix the preview page plays (mix-<key>.m4a, the latest one)
+  cache\thumbnails\, cache\waveforms\
+                   the editor's pictures of the media and peaks of each sound, made again when a file changes
   proxies\         1920 px copies of footage over 2560 px, for previews and tracking (exports read the originals)
+  project.lock     open only while a program saves project.json; it holds the highest revision saved
 ```
 
 ## project.json
@@ -32,14 +35,21 @@ Here is the demo project (`ZeyoCut.Mcp.exe demo`) cut down to one asset and one 
 
 ```json
 {
-  "formatVersion": 6,
+  "formatVersion": 12,
+  "revision": 2,
   "name": "Tora Jumps",
   "width": 1280,
   "height": 720,
   "fps": 30,
   "duration": 3,
   "backgroundColor": "#BFE6FF",
-  "audio": {"loudnessTarget": -14, "truePeak": -1, "ducking": true},
+  "audio": {
+    "loudnessTarget": -14, "truePeak": -1,
+    "ducking": true, "duckLevel": -12, "duckFadeIn": 0.5, "duckFadeOut": 1.5,
+    "voice": {"gain": 0, "pan": 0, "muted": false},
+    "music": {"gain": -3, "pan": 0, "muted": false},
+    "effects": {"gain": 0, "pan": 0, "muted": false}
+  },
   "assets": [
     {
       "id": "clouds",
@@ -88,13 +98,14 @@ Here is the demo project (`ZeyoCut.Mcp.exe demo`) cut down to one asset and one 
 
 | Field | Default | What it is |
 |---|---|---|
-| `formatVersion` | 6 | The format the file was saved in; see [Format versions](#format-versions) |
+| `formatVersion` | 12 | The format the file was saved in; see [Format versions](#format-versions) |
+| `revision` | 0 | How many times the project has been saved. Every save adds 1, whichever program saves it, and it never goes back: undo, redo and `restore_backup` put back older content as a new revision. ZeyoCut sets it; no tool does |
 | `name` | | The project's name |
 | `width`, `height` | 1920, 1080 | The canvas in pixels |
 | `fps` | 30 | Frames per second |
 | `duration` | 10 | Length in seconds |
 | `backgroundColor` | `#FFFFFF` | Shown where no layer draws |
-| `audio` | | `loudnessTarget`: the loudness of the exported mix in LUFS, -14 by default, `null` for off. `truePeak`: the highest true peak, -1 dBTP. `ducking`: lower music under voice, on by default |
+| `audio` | | `loudnessTarget`: the loudness of the exported mix in LUFS, -14 by default, `null` for off. `truePeak`: the highest true peak, -1 dBTP. `ducking`: lower music under voice, on by default, by `duckLevel` dB (-12, from 0 to -40), going down over `duckFadeIn` seconds (0.5) before a voice clip starts and back up over `duckFadeOut` seconds (1.5) after it ends. `voice`, `music` and `effects`: each role's mixer strip, applied to every clip of that role: `gain` in dB (-60 to +6, 0 by default), `pan` from -1 (left only) to 1 (right only), and `muted` |
 | `camera` | | Written once `set_camera`, a camera keyframe or `camera_shake` makes one: animated `x`, `y`, `zoom` and `rotation`, and the shake channels `shakeX`, `shakeY` and `shakeRotation` |
 | `assets` | `[]` | The files the project uses |
 | `layers` | `[]` | Everything on the timeline, as one flat list; `parentId` makes the hierarchy |
@@ -103,7 +114,7 @@ Here is the demo project (`ZeyoCut.Mcp.exe demo`) cut down to one asset and one 
 
 ### Assets
 
-Each asset has an `id`, which layers refer to it by, a `type` (`image`, `audio`, `font` or `video`) and a `file`. The file is always `assets/<file name>`; one that points anywhere else is an error. The rest is what was found when the file was imported: `width` and `height`, `duration`, `frameRate`, `frameCount`, `hasAudio`, `codec` and, for fonts, `fontFamily`. A video that was transcoded on import keeps the file the user imported in `originalFile` and the reason in `normalized`.
+Each asset has an `id`, which layers refer to it by, a `type` (`image`, `audio`, `font`, `video` or `lut`) and a `file`. The file is always `assets/<file name>`; one that points anywhere else is an error. The rest is what was found when the file was imported: `width` and `height`, `duration`, `frameRate`, `frameCount`, `hasAudio`, `codec` and, for fonts, `fontFamily`. A video that was transcoded on import keeps the file the user imported in `originalFile` and the reason in `normalized`. `tags` (optional) names the groups the asset is in, as bins do, such as `["Tora rig"]`: up to 40 characters each, and tags that differ only in case are the same tag. `tag_assets` sets them, and the editor's Media browser lists each tag as a bin.
 
 ### Layers
 
@@ -125,12 +136,12 @@ Image, text and video layers add the anchor (`anchorX`, `anchorY`), `ignoreCamer
 
 | Type | Its own fields |
 |---|---|
-| `image` | `drawings` (drawing name → image asset id), `drawing` (which drawing shows, animated), `flipX`, the animated color adjustments `brightness`, `contrast` and `saturation`, and `matte` (background removal). An image layer without drawings is a null layer |
+| `image` | `drawings` (drawing name → image asset id), `drawing` (which drawing shows, animated), `flipX`, the animated color adjustments `brightness`, `contrast` and `saturation`, a `grade`, and `matte` (background removal). An image layer without drawings is a null layer |
 | `text` | `text`, `fontFamily` or `fontAsset`, `fontSize`, `bold`, `color`, `strokeColor`, `strokeWidth`, `align`, `maxWidth`, `lineHeight`, and `box` (`color`, `padding`, `cornerRadius`) |
-| `video` | `asset`, `trimIn`, `trimOut`, `speed`, `volume`, `muted`, `role`, `fadeIn`, `fadeOut`, a crop (`cropWidth`, `cropHeight` and the animated `cropX`, `cropY`), the color adjustments, and `matte` |
-| `audio` | `asset`, `trimIn`, `trimOut`, `volume`, `role` (`voice`, `music` or `effects`), `fadeIn` and `fadeOut` |
+| `video` | `asset`, `trimIn`, `trimOut`, `speed`, `volume` (animated), `muted`, `role`, `fadeIn`, `fadeOut`, a crop (`cropWidth`, `cropHeight` and the animated `cropX`, `cropY`), the color adjustments and `grade`, and `matte` |
+| `audio` | `asset`, `trimIn`, `trimOut`, `volume` (animated), `role` (`voice`, `music` or `effects`), `fadeIn` and `fadeOut` |
 | `cutout` | Made by `text_behind_subject`: the subject of its `sources` (a clip and the pieces splits made of it) drawn again above the text, cut out with its `matte`. It follows its sources, so only `name`, `zIndex`, `visible` and `opacity` are its own. `captionGroup` names the captions `generate_captions` made it for |
-| `redaction` | Made by `apply_redaction`: hides the boxes of its `tracks` with a `style` (`pixelate`, `blur` or `solid`), `strength`, `paddingPercent`, `feather`, `holdFrames` and `color`. After `tracks_to_keyframes`, `boxes` holds a track's box as keyframes |
+| `redaction` | Made by `apply_redaction`: hides the boxes of its `tracks` with a `style` (`pixelate`, `blur` or `solid`), `strength`, `paddingPercent`, `feather`, `holdFrames` and `color`, as a `shape` (`rectangle`, the whole box, or `ellipse`, the ellipse inside it); `smooth` keeps each box steady, its center and size averaged over 6 frames on each side. After `tracks_to_keyframes`, `boxes` holds a track's box as keyframes |
 
 ### Animated values
 
@@ -146,7 +157,9 @@ A property that can be animated is an object with a `value` and a list of `keyfr
 }
 ```
 
-`value` is used while there are no keyframes. A keyframe's `easing` shapes the segment that starts at it; see [Animation](#animation). An image layer's `drawing` works the same way with drawing names, and always holds: `"drawing": { "value": "normal", "keyframes": [{ "time": 1.2, "value": "happy" }] }`.
+A sound's `volume` is one too: `"volume": { "value": 0.8 }`. Before format 9 it was a plain number, which still reads as a value without keyframes.
+
+`value` is used while there are no keyframes. A keyframe's `easing` shapes the segment that starts at it; see [Animation](#animation). A `cubicBezier` keyframe also has its curve: `{ "time": 0, "value": 0, "easing": "cubicBezier", "bezier": [0.42, 0, 0.58, 1] }`. An image layer's `drawing` works the same way with drawing names, and always holds: `"drawing": { "value": "normal", "keyframes": [{ "time": 1.2, "value": "happy" }] }`.
 
 ### Tracks
 
@@ -175,8 +188,29 @@ A marker has an `id`, a `time`, a `name` and a `kind`, `chapter` or `scene`. `ex
 | 4 | Subject cutouts |
 | 5 | Tracks and redactions |
 | 6 | Markers and language tags |
+| 7 | `revision`, the count of saves |
+| 8 | The `cubicBezier` easing and a keyframe's `bezier` |
+| 9 | Each role's mix (`gain`, `pan`, `muted`), the duck level and fades, and `volume` as an animated value |
+| 10 | Asset `tags` |
+| 11 | A redaction's `shape` and `smooth` |
+| 12 | A clip's color `grade` |
+| 13 | A grade's `lift`, `gamma` and `gain` wheels and its `look`, and `lut` assets |
 
-A project saved by an older ZeyoCut opens too: it's updated to the current format as it opens, and the file as it was is kept in `backups\` for good. So far every version has only added fields, and a field an older file lacks gets its default.
+A project saved by an older ZeyoCut opens too: it's updated to the current format as it opens, and the file as it was is kept in `backups\` for good. Every version has added fields, and a field an older file lacks gets its default; version 9 also turned `volume` into an animated value, and a number there still reads as one without keyframes.
+
+### Saving alongside another program
+
+Two programs can have one project open at once, such as the MCP server and the ZeyoCut editor, or two servers. Each keeps the project in memory, and neither overwrites what the other saved:
+
+- **A save checks first.** While it saves, a program holds `project.lock` open so no other program can save at the same moment (a second save waits up to 5 s). It reads `project.json` and compares its SHA-256 with the file it last read or wrote. If another program changed it, that version becomes the open project first, and the edit is made on top of it.
+- **The server catches up before every tool call.** It compares the file's size and time, reads it only if they changed, and takes the new version. The reply then starts with a note that lists what changed (up to 10 items) and ends with "Re-read with get_project or list_layers before relying on earlier details."
+- **Undo takes back only its own steps.** Each undo step records what it changed: the settings, the camera, and assets, layers, tracks and markers by id, with their place in the list. Until another program saves, undo puts back the whole project as it was before the step. After that, it puts back only the step's items and keeps the other program's changes; it's refused, naming the items, when the other program changed one of them since. The next undo steps over a step refused that way, which stays as it is, and takes back the one before it. Redo works the same way. The project's length doesn't count when it only grew or shrank with the layers (a clip moved past the end, a ripple): undo sets it back as long as no other layer runs past the old end. `restore_backup` still lists every copy kept.
+- **Each program's backups are kept apart.** The ZeyoCut editor labels its saves `editor <edit>`. The last 20 of those and the last 20 others stay in `backups\`, so a burst of edits in the editor can't push out the server's. Of each of the two, the newest one made right after a save of the other stays as well: it holds `project.json` as the other program last left it. The editor's Activity view lists them as steps, and its Restore puts one back as `restore_backup` does (saved as `editor restore_backup <time>`).
+- **Readers never hold up a save.** ZeyoCut opens `project.json` for reading with read, write and delete sharing, and saves by renaming the new file over it, which Windows allows while such a reader has it open.
+- **A program that dies lets go of `project.lock`.** The file stays, but it means nothing while no program has it open, so a lock never goes stale.
+- **A `project.json` that can't be read stops edits.** If another program leaves a file that isn't valid JSON, or deletes it, the next tool reply says so, and every edit is refused until the file is fixed or `restore_backup` puts a backup back (the unreadable file is kept in `backups\` too).
+
+ZeyoCut 0.1.0 doesn't know about `project.lock` and never re-reads `project.json`, so it can overwrite another program's save. Don't use it on a project another program has open.
 
 ## Space and time
 - Pixels, origin at the top-left, y points down, rotation in degrees clockwise.
@@ -199,8 +233,12 @@ A project saved by an older ZeyoCut opens too: it's updated to the current forma
 - `flipX` mirrors a layer's own pixels around `anchorX`. Its children are not flipped.
 
 ## Animation
-- Animatable properties are `x`, `y`, `rotation`, `scaleX`, `scaleY` and `opacity`, plus `drawing` on image layers, `brightness`, `contrast` and `saturation` on image and video layers, and `cropX`/`cropY` on cropped video layers.
-- A keyframe's easing shapes the segment that *starts* at that keyframe: `linear`, `hold`, `easeIn`, `easeOut`, `easeInOut`, `easeOutBack`, `easeOutBounce`, `easeOutElastic`.
+- Animatable properties are `x`, `y`, `rotation`, `scaleX`, `scaleY` and `opacity`, plus `drawing` on image layers, `brightness`, `contrast` and `saturation` on image and video layers, `grade.exposure`, `grade.highlights`, `grade.shadows`, `grade.temperature` and `grade.tint` on graded ones, `grade.lift.red`, `.green` and `.blue` (and the same for `gamma` and `gain`) on ones with that wheel, `grade.look.amount` on ones with a look, and `cropX`/`cropY` on cropped video layers.
+- An image or video layer's `grade` (`set_color`) has `exposure` (stops, -3 to 3), `highlights`, `shadows`, `temperature` and `tint` (-1 to 1), each animated and 0 as shot. It is drawn before the layer's saturation, contrast and brightness. A layer as shot has no `grade`.
+- A grade's color wheels `lift`, `gamma` and `gain` each have an animated `red`, `green` and `blue` (-1 to 1, 0 as shot), and are written only while one of them isn't 0. On each channel, lift moves black and keeps white (`y + lift × (1 − y)`), gamma bends the middle and keeps both (`y` to the power `2^−gamma`), and gain scales and keeps black (`y × (1 + gain)`), after the highlights and shadows.
+- A grade's `look` is `{ "asset": "<a lut asset>", "amount": <animated, 0 to 1> }`: a 3D LUT from a `.cube` file, drawn after the saturation, contrast and brightness and mixed with the picture by `amount`. A `lut` asset's file is the `.cube` file as imported.
+- A keyframe's easing shapes the segment that *starts* at that keyframe: `linear`, `hold`, `easeIn`, `easeOut`, `easeInOut`, `easeOutBack`, `easeOutBounce`, `easeOutElastic` or `cubicBezier`.
+- A `cubicBezier` keyframe's `bezier` is its curve as CSS's `cubic-bezier()` takes it: `[x1, y1, x2, y2]`, the handles of a curve from (0, 0) to (1, 1) across the segment, with time across and the change up. `x1` and `x2` are from 0 to 1; `y1` and `y2` can go past 0 and 1 to overshoot. `bezier` is written only with that easing.
 - Before the first keyframe and after the last, a property holds that keyframe's value. Once a property has keyframes, its static value is ignored.
 - `drawing` always holds, and before its first keyframe it shows the first keyframe's drawing. Add a keyframe at 0 for the starting drawing.
 
@@ -233,7 +271,7 @@ See [the guide](GUIDE.md#effects-and-motion).
 - `import_video` copies clean files as they are. It transcodes anything else in the background: variable frame rate, rotation, 10-bit or HDR, or non-square pixels. The output is constant frame rate, upright, 8-bit BT.709 H.264, so frame *n* of a clip is always at *n / fps*.
 - A video layer plays `trimIn`–`trimOut` of its source at `speed`. Its timeline length is `(trimOut − trimIn) / speed`.
 - `render_frame` seeks to the exact frame. Export decodes each clip once, in order, with one decoder per clip.
-- Footage over 2560 px (4K and up) gets a 1920 px proxy in the background when it is imported, and when a project that lacks one opens. Previews and object tracking read it; exports read the original. On a 20 s 4K clip in a 1080p project, the proxy took 2.5 s to make, and `render_frame` then took 220–270 ms instead of 425–440 ms, a 12-frame contact sheet 1.7 s instead of 4.8 s. A preview drawn from a proxy says so.
+- Footage over 2560 px (4K and up) gets a 1920 px proxy in the background when it is imported, and when a project that lacks one opens. Previews and object tracking read it; exports read the original. On a 20 s 4K clip in a 1080p project, the proxy took 2.5 s to make, and `render_frame` then took 220–270 ms instead of 425–440 ms, a 12-frame contact sheet 1.7 s instead of 4.8 s. A preview drawn from a proxy says so. While a program makes a proxy it holds `<proxy>.lock` beside it, open for no other: the server or editor that wants the same proxy then waits for it and reads it, instead of making it again.
 - Previews are cached in memory (up to 128 MB per open project) under the same per-frame key as the export's chunks: a frame or contact sheet cell shown before comes back without drawing while nothing it shows has changed, so an edit at 12 s leaves the previews at 2 s cached. On a 1080p clip, `render_frame` took 312 ms the first time and 1 ms again; a 12-frame contact sheet took 2.3 s, then 44 ms, and 129 ms after an edit that changed 7 of its cells.
 - `preview_server` starts a read-only page for the browser at `http://127.0.0.1:<port>/<token>/`. It shows a timeline with the layers and markers, and plays frames of up to 640 px, about 15 a second, with the export's sound mix. It follows every edit within a second and draws again only the frames the edit changed. Only that address answers, and other sites can't read it. On a 1080p clip, the first play showed 11 frames a second and the second the full 15.
 - The editing tools (`split_layer`, `remove_range`, `remove_silences`, `cut_by_transcript`, …) cut clips into pieces that play exactly as before. They ripple later layers, keyframes and children along, so a cut never changes a frame it doesn't touch.
@@ -273,13 +311,14 @@ Audio layers and the sound of video layers are mixed at export, and for the prev
 
 - `start` / `end`: placement on the timeline
 - `trimIn` / `trimOut`: the range used from the source file
-- `volume`: linear gain
+- `volume`: linear gain, animated (1 as recorded)
 - `fadeIn` / `fadeOut`: fade lengths in seconds
 - `role`: `voice`, `music` or `effects`. Audio layers default to `music`, video sound to `voice`.
 
 At export:
 
-- **Ducking.** Music is lowered under voice by a sidechain compressor, roughly 12–18 dB while someone speaks, depending on how loud the voice is. It comes back within about a second after they stop.
+- **Mixer.** Each clip's volume is multiplied by its role's `gain` (from `audio.voice`, `audio.music` or `audio.effects`) and panned by the role's `pan`: a pan to the right lowers the left channel (at 1 it's silent) and leaves the right as it is. A muted role is left out.
+- **Ducking.** Wherever a voice clip plays, music goes down by `duckLevel` dB (-12 by default). It starts going down `duckFadeIn` seconds before the clip and is back up `duckFadeOut` seconds after it ends, in straight lines of gain; between two voice clips closer than that it comes back up only part of the way. Ducking follows the voice clips, not how loud they are, so a pause inside one clip stays ducked.
 - **Loudness.** The mix is normalized with a two-pass `loudnorm` to the project's target, -14 LUFS by default. The first pass measures the mix; the second applies the gain linearly, with true peak at most -1 dBTP. Set the target with `update_project` (`loudnessTarget`, `0` = off).
 
 The mix is 48 kHz stereo AAC at 192 kbps (128 kbps for the preview page). Hidden audio layers are skipped.

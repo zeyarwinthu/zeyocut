@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.Globalization;
 using SkiaSharp;
 using ZeyoCut.Core;
+using ZeyoCut.Core.Editing;
 using ZeyoCut.Core.Model;
 
 namespace ZeyoCut.Render.Export;
@@ -21,7 +22,14 @@ internal static class ChunkedExport
     // The chunk cache of a project is trimmed to this size, oldest first.
     public const long CacheBytes = 2L * 1024 * 1024 * 1024;
 
-    public const string CacheFolder = "cache";
+    public const string CacheFolder = ProjectStore.CacheFolder;
+
+    public const string ChunksFolder = "chunks";
+
+    // A GPU encoder that fails on a chunk is given it again, up to this many times in all: Intel Quick
+    // Sync now and then hands back an empty frame ("Invalid FrameType:0") when frames come faster than
+    // it encodes them, and encodes the same frames the next time.
+    private const int HardwareAttempts = 4;
 
     private sealed record Chunk(int Index, int Start, int End, string File)
     {
@@ -49,7 +57,7 @@ internal static class ChunkedExport
         Stopwatch stopwatch)
     {
         var frameCount = settings.FrameCount;
-        var folder = Path.Combine(projectDirectory, CacheFolder, "chunks");
+        var folder = Path.Combine(projectDirectory, CacheFolder, ChunksFolder);
         Directory.CreateDirectory(folder);
 
         var keysStarted = Stopwatch.GetTimestamp();
@@ -103,6 +111,8 @@ internal static class ChunkedExport
             {
                 VideoOptions = [.. settings.VideoOptions ?? [], "-threads", Math.Max(1, Environment.ProcessorCount / threads).ToString(CultureInfo.InvariantCulture)],
             };
+        var hardware = settings.Encoder is { IsHardware: true };
+        var failures = new List<string>();
         var renderStarted = Stopwatch.GetTimestamp();
         var results = new Worker[threads];
         var claims = new Claims(todo.Count);
@@ -120,6 +130,60 @@ internal static class ChunkedExport
                     using var blurred = fit is { } size ? new BlurredFit(project.Width, project.Height, size.Width, size.Height) : null;
                     var cpu = 0.0;
                     Chunk? previous = null;
+                    Chunk? finished = null;
+
+                    // A chunk the GPU encoder failed on, rendered and encoded again and finished at once
+                    // (attempt 2 on), its frames counted in the progress once ('reported' are). The
+                    // readers are closed before and after, as it isn't where they are.
+                    double Again(Chunk chunk, EncoderFailed failure, int reported)
+                    {
+                        for (var attempt = 2; ; attempt++)
+                        {
+                            log?.Invoke($"chunk {chunk.Index}: {failure.Message}\nencoding it again");
+                            lock (failures)
+                            {
+                                failures.Add(failure.Problem);
+                            }
+
+                            var count = 0;
+                            ChunkEncoder? encoder = null;
+                            renderer.Video.CloseReaders();
+                            try
+                            {
+                                encoder = Feed(project, chunk, chunkSettings with { FrameCount = chunk.Frames }, renderer, surface, blurred, stats, ffmpeg, log, () =>
+                                {
+                                    if (++count > reported)
+                                    {
+                                        Report();
+                                    }
+                                }, stop.Token);
+                                var used = encoder.Finish(stop.Token);
+                                stats.Lap(RenderStage.Encode);
+                                return used;
+                            }
+                            catch (EncoderFailed again) when (attempt < HardwareAttempts)
+                            {
+                                (failure, reported) = (again, Math.Max(reported, count));
+                            }
+                            finally
+                            {
+                                encoder?.Dispose();
+                                renderer.Video.CloseReaders();
+                            }
+                        }
+                    }
+
+                    double Finish(ChunkEncoder encoder, Chunk chunk)
+                    {
+                        try
+                        {
+                            return encoder.Finish(stop.Token);
+                        }
+                        catch (EncoderFailed failure) when (hardware)
+                        {
+                            return Again(chunk, failure, chunk.Frames);
+                        }
+                    }
 
                     // A chunk's encoder finishes while the next chunk renders into an encoder of its own.
                     for (var i = claims.Next(-1); i >= 0; i = claims.Next(i))
@@ -130,21 +194,36 @@ internal static class ChunkedExport
                             renderer.Video.CloseReaders();
                         }
 
-                        var encoder = Feed(project, chunk, chunkSettings with { FrameCount = chunk.Frames }, renderer, surface, blurred, stats, ffmpeg, log, Report, stop.Token);
+                        var fed = 0;
+                        ChunkEncoder? encoder;
+                        try
+                        {
+                            encoder = Feed(project, chunk, chunkSettings with { FrameCount = chunk.Frames }, renderer, surface, blurred, stats, ffmpeg, log, () =>
+                            {
+                                fed++;
+                                Report();
+                            }, stop.Token);
+                        }
+                        catch (EncoderFailed failure) when (hardware)
+                        {
+                            cpu += Again(chunk, failure, fed);
+                            encoder = null;
+                        }
+
                         if (finishing is not null)
                         {
-                            cpu += finishing.Finish(stop.Token);
+                            cpu += Finish(finishing, finished!);
                             stats.Lap(RenderStage.Encode);
                             finishing.Dispose();
                         }
 
-                        finishing = encoder;
+                        (finishing, finished) = (encoder, chunk);
                         previous = chunk;
                     }
 
                     if (finishing is not null)
                     {
-                        cpu += finishing.Finish(stop.Token);
+                        cpu += Finish(finishing, finished!);
                         stats.Lap(RenderStage.Encode);
                     }
 
@@ -171,6 +250,11 @@ internal static class ChunkedExport
                 var first = ex.Flatten().InnerExceptions.FirstOrDefault(e => e is not OperationCanceledException) ?? ex.InnerExceptions[0];
                 System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(first).Throw();
             }
+        }
+
+        if (failures.Count > 0)
+        {
+            notes.Add($"{settings.Encoder!.Codec} failed {failures.Count} time(s); each time, the chunk it failed on was encoded again (first: {failures[0]})");
         }
 
         var renderTime = Stopwatch.GetElapsedTime(renderStarted);
@@ -333,6 +417,13 @@ internal static class ChunkedExport
         }
     }
 
+    // A chunk's encoder that stopped with an error (not a frame that couldn't be rendered), and FFmpeg's
+    // first message about it.
+    private sealed class EncoderFailed(string message, string problem) : ZeyoCutException(message)
+    {
+        public string Problem { get; } = problem;
+    }
+
     // One chunk's ffmpeg, writing <key>.<unique>.partial.mp4. Finish waits for it and renames the file
     // to <key>.mp4, unless another export running at the same time has put the same chunk there first.
     // Disposing an encoder that didn't finish (the export failed or was stopped) gives it a few seconds
@@ -384,7 +475,7 @@ internal static class ChunkedExport
             {
                 _process.WaitForExit(10000);
                 _stderr.Wait(2000);
-                throw new ZeyoCutException($"ffmpeg stopped while receiving frame {frame}:\n{StderrTail()}");
+                throw new EncoderFailed($"ffmpeg stopped while receiving frame {frame}:\n{StderrTail()}", Problem());
             }
         }
 
@@ -407,7 +498,7 @@ internal static class ChunkedExport
             _stdout.Wait();
             if (_process.ExitCode != 0)
             {
-                throw new ZeyoCutException($"ffmpeg failed with exit code {_process.ExitCode}:\n{StderrTail()}");
+                throw new EncoderFailed($"ffmpeg failed with exit code {_process.ExitCode}:\n{StderrTail()}", Problem());
             }
 
             var cpu = Exporter.CpuSeconds(_process);
@@ -461,6 +552,9 @@ internal static class ChunkedExport
 
             _finished = true;
         }
+
+        // FFmpeg's first message about why it stopped.
+        private string Problem() => VideoEncoders.Problem(StderrTail(), _process.HasExited ? _process.ExitCode : 0);
 
         private string StderrTail()
         {

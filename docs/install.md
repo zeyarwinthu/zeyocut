@@ -1,6 +1,6 @@
 # Install ZeyoCut
 
-ZeyoCut runs on Windows 10 and 11 (x64). It is an MCP server with no window of its own: you use it from an MCP client such as Claude Desktop or Claude Code, and the client starts it.
+ZeyoCut runs on Windows 10 and 11 (x64). It is an MCP server: you use it from an MCP client such as Claude Desktop or Claude Code, and the client starts it. The release also has [the editor](#the-editor-optional), a window for working on projects by hand.
 
 ## 1. Download
 
@@ -9,7 +9,7 @@ Get the latest release from the [Releases page](https://github.com/zeyarwinthu/z
 | File | What it is |
 |---|---|
 | `ZeyoCut-<version>.mcpb` | The bundle for Claude Desktop, installed in a few clicks |
-| `ZeyoCut-<version>-win-x64.zip` | For any MCP client: `ZeyoCut.Mcp.exe` (about 180 MB, with the .NET runtime and every library inside, so nothing else is needed to run it), `appsettings.json` and the license notices |
+| `ZeyoCut-<version>-win-x64.zip` | For any MCP client: `ZeyoCut.Mcp.exe` (about 180 MB, with the .NET runtime and every library inside, so nothing else is needed to run it), the editor `ZeyoCut.Editor.exe` (about 150 MB, also complete in itself), `appsettings.json`, the sample project `examples\tora-jump` and the license notices |
 | `SHA256SUMS.txt` | The SHA-256 checksum of both files |
 
 ### Check the download
@@ -33,7 +33,7 @@ If a file says `MISMATCH`, don't run it. Download it again; if it still doesn't 
 
 The exe isn't code-signed yet, so Windows may warn about it:
 
-- **SmartScreen.** If you start the exe yourself, Microsoft Defender SmartScreen can show "Windows protected your PC". Once the checksum matches, choose **More info → Run anyway**. You don't normally start it yourself: the MCP client does.
+- **SmartScreen.** If you start the exe yourself, Microsoft Defender SmartScreen can show "Windows protected your PC". Once the checksum matches, choose **More info → Run anyway**. You don't normally start the server yourself: the MCP client does. The editor you do start yourself, so expect this the first time.
 - **Downloaded-file mark.** Windows marks files that come from the internet. After checking the checksum you can clear the mark before unzipping, with **right-click → Properties → Unblock** or `Unblock-File .\ZeyoCut-<version>-win-x64.zip`.
 - **Smart App Control** (Windows 11) can block programs that aren't signed, and it can't be told to allow a single program.
 
@@ -119,7 +119,7 @@ Any client that runs local (stdio) MCP servers can use ZeyoCut. The command is t
 Two things to know:
 
 - Tools such as `render_frame` and `contact_sheet` return PNG images so the model can check its work. With a client that doesn't pass images to the model, everything still works, but the model edits without seeing the result.
-- ZeyoCut has 90 tools. Some clients limit how many tools they turn on at once.
+- ZeyoCut has 96 tools. Some clients limit how many tools they turn on at once.
 
 ## 4. First run
 
@@ -133,6 +133,16 @@ Ask the model:
 
 The [guide](GUIDE.md) shows every tool with an example call and its real response.
 
+## The editor (optional)
+
+`ZeyoCut.Editor.exe` is in the zip next to `ZeyoCut.Mcp.exe`. It needs no MCP client: start it like any program, or give it a project folder, for example `ZeyoCut.Editor.exe C:\Users\you\ZeyoCut\projects\hello`. It finds FFmpeg and the projects folder through the same `appsettings.json` and environment variables as the server. The bundle carries a copy too, but the settings you give the bundle in Claude Desktop reach only the server, so unzip the release to run the editor yourself.
+
+It plays sound with Windows Media Foundation. On an N edition of Windows, install the Media Feature Pack, or playback is silent and the editor says the sound can't be played.
+
+Claude can open it for you: ask it to open the project in the editor (`open_in_editor`). The server starts the `ZeyoCut.Editor.exe` in its own folder, which in the bundle is the bundle's copy, and passes on its settings. If the editor is somewhere else, set `EditorPath` in `appsettings.json` or `ZEYOCUT_EDITOR_PATH` to it.
+
+It can stay open while Claude works on the same project: each program saves on top of the other's changes. The [editor guide](editor.md) shows what it can do.
+
 ## Folders
 
 | What | Where |
@@ -141,7 +151,8 @@ The [guide](GUIDE.md) shows every tool with an example call and its real respons
 | Library (rigs, actions, text styles, templates, sound effects) | `%USERPROFILE%\ZeyoCut\library` |
 | AI models, downloaded on first use | `%USERPROFILE%\ZeyoCut\library\models` |
 | Logs and the record of background jobs | `%LOCALAPPDATA%\ZeyoCut` |
-| Native libraries, unpacked from the exe on first run | `%TEMP%\.net\ZeyoCut.Mcp` |
+| The editor's settings: recent projects, panel sizes, window position | `%LOCALAPPDATA%\ZeyoCut\editor.json`, or the file `ZEYOCUT_EDITOR_SETTINGS` names |
+| Native libraries, unpacked from the exes on first run | `%TEMP%\.net\ZeyoCut.Mcp` and `%TEMP%\.net\ZeyoCut.Editor` |
 
 ZeyoCut only reads files from the projects folder, the library and the **import folders**: by default your Desktop, Documents, Downloads, Music, Pictures and Videos. Importing from anywhere else gives an error that names the setting. To add folders, set `ZEYOCUT_IMPORT_DIRS` (folders separated by `;`), the bundle's Import folder setting, or `ImportFolders` in `appsettings.json`. Projects must be inside the projects folder.
 
@@ -161,9 +172,9 @@ ZeyoCut has no telemetry and no account. Your projects and media stay on your co
 
 ## Update and uninstall
 
-**Update.** With the bundle, install the new `.mcpb` the same way. With the zip, quit the client, replace `ZeyoCut.Mcp.exe` (keep your `appsettings.json` if you changed it) and start the client again. Projects saved by an older version open in a newer one.
+**Update.** With the bundle, install the new `.mcpb` the same way. With the zip, quit the client and the editor, replace `ZeyoCut.Mcp.exe` and `ZeyoCut.Editor.exe` (keep your `appsettings.json` if you changed it) and start the client again. Projects saved by an older version open in a newer one.
 
-**Uninstall.** Remove ZeyoCut from the client: on Claude Desktop's Extensions page, by deleting its entry from `claude_desktop_config.json`, or with `claude mcp remove zeyocut`. Then delete the folder you unzipped it to, `%LOCALAPPDATA%\ZeyoCut` and `%TEMP%\.net\ZeyoCut.Mcp`. Your projects and library are in `%USERPROFILE%\ZeyoCut`; delete that folder only if you don't want them any more.
+**Uninstall.** Remove ZeyoCut from the client: on Claude Desktop's Extensions page, by deleting its entry from `claude_desktop_config.json`, or with `claude mcp remove zeyocut`. Then delete the folder you unzipped it to, `%LOCALAPPDATA%\ZeyoCut`, `%TEMP%\.net\ZeyoCut.Mcp` and `%TEMP%\.net\ZeyoCut.Editor`. Your projects and library are in `%USERPROFILE%\ZeyoCut`; delete that folder only if you don't want them any more.
 
 ## Build from source
 

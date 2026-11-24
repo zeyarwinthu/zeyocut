@@ -1,5 +1,6 @@
 {
-  "formatVersion": 6,
+  "formatVersion": 13,
+  "revision": 0,
   "name": "Tora Jumps",
   "width": 1280,
   "height": 720,
@@ -937,7 +938,9 @@
       "asset": "boing",
       "trimIn": 0,
       "trimOut": null,
-      "volume": 0.8,
+      "volume": {
+        "value": 0.8
+      },
       "role": "music",
       "fadeIn": 0,
       "fadeOut": 0
@@ -954,7 +957,9 @@
       "asset": "thud",
       "trimIn": 0,
       "trimOut": null,
-      "volume": 1,
+      "volume": {
+        "value": 1
+      },
       "role": "music",
       "fadeIn": 0,
       "fadeOut": 0.1

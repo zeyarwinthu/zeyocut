@@ -44,6 +44,19 @@ public sealed record RangeResult(
 
 public sealed record TimelineChange(string Summary, double OldDuration, double NewDuration, IReadOnlyList<string> Warnings);
 
+// How a clip added at a time makes room for itself: drawn over what's there (overlay), pushing what
+// starts from that time on later (insert), or cutting what its lane has under it (overwrite).
+public enum ClipEdit
+{
+    Overlay,
+    Insert,
+    Overwrite
+}
+
+// How far a layer can be dragged on the timeline: the earliest start and the latest end a trim
+// reaches, and the earliest start a move reaches.
+public sealed record TimelineLimits(double EarliestStart, double LatestEnd, double EarliestMove);
+
 // Timeline edits. Keyframe times are absolute, so every edit that moves a layer in time moves its
 // keyframes (and its children) with it. Cuts keep every remaining frame exactly as it was.
 public static partial class TimelineEditor
@@ -66,6 +79,15 @@ public static partial class TimelineEditor
         AudioLayer audio => AudioEnd(project, audio),
         _ => layer.End ?? project.Duration,
     };
+
+    // A trim reaches as far as the clip's or sound's file goes (an image or text back to 0 and on
+    // without end); a move, until the layer or one of its children would start before 0.
+    public static TimelineLimits Limits(Project project, string layerId)
+    {
+        var layer = SubjectEditor.GetEditableLayer(project, layerId);
+        var earliest = ProjectEditor.Subtree(project, layerId).Min(l => l.Start);
+        return new TimelineLimits(layer.Start - HandleBefore(layer), ContentEnd(project, layer) + HandleAfter(project, layer), Math.Max(0, layer.Start - earliest));
+    }
 
     public static SplitResult SplitLayer(Project project, string layerId, double time)
     {
@@ -173,6 +195,135 @@ public static partial class TimelineEditor
         return new RangeResult(gone, cut, pieces, shifted.Distinct().ToList(), removed, oldDuration, project.Duration, EndWarnings(project));
     }
 
+    // Makes room for a clip just added, as edit says. Insert splits the clip its lane has under the
+    // new one's start there, and moves every layer that starts at or after it later by the new clip's
+    // length, with its children, keyframes, the camera's keyframes and the markers, as set_speed's
+    // ripple does; the project gets that much longer. Layers that started before stay where they are.
+    // Overwrite cuts what the lane has under the new clip, as remove_range does without ripple. A
+    // lane is a draw level's pictures, footage and text (not a caption track's), or a role's sound,
+    // as the editor's timeline shows them. oldDuration is the project's length before the clip was
+    // added. Returns what changed besides the clip, or "" when nothing did.
+    public static string Place(Project project, Layer clip, ClipEdit edit, double oldDuration)
+    {
+        if (edit == ClipEdit.Overlay)
+        {
+            return "";
+        }
+
+        var mode = EnumNames.ToName(edit);
+        if (clip is not (VideoLayer or ImageLayer or AudioLayer) || clip.ParentId is not null)
+        {
+            throw new ZeyoCutException($"{mode} places a clip of its own: a video, picture or sound without a parent");
+        }
+
+        if (clip is ImageLayer && clip.End is null)
+        {
+            throw new ZeyoCutException($"{mode} needs the picture's length: give it an end");
+        }
+
+        var start = clip.Start;
+        var end = ContentEnd(project, clip);
+        var lane = LaneOf(project, clip);
+        if (edit == ClipEdit.Overwrite)
+        {
+            var under = lane.Where(l => l.Start < end - Epsilon && ContentEnd(project, l) > start + Epsilon).ToList();
+            if (under.Count == 0)
+            {
+                return "";
+            }
+
+            var cleared = Clear(project, under, start, end);
+            var parts = new List<string>();
+            if (cleared.Cut.Count > 0)
+            {
+                parts.Add($"cut {Quoted(cleared.Cut)} under it");
+            }
+
+            if (cleared.Pieces.Count > 0)
+            {
+                parts.Add($"new pieces: {string.Join(", ", cleared.Pieces.Select(p => $"{p.Key} (from {p.Value})"))}");
+            }
+
+            if (cleared.Removed.Count > 0)
+            {
+                parts.Add($"removed {Quoted(cleared.Removed)}");
+            }
+
+            return string.Join("; ", parts);
+        }
+
+        var length = end - start;
+        var spanning = lane.Where(l => l.Start < start - Epsilon && ContentEnd(project, l) > start + Epsilon).ToList();
+        var split = Clear(project, spanning, start, start);
+        var shifted = new List<string>();
+        foreach (var root in Roots(project).Where(r => r.Id != clip.Id && r.Start >= start - Epsilon))
+        {
+            foreach (var layer in ProjectEditor.Subtree(project, root.Id))
+            {
+                Shift(layer, length);
+                shifted.Add(layer.Id);
+            }
+        }
+
+        CameraEditor.InsertTime(project, start, length);
+        MarkerEditor.InsertTime(project, start, length);
+        if (start < oldDuration - Epsilon)
+        {
+            project.Duration = KeyframeWindow.Round(Math.Max(oldDuration + length, end));
+        }
+
+        var notes = split.Pieces.Select(p => $"split '{p.Value}' at {Num(start)}s into '{p.Value}' and '{p.Key}'").ToList();
+        if (shifted.Count > 0)
+        {
+            notes.Add($"moved {shifted.Count} later layer(s) {Num(length)}s later");
+        }
+
+        if (Math.Abs(project.Duration - oldDuration) > Epsilon)
+        {
+            notes.Add($"the project is {Num(project.Duration)}s long (was {Num(oldDuration)}s)");
+        }
+
+        return string.Join("; ", notes);
+    }
+
+    // The layers on a clip's lane besides the clip.
+    private static List<Layer> LaneOf(Project project, Layer clip) => clip switch
+    {
+        AudioLayer audio => project.Layers.Where(l => l is AudioLayer other && other.Role == audio.Role && l.Id != clip.Id).ToList(),
+        VisualLayer visual => project.Layers
+            .Where(l => l.Id != clip.Id && l.ParentId is null && l is VisualLayer other && other.ZIndex == visual.ZIndex)
+            .Where(l => l is not (CutoutLayer or RedactionLayer) && !CaptionTracks.IsTrack(l))
+            .ToList(),
+        _ => [],
+    };
+
+    // Cuts [start, end) out of the layers and their children without ripple; with start == end, splits
+    // them there. Returns the layers cut, the new pieces they were cut into with the layer each came
+    // from, and the layers left with nothing.
+    private static (List<string> Cut, List<KeyValuePair<string, string>> Pieces, List<string> Removed) Clear(Project project, IReadOnlyList<Layer> layers, double start, double end)
+    {
+        if (layers.Count == 0)
+        {
+            return ([], [], []);
+        }
+
+        var targets = layers.SelectMany(l => ProjectEditor.Subtree(project, l.Id))
+            .Where(l => l is not (CutoutLayer or RedactionLayer))
+            .DistinctBy(l => l.Id)
+            .ToList();
+        var sets = Cut(project, targets, start, end, mergeStatic: false);
+        var pieces = AssignIds(project, sets);
+        FixParents(project, sets, targets);
+        Rebuild(project, sets);
+        var followed = SubjectEditor.Follow(project, PieceIds(sets));
+        var named = layers.Select(l => l.Id).ToHashSet(StringComparer.Ordinal);
+        var cut = sets.Values.Where(s => s.Changed && s.Pieces.Count > 0 && named.Contains(s.Original.Id)).Select(s => s.Original.Id).ToList();
+        var removed = sets.Values.Where(s => s.Pieces.Count == 0 && named.Contains(s.Original.Id)).Select(s => s.Original.Id).Concat(followed).ToList();
+        return (cut, pieces.Where(p => named.Contains(p.Value)).ToList(), removed);
+    }
+
+    private static string Quoted(IEnumerable<string> ids) => string.Join(", ", ids.Select(id => $"'{id}'"));
+
     public static TimelineChange MoveLayer(Project project, string layerId, double newStart)
     {
         var layer = SubjectEditor.GetEditableLayer(project, layerId);
@@ -202,6 +353,88 @@ public static partial class TimelineEditor
         ProjectEditor.ExtendToFit(project, subtree.Max(l => ContentEnd(project, l)));
         var moved = subtree.Count > 1 ? $" with {subtree.Count - 1} child layer(s)" : "";
         return new TimelineChange($"moved '{layerId}'{moved} by {Signed(delta)}s: now {Num(layer.Start)}–{Num(ContentEnd(project, layer))}s", oldDuration, project.Duration, EndWarnings(project));
+    }
+
+    // Moves a layer's start, its end or both on the timeline, the way an editor's trim does: what
+    // plays at every other time stays where it is. Trimming in cuts the layer and its children the
+    // way remove_range does without ripple (keyframes stay in step, and a child left with nothing
+    // goes); the layer keeps its fade at that edge. Trimming out uncovers more: of a clip's or a
+    // sound's file as far as it goes, of an image or text back to 0 or on past the end, which then
+    // grows the project. Children are not lengthened.
+    public static TimelineChange TrimLayer(Project project, string layerId, double? start, double? end)
+    {
+        var layer = SubjectEditor.GetEditableLayer(project, layerId);
+        if (start is null && end is null)
+        {
+            throw new ZeyoCutException("give a new start, a new end or both");
+        }
+
+        var oldStart = layer.Start;
+        var oldEnd = ContentEnd(project, layer);
+        var newStart = start ?? oldStart;
+        var newEnd = end ?? oldEnd;
+        if (!double.IsFinite(newStart) || !double.IsFinite(newEnd) || newStart < 0)
+        {
+            throw new ZeyoCutException($"start must be >= 0 and the times finite (got {Num(newStart)}–{Num(newEnd)})");
+        }
+
+        if (newEnd <= newStart + Epsilon)
+        {
+            throw new ZeyoCutException($"the end ({Num(newEnd)}s) must be after the start ({Num(newStart)}s)");
+        }
+
+        if (Math.Abs(newStart - oldStart) < Epsilon && Math.Abs(newEnd - oldEnd) < Epsilon)
+        {
+            throw new ZeyoCutException($"layer '{layerId}' already runs {Num(oldStart)}–{Num(oldEnd)}s");
+        }
+
+        var before = HandleBefore(layer);
+        if (oldStart - newStart > before + Epsilon)
+        {
+            throw new ZeyoCutException($"'{layerId}' can start at {Num(oldStart - before)}s at the earliest: its source has nothing before that");
+        }
+
+        var after = HandleAfter(project, layer);
+        if (newEnd - oldEnd > after + Epsilon)
+        {
+            throw new ZeyoCutException($"'{layerId}' can end at {Num(oldEnd + after)}s at the latest: its source has nothing after that");
+        }
+
+        var oldDuration = project.Duration;
+        var removed = new List<string>();
+        if (newStart > oldStart + Epsilon)
+        {
+            var fadeIn = Fades(layer).In;
+            removed.AddRange(CutAway(project, layerId, double.NegativeInfinity, newStart));
+            SetFades(project.FindLayer(layerId)!, fadeIn: fadeIn);
+        }
+
+        if (newEnd < oldEnd - Epsilon)
+        {
+            var fadeOut = Fades(layer).Out;
+            removed.AddRange(CutAway(project, layerId, newEnd, double.PositiveInfinity));
+            SetFades(project.FindLayer(layerId)!, fadeOut: fadeOut);
+        }
+
+        layer = project.FindLayer(layerId)!;
+        if (newStart < oldStart - Epsilon)
+        {
+            ExtendStart(layer, oldStart - newStart);
+            layer.Start = KeyframeWindow.Round(newStart);
+        }
+
+        if (newEnd > oldEnd + Epsilon)
+        {
+            ExtendEnd(project, layer, newEnd - oldEnd);
+            ProjectEditor.ExtendToFit(project, ContentEnd(project, layer));
+        }
+
+        var gone = removed.Count > 0 ? $"; removed {string.Join(", ", removed.Select(id => $"'{id}'"))}, which had nothing left" : "";
+        return new TimelineChange(
+            $"trimmed '{layerId}': now {Num(layer.Start)}–{Num(ContentEnd(project, layer))}s (was {Num(oldStart)}–{Num(oldEnd)}s){gone}",
+            oldDuration,
+            project.Duration,
+            EndWarnings(project));
     }
 
     public static TimelineChange SetSpeed(Project project, string layerId, double speed, bool ripple)
@@ -776,10 +1009,7 @@ public static partial class TimelineEditor
         }
 
         piece.Start = KeyframeWindow.Round(start);
-        if (piece is VisualLayer visual)
-        {
-            RestrictTracks(visual, keepsStart ? double.NegativeInfinity : start, keepsEnd ? double.PositiveInfinity : end);
-        }
+        RestrictTracks(piece, keepsStart ? double.NegativeInfinity : start, keepsEnd ? double.PositiveInfinity : end);
 
         return piece;
     }
@@ -886,17 +1116,14 @@ public static partial class TimelineEditor
             layer.End = KeyframeWindow.Round(end + delta);
         }
 
-        if (layer is VisualLayer visual)
+        foreach (var (_, value) in AnimatableProperties.Keyed(layer))
         {
-            foreach (var (_, value) in AnimatableProperties.Numeric(visual))
-            {
-                KeyframeWindow.Shift(value, delta);
-            }
+            KeyframeWindow.Shift(value, delta);
+        }
 
-            if (visual is ImageLayer image)
-            {
-                KeyframeWindow.Shift(image.Drawing, delta);
-            }
+        if (layer is ImageLayer image)
+        {
+            KeyframeWindow.Shift(image.Drawing, delta);
         }
     }
 
@@ -918,9 +1145,9 @@ public static partial class TimelineEditor
         }
     }
 
-    private static void RestrictTracks(VisualLayer layer, double from, double to)
+    private static void RestrictTracks(Layer layer, double from, double to)
     {
-        foreach (var (_, value) in AnimatableProperties.Numeric(layer))
+        foreach (var (_, value) in AnimatableProperties.Keyed(layer))
         {
             KeyframeWindow.Restrict(value, from, to);
         }
@@ -1038,6 +1265,41 @@ public static partial class TimelineEditor
                 audio.FadeOut = Math.Max(audio.FadeOut, fadeOut);
                 break;
         }
+    }
+
+    private static (double In, double Out) Fades(Layer layer) => layer switch
+    {
+        VideoLayer video => (video.FadeIn, video.FadeOut),
+        AudioLayer audio => (audio.FadeIn, audio.FadeOut),
+        _ => (0, 0),
+    };
+
+    private static void SetFades(Layer layer, double? fadeIn = null, double? fadeOut = null)
+    {
+        switch (layer)
+        {
+            case VideoLayer video:
+                video.FadeIn = fadeIn ?? video.FadeIn;
+                video.FadeOut = fadeOut ?? video.FadeOut;
+                break;
+            case AudioLayer audio:
+                audio.FadeIn = fadeIn ?? audio.FadeIn;
+                audio.FadeOut = fadeOut ?? audio.FadeOut;
+                break;
+        }
+    }
+
+    // Cuts from..to out of a layer and its children, leaving a gap; returns the layers that had
+    // nothing left (and cutouts that went with them).
+    private static List<string> CutAway(Project project, string layerId, double from, double to)
+    {
+        var targets = ProjectEditor.Subtree(project, layerId);
+        var sets = Cut(project, targets, from, to, mergeStatic: false);
+        AssignIds(project, sets);
+        FixParents(project, sets, targets);
+        Rebuild(project, sets);
+        var followed = SubjectEditor.Follow(project, PieceIds(sets));
+        return sets.Values.Where(s => s.Pieces.Count == 0).Select(s => s.Original.Id).Concat(followed).ToList();
     }
 
     private static bool DrawnAbove(Project project, VisualLayer top, VisualLayer bottom) =>

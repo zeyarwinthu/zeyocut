@@ -8,8 +8,8 @@ using ZeyoCut.Core.Model;
 namespace ZeyoCut.Render;
 
 // apply_redaction's boxes hidden on a decoded video frame, before the clip is drawn. Inside the box
-// it is hidden completely; the feather adds a soft edge outside it that fades out within that many
-// pixels.
+// (or the ellipse inside it, for shape ellipse) it is hidden completely; the feather adds a soft edge
+// outside it that fades out within that many pixels.
 public static class Redactor
 {
     private static readonly SKSamplingOptions Exact = new(SKFilterMode.Nearest);
@@ -64,17 +64,30 @@ public static class Redactor
             paint.Shader = patch;
         }
 
+        var ellipse = layer.Shape == RedactionShape.Ellipse;
         if (feather > 0)
         {
             using var soft = SKMaskFilter.CreateBlur(SKBlurStyle.Normal, feather / 6);
             paint.MaskFilter = soft;
             var edge = box;
             edge.Inflate(feather / 2, feather / 2);
-            canvas.DrawRect(edge, paint);
+            Draw(canvas, edge, ellipse, paint);
             paint.MaskFilter = null;
         }
 
-        canvas.DrawRect(box, paint);
+        Draw(canvas, box, ellipse, paint);
+    }
+
+    private static void Draw(SKCanvas canvas, SKRect rect, bool ellipse, SKPaint paint)
+    {
+        if (ellipse)
+        {
+            canvas.DrawOval(rect, paint);
+        }
+        else
+        {
+            canvas.DrawRect(rect, paint);
+        }
     }
 
     // Blocks from the area's top-left corner, each the average of the frame's pixels under it.

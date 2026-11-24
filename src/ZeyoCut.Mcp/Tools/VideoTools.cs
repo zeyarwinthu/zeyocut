@@ -32,12 +32,10 @@ public static class VideoTools
         });
 
         var ffmpeg = state.RequireFfmpeg();
-        var probe = VideoProbe.Probe(ffmpeg.Ffprobe, source);
-        var reasons = probe.NormalizeReasons();
+        var (probe, reasons) = VideoImport.Check(ffmpeg, source);
         if (reasons.Count == 0)
         {
-            var info = probe.ToAssetInfo();
-            var asset = session.Mutate($"import_video {Path.GetFileName(source)}", p => AssetImporter.Import(p, session.Directory, source, id, new AssetProbe(video: _ => info), AssetType.Video));
+            var asset = VideoImport.AddAsIs(session, $"import_video {Path.GetFileName(source)}", source, id, probe);
             return $"imported {AssetTools.Describe(asset)} (copied as it is: constant frame rate, upright, 8-bit)" + state.StartProxies(session, [asset.Id]);
         }
 
@@ -49,23 +47,8 @@ public static class VideoTools
             job.Report(0, "transcoding");
             var normalized = VideoNormalizer.Normalize(ffmpeg, source, probe, output, p => job.Report(p * 0.98), ct);
             job.Report(0.99, "registering the asset");
-            try
-            {
-                var info = normalized.ToAssetInfo();
-                var asset = session.Mutate($"import_video {Path.GetFileName(source)}", p =>
-                {
-                    var added = AssetImporter.Import(p, session.Directory, output, id, new AssetProbe(video: _ => info), AssetType.Video);
-                    added.OriginalFile = source;
-                    added.Normalized = string.Join("; ", reasons);
-                    return added;
-                });
-                return $"imported {AssetTools.Describe(asset)}\nnormalized from {source} in {stopwatch.Elapsed.TotalSeconds.ToString("0.0", CultureInfo.InvariantCulture)}s" + state.StartProxies(session, [asset.Id]);
-            }
-            catch
-            {
-                File.Delete(output);
-                throw;
-            }
+            var asset = VideoImport.AddNormalized(session, $"import_video {Path.GetFileName(source)}", output, id, normalized, source, reasons);
+            return $"imported {AssetTools.Describe(asset)}\nnormalized from {source} in {stopwatch.Elapsed.TotalSeconds.ToString("0.0", CultureInfo.InvariantCulture)}s" + state.StartProxies(session, [asset.Id]);
         });
 
         return $"'{Path.GetFileName(source)}' needs normalizing: {string.Join("; ", reasons)}.\n"
@@ -99,8 +82,10 @@ public static class VideoTools
         [Description("Sound fade-in, seconds.")] double? fadeIn = null,
         [Description("Sound fade-out, seconds.")] double? fadeOut = null,
         [Description("What the clip's sound is in the mix: voice (default), music or effects. Music is ducked under voice.")] string? role = null,
-        [Description("Language of the clip's sound (en, ja, my, pt-BR): other languages' versions mute it; its picture is in every version. Default: every version.")] string? language = null) => Guard(() =>
+        [Description("Language of the clip's sound (en, ja, my, pt-BR): other languages' versions mute it; its picture is in every version. Default: every version.")] string? language = null,
+        [Description("How the clip makes room: overlay (default) draws it over what's there; insert splits the clip its draw level has at timelineStart and moves every layer that starts there or later (with markers and camera keys) later by the clip's length, making the project longer; overwrite cuts what its draw level has under it, as remove_range does without ripple.")] string? edit = null) => Guard(() =>
     {
+        var mode = edit is null ? ClipEdit.Overlay : EnumNames.Parse<ClipEdit>(edit, "edit");
         var options = new VideoLayerOptions
         {
             Asset = assetId,
@@ -127,14 +112,16 @@ public static class VideoTools
             ZIndex = zIndex,
             Language = language,
         };
-        var (layer, oldDuration, newDuration) = state.Session.Mutate($"add_video_layer {id ?? assetId}", p =>
+        var (layer, oldDuration, newDuration, placed) = state.Session.Mutate($"add_video_layer {id ?? assetId}", p =>
         {
             var before = p.Duration;
             var added = ProjectEditor.AddVideoLayer(p, options);
-            return (added, before, p.Duration);
+            var note = TimelineEditor.Place(p, added, mode, before);
+            return (added, before, p.Duration, note);
         });
-        var extended = newDuration > oldDuration ? $"\nthe project was extended from {Num(oldDuration)}s to {Num(newDuration)}s to fit the clip" : "";
-        return $"added video layer '{layer.Id}': source {Num(layer.TrimIn)}–{Num(layer.TrimOut)}s at {Num(layer.Speed)}x → timeline {Num(layer.Start)}–{Num(layer.TimelineEnd)}s, scale {Num(layer.ScaleX.Value)}, z={layer.ZIndex}{extended}\n{LayerJson(layer)}";
+        var extended = (placed.Length > 0 ? $"\n{placed}" : "")
+            + (mode != ClipEdit.Insert && newDuration > oldDuration ? $"\nthe project was extended from {Num(oldDuration)}s to {Num(newDuration)}s to fit the clip" : "");
+        return $"{(mode == ClipEdit.Insert ? "inserted" : "added")} video layer '{layer.Id}': source {Num(layer.TrimIn)}–{Num(layer.TrimOut)}s at {Num(layer.Speed)}x → timeline {Num(layer.Start)}–{Num(layer.TimelineEnd)}s, scale {Num(layer.ScaleX.Value)}, z={layer.ZIndex}{extended}\n{LayerJson(layer)}";
     });
 
     [McpServerTool(Name = "reframe_to_vertical")]

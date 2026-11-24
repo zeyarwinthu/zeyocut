@@ -3,7 +3,7 @@
 
 # Tool reference
 
-The `zeyocut` server has 90 tools and 4 [workflow prompts](#workflow-prompts). Each is listed here as the server describes it to the model, with its parameters. The [guide](GUIDE.md) shows how they work together, with an example call and the real response for each. One more tool, `describe_clip`, appears only when a clip describer is configured (see the [guide](GUIDE.md#optional-describe_clip)).
+The `zeyocut` server has 96 tools and 4 [workflow prompts](#workflow-prompts). Each is listed here as the server describes it to the model, with its parameters. The [guide](GUIDE.md) shows how they work together, with an example call and the real response for each. One more tool, `describe_clip`, appears only when a clip describer is configured (see the [guide](GUIDE.md#optional-describe_clip)).
 
 | Tool | What it does |
 |---|---|
@@ -13,6 +13,7 @@ The `zeyocut` server has 90 tools and 4 [workflow prompts](#workflow-prompts). E
 | [`add_markers`](#add_markers) | Add or change project markers in one call (one undo step; all-or-nothing): named points on the timeline, each a chapter (the default) or a scene. |
 | [`add_rig`](#add_rig) | Place a rig from the library in the open project (one undo step). |
 | [`add_sfx`](#add_sfx) | Add a sound effect from the library at a time (one undo step): the file is imported into the project once (later adds of the same sound reuse the asset) and placed as an audio layer with role effects, so music ducking leaves it alone. |
+| [`add_template`](#add_template) | Add a library template's layers to the open project as one block starting at 'at' (one undo step): a lower third, a chapter card, an end screen. |
 | [`add_text_layer`](#add_text_layer) | Add a text layer (titles, subtitles). |
 | [`add_transition`](#add_transition) | Add a transition between layerA and layerB, which must be back to back (or already overlapping). |
 | [`add_video_layer`](#add_video_layer) | Add a video clip from a video asset. |
@@ -47,17 +48,18 @@ The `zeyocut` server has 90 tools and 4 [workflow prompts](#workflow-prompts). E
 | [`get_logs`](#get_logs) | Read the server's log, oldest first: the last lastN entries of the log files (zeyocut-yyyyMMdd.jsonl in the log folder, one JSON object per line). |
 | [`get_project`](#get_project) | Return the full project model (project.json) of the open project. |
 | [`get_transcript`](#get_transcript) | Read the word-level transcript of an analyzed asset (run analyze_video first). |
-| [`import_asset`](#import_asset) | Copy an image (png/jpg/webp/bmp), audio (wav/mp3/m4a/aac/ogg/opus/flac) or font (ttf/otf/ttc) file into the project's assets folder and register it. |
+| [`import_asset`](#import_asset) | Copy an image (png/jpg/webp/bmp), audio (wav/mp3/m4a/aac/ogg/opus/flac), font (ttf/otf/ttc) or 3D LUT (.cube, a look for set_color) file into the project's assets folder and register it. |
 | [`import_folder`](#import_folder) | Import every image, audio, font and video file in a folder (not its subfolders) whose name matches pattern, in order: by name with numbers in order (panel_2 before panel_10), or by date, oldest first. |
 | [`import_srt`](#import_srt) | Import a .srt subtitle file as the caption track of its language, as add_caption_track does with srt: text layers under a null layer captions_&lt;language&gt;, replacing that language's track if there is one (one undo step). |
 | [`import_video`](#import_video) | Import a video file (mp4/mov/m4v/mkv/webm/avi) as a video asset. |
-| [`list_assets`](#list_assets) | List the project's assets with their ids, types, sizes or durations, and which layers use them. |
+| [`list_assets`](#list_assets) | List the project's assets with their ids, types, sizes or durations, their tags, and which layers use them. |
 | [`list_layers`](#list_layers) | Show the layers as a parent/child tree with type, zIndex, time range, language, anchor and keyframed properties. |
 | [`list_library`](#list_library) | List what is in the shared library: rigs, actions, styles and templates, with a short description of each. |
 | [`list_projects`](#list_projects) | List the projects in the projects root folder. |
 | [`list_sfx`](#list_sfx) | List the sound effects in the shared library's sfx folder (wav, mp3, ogg and other audio files; subfolders are categories), with their durations. |
 | [`move_layer`](#move_layer) | Move a layer to a new timeline start, together with its children and keyframes. |
 | [`new_project_from_template`](#new_project_from_template) | Create a new project from a library template and open it. |
+| [`open_in_editor`](#open_in_editor) | Open a project in ZeyoCut's editor window on this computer, so the user can fine-tune it by hand: move, trim and split clips on a timeline, place, crop and animate layers with keyframes, set effects, color adjustments and face-blur settings, edit caption text and style, change volumes, export. |
 | [`open_project`](#open_project) | Open an existing project by name (a folder under the projects root) or by absolute folder path. |
 | [`prerender_layers`](#prerender_layers) | Render layers alone, each with its children, on a transparent background as ProRes 4444 .mov files with alpha in exports/&lt;project&gt;_prerender/&lt;layer id&gt;.mov: every frame the layer is on, as render_frame draws it with layerId and a transparent background. |
 | [`preview_server`](#preview_server) | Start or stop the preview page, for a browser on this computer: a timeline scrubber, the layers, and playback of low-res frames with the sound mixed as the export mixes it. |
@@ -66,6 +68,7 @@ The `zeyocut` server has 90 tools and 4 [workflow prompts](#workflow-prompts). E
 | [`redo`](#redo) | Redo the last undone change. |
 | [`refine_matte`](#refine_matte) | Fix the edges of a removed background (one undo step): shrink pulls the edge in by that many pixels to cut off a halo of the old background (negative grows it back, whole pixels), feather softens it over about that many pixels. |
 | [`reframe_to_vertical`](#reframe_to_vertical) | Fit landscape video layers to a vertical canvas (switch it first with update_project preset=shorts_1080p): each clip gets a full-height crop with the canvas' aspect ratio at focusX, centered and scaled to fill the frame. |
+| [`relink_asset`](#relink_asset) | Point an asset at another file of the same kind, such as its file found elsewhere after it was moved or deleted from the project's assets folder (check_project lists assets with no file). |
 | [`remove_background`](#remove_background) | Remove the background of an image or video layer so what is behind it shows through (one undo step; replaces an earlier removal, keeping refine_matte's shrink and feather). |
 | [`remove_keyframes`](#remove_keyframes) | Remove specific keyframes (all-or-nothing). |
 | [`remove_layer`](#remove_layer) | Remove a layer. |
@@ -81,6 +84,7 @@ The `zeyocut` server has 90 tools and 4 [workflow prompts](#workflow-prompts). E
 | [`save_style`](#save_style) | Save a text layer's look (font, bold, size, color, outline, alignment, line height, background box) as a named style in the library. |
 | [`save_template`](#save_template) | Save layers of the open project (intro, outro, end screen, watermark, fixed layers) with the canvas, frame rate and audio settings as a template in the library, with their asset files. |
 | [`set_camera`](#set_camera) | Set the project camera's fixed values (one undo step). |
+| [`set_color`](#set_color) | Grade an image or video clip (one undo step): exposure in stops (-3 to 3; 1 doubles the light), contrast and saturation (0 to 4, 1 as shot), highlights and shadows (-1 to 1: darken or brighten the light or the dark parts; black and white stay), temperature (-1 bluer to 1 warmer) and tint (-1 greener to 1 more magenta); 0 leaves each of those as shot. |
 | [`set_effect`](#set_effect) | Add, change or remove one effect on a visual layer (one undo step). |
 | [`set_keyframes`](#set_keyframes) | Add or replace many keyframes in one call (one undo step; all-or-nothing). |
 | [`set_mask`](#set_mask) | Add, change or remove the layer's mask (one undo step): the layer shows only inside a rectangle, an ellipse or an image's opaque pixels, or only outside with invert=true. |
@@ -89,10 +93,12 @@ The `zeyocut` server has 90 tools and 4 [workflow prompts](#workflow-prompts). E
 | [`split_layer`](#split_layer) | Split a layer (and its children) at a timeline time into two layers that play exactly as before. |
 | [`start_export`](#start_export) | Start exporting the open project to exports/&lt;fileName&gt; as H.264 MP4 (yuv420p) with all audio layers mixed: music ducked under voice and the mix loudness-normalized (two-pass loudnorm, -14 LUFS by default; see update_project). |
 | [`system_check`](#system_check) | Report this computer: whether FFmpeg (needed for video and every export) and whisper (for transcripts) are installed, with how to install them; the folders ZeyoCut uses; and for the AI features the CPU, RAM, GPU, the ONNX Runtime version, which AI models are downloaded and the device each one runs on (DirectML on the GPU, or the CPU). |
+| [`tag_assets`](#tag_assets) | Add tags to assets and take tags off them. |
 | [`text_behind_subject`](#text_behind_subject) | Put text behind the subject of a clip or picture, like a title behind a presenter (one undo step): the text stays in front of the background, and the subject is drawn again above it, cut out. |
 | [`text_occlusion`](#text_occlusion) | Measure how much of a text layer is covered by what is drawn above it (a subject cutout from text_behind_subject, or any other layer), frame by frame: the min, max and average share of the text hidden, and the frames in runs of equal values (every frame is saved to renders/text_occlusion_&lt;id&gt;_&lt;first&gt;-&lt;last&gt;.json). |
 | [`track_object`](#track_object) | Follow an object through a video clip with OpenCV and save its box on every frame as a track (one undo step). |
 | [`tracks_to_keyframes`](#tracks_to_keyframes) | Turn a hidden track's box into keyframes on its redaction (one undo step), to edit by hand: x, y, width and height keyframes named &lt;track&gt;.x, &lt;track&gt;.y, &lt;track&gt;.width and &lt;track&gt;.height on the redaction layer, made from the fail-safe box (padding, gaps, holds and smoothing included) and kept only where needed to stay within 0.2 px of it. |
+| [`trim_layer`](#trim_layer) | Trim a layer's start, end or both, as dragging the edge of a clip does: the rest stays where it is on the timeline. |
 | [`undo`](#undo) | Undo the last change to the open project (in-memory history of this session, up to 200 steps). |
 | [`update_layer`](#update_layer) | Change static fields of a layer. |
 | [`update_project`](#update_project) | Change the open project's settings. |
@@ -118,6 +124,7 @@ Add an audio layer from an imported audio asset. Audio is only heard in the expo
 | `fadeOut` | number | Fade-out length, seconds. |
 | `role` | string | What the sound is in the mix: music (default; ducked under voice), voice (voiceover, dialogue) or effects. |
 | `language` | string | Language tag (en, ja, my, pt-BR): the sound is only in that language's version, e.g. a dubbed voice. Default: every version. |
+| `edit` | string | How the sound makes room: overlay (default) plays it with what's there; insert splits the sound of its role playing at start and moves every layer that starts there or later (with markers and camera keys) later by its length, making the project longer; overwrite cuts the sound of its role under it. |
 
 ### `add_caption_track`
 
@@ -163,6 +170,7 @@ Add an image layer (a cutout part or a still). Give one image with 'asset', or s
 | `flipX` | boolean | Mirror this layer's pixels around anchorX (children are not flipped). |
 | `visible` | boolean |  |
 | `language` | string | Language tag (en, ja, my, pt-BR): the layer and its children are only in that language's version. Default: every version. |
+| `edit` | string | How a picture with an end makes room: overlay (default) draws it over what's there; insert splits the clip its draw level has at start and moves every layer that starts there or later (with markers and camera keys) later by its length, making the project longer; overwrite cuts what its draw level has under it. |
 
 ### `add_markers`
 
@@ -199,9 +207,18 @@ Add a sound effect from the library at a time (one undo step): the file is impor
 | `time` | number, required | When it plays, seconds on the timeline. |
 | `volume` | number, default `1` | Volume 0-10, 1 = as recorded. Default 1. |
 
+### `add_template`
+
+Add a library template's layers to the open project as one block starting at 'at' (one undo step): a lower third, a chapter card, an end screen. Each layer keeps its time from the template's start, and layers that ran to the template's end end where it does. Pictures, text and footage go on draw levels above the project's; ids the project already has get a number; the template's files are copied into the project's assets, or the project's own copy is used. A template with tracked footage only makes new projects (new_project_from_template).
+
+| Parameter | Type | Description |
+|---|---|---|
+| `name` | string, required | Template name from list_library. |
+| `at` | number, default `0` | Where the template's start goes on the timeline, seconds. Default 0. |
+
 ### `add_text_layer`
 
-Add a text layer (titles, subtitles). Complex scripts are shaped with HarfBuzz; use fontFamily "Myanmar Text" for Burmese and "Yu Gothic" for Japanese. With a language and neither fontFamily nor fontAsset, the text gets that language's font from the settings (my: Myanmar Text, ja: Yu Gothic), even over a style's font. Warns about characters the font has no glyphs for. The text's own pixel space starts at the top-left of its box; the box is maxWidth wide if set, otherwise as wide as the longest line. Returns the measured box size. 'style' fills in everything you leave out from a library style (save_style).
+Add a text layer (titles, subtitles). Complex scripts are shaped with HarfBuzz; use fontFamily "Myanmar Text" for Burmese and "Yu Gothic" for Japanese. With a language and neither fontFamily nor fontAsset, the text gets that language's font from the settings (my: Myanmar Text, ja: Yu Gothic), even over a style's font. Warns about characters the font has no glyphs for. The text's own pixel space starts at the top-left of its box; the box is maxWidth wide if set, otherwise as wide as the longest line. Returns the measured box size. 'style' fills in everything you leave out from a library style (save_style). animateIn and animateOut make it come in at its start and go out at its end: fade, pop (scale from nothing, with a small overshoot) or slideUp (a fade while it rises 5% of the canvas height), as keyframes on opacity, scaleX, scaleY and y over 0.5 s, or a third of the layer when it's shorter.
 
 | Parameter | Type | Description |
 |---|---|---|
@@ -236,6 +253,8 @@ Add a text layer (titles, subtitles). Complex scripts are shaped with HarfBuzz; 
 | `end` | number |  |
 | `style` | string | Library style name (list_library); explicit parameters override it. |
 | `language` | string | Language tag (en, ja, my, pt-BR): the layer and its children are only in that language's version. Default: every version. |
+| `animateIn` | string | How it comes in: fade, pop or slideUp. Default: it just appears. |
+| `animateOut` | string | How it goes out: fade, pop or slideUp. Default: it just goes. |
 
 ### `add_transition`
 
@@ -278,6 +297,7 @@ Add a video clip from a video asset. The clip plays source seconds trimIn..trimO
 | `fadeOut` | number | Sound fade-out, seconds. |
 | `role` | string | What the clip's sound is in the mix: voice (default), music or effects. Music is ducked under voice. |
 | `language` | string | Language of the clip's sound (en, ja, my, pt-BR): other languages' versions mute it; its picture is in every version. Default: every version. |
+| `edit` | string | How the clip makes room: overlay (default) draws it over what's there; insert splits the clip its draw level has at timelineStart and moves every layer that starts there or later (with markers and camera keys) later by the clip's length, making the project longer; overwrite cuts what its draw level has under it, as remove_range does without ripple. |
 
 ### `analyze_video`
 
@@ -302,7 +322,7 @@ Play a saved action on a rig in the open project (one undo step). Parts are matc
 
 ### `apply_redaction`
 
-Hide tracked faces, plates or objects (one undo step): adds a redaction layer (type redaction) that hides the box of each track on the video frame before the clip is drawn, in every clip that plays the track's footage, so moves, effects, the camera and subject cutouts all show it hidden, and splits, trims and speed changes keep it in step. Styles: pixelate (default), blur, solid (a color). Strength scales with the box: the pixelate block (or blur radius) is the box's long side over 20 at strength 0 down to 4 at 100 (12 at the default 50), never under 4 source pixels, so a small plate is as unreadable as a big face. The fail-safe: every box is padded by paddingPercent; frames the track lost between two detections get a box moved straight between them that grows with each missed frame, so no frame between them is uncovered; the box is held (and grows) for holdFrames before the first detection and after the last, but not across a scene cut that analyze_video found in the footage; and the box's motion is smoothed while always containing the frame's own box. feather adds a soft edge outside the box. Running it again on the same tracks changes their redaction; tracks in another redaction move to the new one. update_layer changes the settings (style, strength, paddingPercent, feather, holdFrames, color, visible); tracks_to_keyframes turns a track's box into keyframes to edit by hand. Check with render_frame.
+Hide tracked faces, plates or objects (one undo step): adds a redaction layer (type redaction) that hides the box of each track on the video frame before the clip is drawn, in every clip that plays the track's footage, so moves, effects, the camera and subject cutouts all show it hidden, and splits, trims and speed changes keep it in step. Styles: pixelate (default), blur, solid (a color). Strength scales with the box: the pixelate block (or blur radius) is the box's long side over 20 at strength 0 down to 4 at 100 (12 at the default 50), never under 4 source pixels, so a small plate is as unreadable as a big face. The fail-safe: every box is padded by paddingPercent; frames the track lost between two detections get a box moved straight between them that grows with each missed frame, so no frame between them is uncovered; the box is held (and grows) for holdFrames before the first detection and after the last, but not across a scene cut that analyze_video found in the footage; and the box's motion is smoothed while always containing the frame's own box. smooth keeps the box steady through a tracker's jitter: rather than widening to cover every frame's padded box, it takes the box's center and size averaged over 6 frames on each side, so it keeps one size; it always contains the track's own box, with the padding around the average. shape ellipse hides the ellipse inside each box instead of the whole box, as for a face. feather adds a soft edge outside the box. Running it again on the same tracks changes their redaction; tracks in another redaction move to the new one. update_layer changes the settings (style, strength, paddingPercent, feather, holdFrames, color, shape, smooth, visible); tracks_to_keyframes turns a track's box into keyframes to edit by hand. Check with render_frame.
 
 | Parameter | Type | Description |
 |---|---|---|
@@ -313,6 +333,8 @@ Hide tracked faces, plates or objects (one undo step): adds a redaction layer (t
 | `feather` | number, default `4` | Soft edge outside the box, in source pixels. Default 4. |
 | `holdFrames` | integer, default `15` | Frames the box is held, and grows, before a track's first detection and after its last; a scene cut that analyze_video found ends the hold sooner. Default 15. |
 | `color` | string, default `"#000000"` | solid: the fill, #RRGGBB or #RRGGBBAA. Default #000000. |
+| `shape` | string, default `"rectangle"` | rectangle (the whole box) or ellipse (the ellipse inside it). Default rectangle. |
+| `smooth` | boolean, default `false` | Keep the box steady through jitter: its center and size averaged over 6 frames on each side, always containing the track's own box. Default false. |
 
 ### `apply_style`
 
@@ -392,7 +414,7 @@ Remove all keyframes of one property, or of every property of a layer when prope
 | Parameter | Type | Description |
 |---|---|---|
 | `layerId` | string, required | Layer id, or "camera". |
-| `property` | string | x, y, rotation, scaleX, scaleY, opacity, brightness, contrast, saturation, cropX, cropY, drawing, or an effect or mask property such as shadow.x or mask.width; for the camera x, y, zoom, rotation, shakeX, shakeY or shakeRotation; for a redaction a track id. Omit for all. |
+| `property` | string | x, y, rotation, scaleX, scaleY, opacity, brightness, contrast, saturation, cropX, cropY, volume, drawing, or a grade, effect or mask property such as grade.exposure, shadow.x or mask.width; for the camera x, y, zoom, rotation, shakeX, shakeY or shakeRotation; for a redaction a track id. Omit for all. |
 
 ### `create_project`
 
@@ -601,7 +623,7 @@ Read the word-level transcript of an analyzed asset (run analyze_video first). E
 
 ### `import_asset`
 
-Copy an image (png/jpg/webp/bmp), audio (wav/mp3/m4a/aac/ogg/opus/flac) or font (ttf/otf/ttc) file into the project's assets folder and register it. Returns the asset id to use in layers. Video files go through import_video.
+Copy an image (png/jpg/webp/bmp), audio (wav/mp3/m4a/aac/ogg/opus/flac), font (ttf/otf/ttc) or 3D LUT (.cube, a look for set_color) file into the project's assets folder and register it. Returns the asset id to use in layers. Video files go through import_video.
 
 | Parameter | Type | Description |
 |---|---|---|
@@ -642,7 +664,7 @@ Import a video file (mp4/mov/m4v/mkv/webm/avi) as a video asset. A constant-fram
 
 ### `list_assets`
 
-List the project's assets with their ids, types, sizes or durations, and which layers use them.
+List the project's assets with their ids, types, sizes or durations, their tags, and which layers use them.
 
 No parameters.
 
@@ -694,6 +716,14 @@ Create a new project from a library template and open it. The folder is &lt;proj
 | `duration` | number | Duration in seconds. Default: the template's. |
 | `directory` | string | Optional absolute folder for the project inside the projects root, instead of &lt;projectsRoot&gt;/&lt;name&gt;. |
 
+### `open_in_editor`
+
+Open a project in ZeyoCut's editor window on this computer, so the user can fine-tune it by hand: move, trim and split clips on a timeline, place, crop and animate layers with keyframes, set effects, color adjustments and face-blur settings, edit caption text and style, change volumes, export. Masks, motion paths, transitions and speed stay with the tools. Default: the open project. The editor saves each change to project.json as it is made; your next tool call starts with a note of what the user changed, your edits are made on top of theirs, and the editor shows yours within a second. A project already open in the editor comes to the front instead of opening twice.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `project` | string | Project name from list_projects, or an absolute path to a project folder inside the projects root. Default: the open project. |
+
 ### `open_project`
 
 Open an existing project by name (a folder under the projects root) or by absolute folder path. Returns the layer tree.
@@ -743,7 +773,7 @@ Check how well the redactions hide their tracks; changes nothing. For each track
 
 ### `redo`
 
-Redo the last undone change.
+Redo the last undone change. When another program (such as the editor) has saved since, it's refused when that program changed the same layers or settings since the undo. After such a refusal, the next redo steps over that change, which stays undone, and redoes the one undone before it; the reply names the change it stepped over.
 
 No parameters.
 
@@ -765,6 +795,15 @@ Fit landscape video layers to a vertical canvas (switch it first with update_pro
 |---|---|---|
 | `layerId` | string, default `"all"` | Video layer to reframe, or "all" for every video layer. Default all. |
 | `focusX` | number, default `0.5` | Horizontal position of the crop: 0 = left edge, 0.5 = center (default), 1 = right edge. |
+
+### `relink_asset`
+
+Point an asset at another file of the same kind, such as its file found elsewhere after it was moved or deleted from the project's assets folder (check_project lists assets with no file). The file is copied into assets/ as import_asset copies it, and the asset keeps its id, so every layer that uses it uses the new file; its size, length or font family become the new file's, with a warning when they differ. A video must need no normalizing; import one that does with import_video instead.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `assetId` | string, required | The asset to point at the file. |
+| `path` | string, required | Absolute path of the file, in an import folder, the library or the projects folder. |
 
 ### `remove_background`
 
@@ -789,7 +828,7 @@ Remove specific keyframes (all-or-nothing).
 |---|---|---|
 | `entries` | array of objects, required | Keyframes to remove: [{layerId, property, time}]. |
 | `entries[].layerId` | string | Layer id, or "camera". |
-| `entries[].property` | string | x, y, rotation, scaleX, scaleY, opacity, brightness, contrast, saturation, cropX, cropY, drawing, or an effect or mask property such as shadow.x or mask.width; for the camera x, y, zoom, rotation, shakeX, shakeY or shakeRotation. |
+| `entries[].property` | string | x, y, rotation, scaleX, scaleY, opacity, brightness, contrast, saturation, cropX, cropY, drawing, or a grade, effect or mask property such as grade.exposure, shadow.x or mask.width; for the camera x, y, zoom, rotation, shakeX, shakeY or shakeRotation. |
 | `entries[].time` | number | Time of the keyframe to remove, in seconds. |
 
 ### `remove_layer`
@@ -873,7 +912,7 @@ Where a finished export's time went: per stage (evaluating keyframes, decoding v
 
 ### `restore_backup`
 
-List the open project's backups, newest first, or put one back. Before every save the project.json being replaced is copied to the project's backups folder, named after the edit saved over it; the last 20 are kept. When open_project updates a file from an older ZeyoCut, the file as it was is kept there too, for good. Backups hold project.json only, not the assets. Restoring is one undo step, and what it replaces is backed up as well.
+List the open project's backups, newest first, or put one back. Before every save the project.json being replaced is copied to the project's backups folder, named after the edit saved over it; the last 20 are kept, and the last 20 the editor saved besides (labelled editor ...), with the copy of the project as the other of the two last left it. When open_project updates a file from an older ZeyoCut, the file as it was is kept there too, for good. Backups hold project.json only, not the assets. Restoring is one undo step, and what it replaces is backed up as well.
 
 | Parameter | Type | Description |
 |---|---|---|
@@ -936,6 +975,38 @@ Set the project camera's fixed values (one undo step). The camera moves the whol
 | `rotation` | number | Degrees, clockwise camera roll. |
 | `reset` | boolean, default `false` | Remove the camera (and its keyframes) first. |
 
+### `set_color`
+
+Grade an image or video clip (one undo step): exposure in stops (-3 to 3; 1 doubles the light), contrast and saturation (0 to 4, 1 as shot), highlights and shadows (-1 to 1: darken or brighten the light or the dark parts; black and white stay), temperature (-1 bluer to 1 warmer) and tint (-1 greener to 1 more magenta); 0 leaves each of those as shot. Values you leave out keep theirs. from copies another clip's color as fixed values (a clip whose color has keyframes can't be copied); reset=true puts the clip back as shot first; sameFootage=true then gives every other clip of the same video (or picture) this clip's color, and takes their color keyframes away. The color wheels move red, green and blue in one part of the picture: lift the dark parts (black moves, white stays), gamma the middle (black and white stay) and gain the light parts (white moves, black stays); channels you leave out keep theirs. look lays a LUT asset (a .cube file from import_asset) over the clip after everything else, by lookAmount (0 to 1; a new look is 1); look "none" takes it off. Once a clip has a grade, set_keyframes animates grade.exposure, grade.highlights, grade.shadows, grade.temperature and grade.tint, grade.lift.red/green/blue (and gamma, gain) once that wheel is set, and grade.look.amount once it has a look; contrast and saturation are animatable as ever. Brightness isn't part of the color here: update_layer sets it.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `layerId` | string, required | Image or video layer id. |
+| `exposure` | number | Stops of light, -3 to 3. |
+| `contrast` | number | 0 to 4, 1 as shot; 0 is flat gray. |
+| `highlights` | number | -1 to 1: darkens (below 0) or brightens the light parts. |
+| `shadows` | number | -1 to 1: deepens (below 0) or lifts the dark parts. |
+| `temperature` | number | -1 (bluer) to 1 (warmer). |
+| `tint` | number | -1 (greener) to 1 (more magenta). |
+| `saturation` | number | 0 to 4, 1 as shot; 0 is black and white. |
+| `lift` | object | Shadows wheel: {red, green, blue}, each -1 to 1. |
+| `lift.red` | number | -1 to 1: less or more red there (0 as shot). |
+| `lift.green` | number | -1 to 1: less or more green there. |
+| `lift.blue` | number | -1 to 1: less or more blue there. |
+| `gamma` | object | Midtones wheel: {red, green, blue}, each -1 to 1. |
+| `gamma.red` | number | -1 to 1: less or more red there (0 as shot). |
+| `gamma.green` | number | -1 to 1: less or more green there. |
+| `gamma.blue` | number | -1 to 1: less or more blue there. |
+| `gain` | object | Highlights wheel: {red, green, blue}, each -1 to 1. |
+| `gain.red` | number | -1 to 1: less or more red there (0 as shot). |
+| `gain.green` | number | -1 to 1: less or more green there. |
+| `gain.blue` | number | -1 to 1: less or more blue there. |
+| `look` | string | LUT asset id to lay over the clip, or "none" to take the look off. |
+| `lookAmount` | number | How much of the look shows, 0 to 1. |
+| `from` | string | Another clip to copy the color of. |
+| `reset` | boolean, default `false` | Put the clip's color back as shot first: contrast and saturation 1, no grade. |
+| `sameFootage` | boolean, default `false` | Then give every other clip of the same footage this clip's color. |
+
 ### `set_effect`
 
 Add, change or remove one effect on a visual layer (one undo step). The effect is on that layer only, not its children. shadow (color, x, y, blur, opacity; default #000000, 8, 8, 6, 0.5): a soft copy behind the layer, offset right/down. outline (color, width; default #FFFFFF, 4): a border around the layer's shape. blur (x, y; default 4, 4): softens the layer, x and y separately (x alone gives a horizontal motion blur). tint (color, amount; color required): mixes the layer toward a color, amount 1 paints it solid in it. Sizes are in pixels at the layer's scale and grow with it and the camera; blur sizes are the Gaussian's standard deviation. Numbers are animatable with set_keyframes as shadow.x, shadow.y, shadow.blur, shadow.opacity, outline.width, blur.x, blur.y, tint.amount; colors are fixed. Fields you leave out keep their value. remove=true removes the effect with its keyframes.
@@ -955,16 +1026,17 @@ Add, change or remove one effect on a visual layer (one undo step). The effect i
 
 ### `set_keyframes`
 
-Add or replace many keyframes in one call (one undo step; all-or-nothing). A keyframe at the same layer/property/time is replaced. Each keyframe's easing shapes the segment from it to the next keyframe. Before the first and after the last keyframe a property holds that keyframe's value; once a property has keyframes its static value is ignored. layerId "camera" animates the project camera (x, y, zoom, rotation), which moves every layer except those with ignoreCamera. Effect and mask numbers (shadow.x, blur.x, mask.width, ...) animate after set_effect / set_mask added them. x or y keyframes take a set_motion_path path off the layer. On a redaction layer the properties are its keyframed boxes from tracks_to_keyframes (&lt;track&gt;.x, .y, .width, .height), with time in the footage's own seconds.
+Add or replace many keyframes in one call (one undo step; all-or-nothing). A keyframe at the same layer/property/time is replaced. Each keyframe's easing shapes the segment from it to the next keyframe. Before the first and after the last keyframe a property holds that keyframe's value; once a property has keyframes its static value is ignored. layerId "camera" animates the project camera (x, y, zoom, rotation), which moves every layer except those with ignoreCamera. Effect and mask numbers (shadow.x, blur.x, mask.width, ...) animate after set_effect / set_mask added them. x or y keyframes take a set_motion_path path off the layer. volume keyframes ride a sound's level (audio layers, and video layers' own sound): 1 as recorded, 0 silent, up to 10, in the export and the editor's preview. On a redaction layer the properties are its keyframed boxes from tracks_to_keyframes (&lt;track&gt;.x, .y, .width, .height), with time in the footage's own seconds.
 
 | Parameter | Type | Description |
 |---|---|---|
-| `entries` | array of objects, required | Keyframes: [{layerId, property, time, value, easing}]. |
+| `entries` | array of objects, required | Keyframes: [{layerId, property, time, value, easing, bezier}]. |
 | `entries[].layerId` | string | Layer id, or "camera" for the project camera. |
-| `entries[].property` | string | x, y, rotation, scaleX, scaleY, opacity; brightness, contrast, saturation (image and video layers); cropX, cropY (video layers); drawing (image layers); shadow.x, shadow.y, shadow.blur, shadow.opacity, outline.width, blur.x, blur.y, tint.amount (after set_effect); mask.x, mask.y, mask.width, mask.height, mask.feather (after set_mask). Camera: x, y (the scene point at the frame's center), zoom, rotation, shakeX, shakeY, shakeRotation. |
+| `entries[].property` | string | x, y, rotation, scaleX, scaleY, opacity; brightness, contrast, saturation (image and video layers); grade.exposure, grade.highlights, grade.shadows, grade.temperature, grade.tint (after set_color), grade.lift.red, grade.lift.green, grade.lift.blue and the same for grade.gamma and grade.gain (once set_color sets that wheel), grade.look.amount (once it has a look); cropX, cropY (video layers); drawing (image layers); shadow.x, shadow.y, shadow.blur, shadow.opacity, outline.width, blur.x, blur.y, tint.amount (after set_effect); mask.x, mask.y, mask.width, mask.height, mask.feather (after set_mask). Camera: x, y (the scene point at the frame's center), zoom, rotation, shakeX, shakeY, shakeRotation. |
 | `entries[].time` | number | Time in seconds. |
 | `entries[].value` | any | A number, or a drawing name (string) for the drawing property. |
-| `entries[].easing` | string | Easing of the segment that STARTS at this keyframe: linear (default), hold, easeIn, easeOut, easeInOut, easeOutBack, easeOutBounce, easeOutElastic. Ignored for drawing (always hold). |
+| `entries[].easing` | string | Easing of the segment that STARTS at this keyframe: linear (default), hold, easeIn, easeOut, easeInOut, easeOutBack, easeOutBounce, easeOutElastic, or cubicBezier with bezier. Ignored for drawing (always hold). |
+| `entries[].bezier` | array of numbers | A cubicBezier easing's curve as CSS's cubic-bezier() takes it: [x1, y1, x2, y2], x1 and x2 from 0 to 1, y1 and y2 past 0 or 1 to overshoot; [0.42, 0, 0.58, 1] eases in and out. Easing can be left out. |
 
 ### `set_mask`
 
@@ -1038,6 +1110,16 @@ Report this computer: whether FFmpeg (needed for video and every export) and whi
 
 No parameters.
 
+### `tag_assets`
+
+Add tags to assets and take tags off them. Tags group assets the way bins do (a character's parts, backgrounds, sound effects), and the editor's Media browser lists each tag as a bin. A tag is up to 40 characters; tags that differ only in case are the same tag. list_assets shows each asset's tags.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `assetIds` | array of strings, required | The assets to tag. |
+| `add` | array of strings | Tags to add, e.g. ["SFX"]. |
+| `remove` | array of strings | Tags to take off. |
+
 ### `text_behind_subject`
 
 Put text behind the subject of a clip or picture, like a title behind a presenter (one undo step): the text stays in front of the background, and the subject is drawn again above it, cut out. For a video layer this adds a subject cutout layer (type cutout) above the texts, cut out with aiVideo by default (or chroma for a green screen); for an image layer with aiImage by default (or edgeFill or chroma); the methods work as in remove_background. The cutout always follows its source and the pieces splits made of it on the same track: timing, trims, speed, transforms, effects and keyframes carry over, and its own settings are only name, zIndex, visible and opacity (keyframes too). If the subject is already a layer of its own (a removed background, a transparent picture, or a group of layers), no cutout is needed and the texts move directly below it. Texts drawn below the clip are lifted just above it. AI mattes are computed in the background as a matte_N job; until then the text shows in front and exports refuse. Running it again on the same clip reuses its cutout (with a new method if you give one). Check with render_frame (layerId=&lt;cutout&gt; shows the subject alone); text_occlusion measures how much of a text is covered.
@@ -1086,9 +1168,19 @@ Turn a hidden track's box into keyframes on its redaction (one undo step), to ed
 |---|---|---|
 | `trackId` | string, required | The track whose box to turn into keyframes; apply_redaction must hide it first. |
 
+### `trim_layer`
+
+Trim a layer's start, end or both, as dragging the edge of a clip does: the rest stays where it is on the timeline. Trimming in cuts the layer and its children shorter, keyframes included (a child with nothing left is removed); trimming out shows more of it, as far as a video or audio layer's source goes. Fades stay at the new edges. The project grows if the layer now runs past the end.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `layerId` | string, required |  |
+| `start` | number | New start time, seconds. Leave out to keep the start. |
+| `end` | number | New end time, seconds. Leave out to keep the end. |
+
 ### `undo`
 
-Undo the last change to the open project (in-memory history of this session, up to 200 steps).
+Undo the last change to the open project (in-memory history of this session, up to 200 steps). When another program (such as the editor) has saved since, only what that change did is put back, and the other program's changes stay; it's refused when the other program changed the same layers or settings since. After such a refusal, the next undo steps over that change, which stays as it is, and undoes the one before it; the reply names the change it stepped over.
 
 No parameters.
 
@@ -1103,7 +1195,7 @@ Change static fields of a layer. 'changes' is an object of field: value, using t
 
 ### `update_project`
 
-Change the open project's settings. Only the parameters you pass change. Keyframe times are in seconds, so changing fps keeps the timing; changing the canvas size does not move layers (for landscape footage on a new vertical canvas use reframe_to_vertical). Extend the duration when a voiceover or music runs past the end; the result warns about audio that would be cut and keyframes or layers past a shorter end. Audio: loudnessTarget (LUFS, two-pass loudnorm at export; 0 = off) and ducking (music under voice).
+Change the open project's settings. Only the parameters you pass change. Keyframe times are in seconds, so changing fps keeps the timing; changing the canvas size does not move layers (for landscape footage on a new vertical canvas use reframe_to_vertical). Extend the duration when a voiceover or music runs past the end; the result warns about audio that would be cut and keyframes or layers past a shorter end. Audio: loudnessTarget (LUFS, two-pass loudnorm at export; 0 = off); ducking (music under voice) with duckLevel, duckFadeIn and duckFadeOut; and a role's mixer strip: role with gain, pan and muted (every clip of that role, in the export and the editor's preview).
 
 | Parameter | Type | Description |
 |---|---|---|
@@ -1116,6 +1208,13 @@ Change the open project's settings. Only the parameters you pass change. Keyfram
 | `preset` | string | youtube_1080p (1920x1080) or shorts_1080p (1080x1920): sets width, height, fps and loudness. |
 | `loudnessTarget` | number | Export loudness in LUFS, -40..-5 (-14 for YouTube and most platforms); 0 turns normalization off. |
 | `ducking` | boolean | Duck music (role music) under voice (role voice) in the export. |
+| `duckLevel` | number | How far ducking lowers the music where voice clips play, in dB: 0 to -40 (default -12). |
+| `duckFadeIn` | number | Seconds the music takes to go down before a voice clip starts, 0-5 (default 0.5). |
+| `duckFadeOut` | number | Seconds the music takes to come back up after a voice clip ends, 0-5 (default 1.5). |
+| `role` | string | voice, music or effects: the role whose gain, pan and muted change. Voice holds videos' own sound and narration. |
+| `gain` | number | The role's gain in dB, -60 to +6 (0 = as the clips are). |
+| `pan` | number | The role's balance, -1 (left only) through 0 (center) to 1 (right only). |
+| `muted` | boolean | Silence every clip of the role (true) or bring it back (false). |
 
 ### `view_source`
 

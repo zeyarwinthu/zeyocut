@@ -13,6 +13,23 @@ public class CaptionTrackTests
 
     private static CaptionOptions Options(string? font = null) => new() { FontFamily = font };
 
+    // A text box as wide as the text's width limit, and a line tall for each line.
+    private sealed class LineMeasurer : ITextMeasurer
+    {
+        public (double Width, double Height) Measure(TextLayer layer) =>
+            (layer.MaxWidth ?? layer.Text.Length * layer.FontSize * 0.5, layer.Text.Split('\n').Length * layer.FontSize * 1.25 * layer.LineHeight);
+    }
+
+    private static TextLayer Cue(Project project, string id) => (TextLayer)project.FindLayer(id)!;
+
+    private static Project Tracks(ITextMeasurer measurer)
+    {
+        var project = NewProject();
+        CaptionTracks.Add(project, "en", CaptionTracks.Check([new CueEntry(1, 2, "One"), new CueEntry(4, 5, "Two")], project.Duration).Cues, Options(), [], measurer);
+        CaptionTracks.Add(project, "ja", CaptionTracks.Check([new CueEntry(1, 2, "イチ")], project.Duration).Cues, Options("Yu Gothic"), [], measurer);
+        return project;
+    }
+
     [Fact]
     public void SrtBlocksBecomeCuesAndBrokenBlocksAreNamed()
     {
@@ -61,6 +78,146 @@ public class CaptionTrackTests
                 "cues 1 and 2 overlap at 1–1.5s, so both show at once, one over the other",
             ],
             problems);
+    }
+
+    [Fact]
+    public void ACaptionAddedToATrackLooksLikeTheOneBeforeIt()
+    {
+        var measurer = new LineMeasurer();
+        var project = Tracks(measurer);
+        var two = Cue(project, "captions_en_2");
+        two.Color = "#FFFF00";
+        two.Y.Value = 300;
+
+        var added = CaptionTracks.AddCue(project, "captions_en", 6, 7.5, "  Three\n\n and more ", Options(), measurer);
+        Assert.Equal("captions_en_3", added.Id);
+        Assert.Equal(("Three\nand more", "Three and more", "captions_en"), (added.Text, added.Name, added.ParentId));
+        Assert.Equal((6.0, (double?)7.5), (added.Start, added.End));
+        Assert.Equal(("#FFFF00", 300.0, two.FontSize, two.FontFamily, two.ZIndex), (added.Color, added.Y.Value, added.FontSize, added.FontFamily, added.ZIndex));
+        Assert.Equal((two.Box!.Color, two.Box.Padding), (added.Box!.Color, added.Box.Padding));
+        Assert.Equal(project.Layers.IndexOf(two) + 1, project.Layers.IndexOf(added));
+
+        // Its anchor is at the same place in its box, two lines tall: it stands on the same bottom edge.
+        Assert.Equal(two.AnchorX, added.AnchorX);
+        Assert.Equal(two.AnchorY * 2, added.AnchorY, 3);
+
+        // Before the first caption it looks like the first, and keyframes move with it.
+        var one = Cue(project, "captions_en_1");
+        one.Opacity.Keyframes = [new Keyframe { Time = 1, Value = 0 }, new Keyframe { Time = 1.5, Value = 1 }];
+        var first = CaptionTracks.AddCue(project, "captions_en", 0.2, 0.9, "Zero", Options(), measurer);
+        Assert.Equal("captions_en_4", first.Id);
+        Assert.Equal([0.2, 0.7], first.Opacity.Keyframes.Select(k => Math.Round(k.Time, 6)));
+        Assert.Equal([1.0, 1.5], one.Opacity.Keyframes.Select(k => k.Time));
+        Assert.Equal(10, CaptionTracks.AddCue(project, "captions_en", 9, 12, "Late", Options(), measurer).End);
+        Assert.Equal(["Zero", "One", "Two", "Three\nand more", "Late"], CaptionTracks.Cues(project, "captions_en").Select(c => c.Text));
+        Assert.Empty(ProjectValidator.Validate(project));
+
+        Assert.Equal("a caption needs some text", Assert.Throws<ZeyoCutException>(() => CaptionTracks.AddCue(project, "captions_en", 3, 3.5, " \n ", Options(), measurer)).Message);
+        Assert.Equal("a caption must start at 0 s or later and before the project end (10s), and end after it starts (got 3–2s)",
+            Assert.Throws<ZeyoCutException>(() => CaptionTracks.AddCue(project, "captions_en", 3, 2, "Back", Options(), measurer)).Message);
+        Assert.Equal("'captions_en_1' isn't a caption track (a null layer with the captions under it)",
+            Assert.Throws<ZeyoCutException>(() => CaptionTracks.AddCue(project, "captions_en_1", 3, 3.5, "Hi", Options(), measurer)).Message);
+
+        // A track without captions gets the look the options give a new track.
+        project.Layers.RemoveAll(l => l.ParentId == "captions_ja");
+        var fresh = CaptionTracks.AddCue(project, "captions_ja", 2, 3, "ニ", Options("Yu Gothic"), measurer);
+        Assert.Equal(("captions_ja_1", "Yu Gothic", CaptionTracks.BoxColor), (fresh.Id, fresh.FontFamily, fresh.Box?.Color));
+        Assert.Equal(Cue(project, "captions_en_1").Y.Value, fresh.Y.Value);
+
+        var operation = new AddCaptionOperation("captions_en", 7.6, 8.5, "Four", Measurer: _ => measurer);
+        Assert.Equal(("add_caption captions_en", "captions_en"), (operation.Label, Assert.Single(operation.Layers)));
+        Assert.Equal("added caption 'captions_en_6' to 'captions_en' at 7.6–8.5s", operation.Apply(project));
+    }
+
+    [Fact]
+    public void ACaptionGivenASecondLineStandsOnTheSameBottomEdge()
+    {
+        var measurer = new LineMeasurer();
+        var project = Tracks(measurer);
+        var one = Cue(project, "captions_en_1");
+        var bottom = one.AnchorY;
+
+        CaptionTracks.SetText(project, one.Id, "One\n  and two ", measurer);
+        Assert.Equal(("One\nand two", "One and two"), (one.Text, one.Name));
+        Assert.Equal(bottom * 2, one.AnchorY, 3);
+
+        // A name of its own stays.
+        one.Name = "opening";
+        Assert.Equal("updated the text of caption 'captions_en_1'", new CaptionTextOperation(one.Id, "Just one", _ => measurer).Apply(project));
+        Assert.Equal(("Just one", "opening"), (one.Text, one.Name));
+        Assert.Equal(bottom, one.AnchorY, 3);
+
+        Assert.Equal("a caption needs some text", Assert.Throws<ZeyoCutException>(() => CaptionTracks.SetText(project, one.Id, "  ", measurer)).Message);
+        Assert.Equal("'captions_en' isn't a text layer", Assert.Throws<ZeyoCutException>(() => CaptionTracks.SetText(project, "captions_en", "Hi", measurer)).Message);
+    }
+
+    [Fact]
+    public void RetimingACaptionTrimsItInEveryLanguage()
+    {
+        var project = Tracks(new LineMeasurer());
+        string[] row = ["captions_en_1", "captions_ja_1"];
+        Cue(project, "captions_ja_1").End = 2.2;
+
+        var operation = new RetimeCaptionsOperation(row, 0.5, null);
+        Assert.Equal(("trim_layer captions_en_1, captions_ja_1", row), (operation.Label, operation.Layers));
+        Assert.Equal("trimmed 'captions_en_1': now 0.5–2s (was 1–2s); trimmed 'captions_ja_1': now 0.5–2.2s (was 1–2.2s)", operation.Apply(project));
+
+        // Only those not there already change.
+        Assert.Equal(["trimmed 'captions_en_1': now 0.5–2.2s (was 0.5–2s)"], CaptionTracks.Retime(project, row, null, 2.2));
+        Assert.Equal("the captions run to 2.2s already", Assert.Throws<ZeyoCutException>(() => CaptionTracks.Retime(project, row, null, 2.2)).Message);
+        Assert.Equal("the end (0.4s) must be after the start (0.5s)", Assert.Throws<ZeyoCutException>(() => CaptionTracks.Retime(project, row, null, 0.4)).Message);
+    }
+
+    [Fact]
+    public void RestylingSetsTheSizeLookWidthAndPlaceOfEveryTrack()
+    {
+        var measurer = new LineMeasurer();
+        var project = Tracks(measurer);
+        string[] groups = ["captions_en", "captions_ja"];
+        var cues = groups.SelectMany(g => CaptionTracks.Cues(project, g)).ToList();
+        var one = cues[0];
+        Assert.Equal((CaptionLook.Box, CaptionPlace.Bottom), (CaptionTracks.LookOf(one), CaptionTracks.PlaceOf(project, one)));
+        Assert.Equal((16.0, 5.0, 3.0), (one.FontSize, one.Box!.Padding, one.Box.CornerRadius));
+
+        // The size: the box grows with it, and the anchor stays at the bottom of the text.
+        Assert.Equal(3, CaptionTracks.Restyle(project, groups, new CaptionRestyle { FontSize = 32 }, measurer));
+        Assert.All(cues, c => Assert.Equal(32, c.FontSize));
+        Assert.Equal((10.0, 6.0), (one.Box.Padding, one.Box.CornerRadius));
+        Assert.Equal(measurer.Measure(one).Height, one.AnchorY, 3);
+
+        // What is behind the letters.
+        CaptionTracks.Restyle(project, groups, new CaptionRestyle { Look = CaptionLook.Outline }, measurer);
+        Assert.All(cues, c => Assert.Equal((CaptionLook.Outline, (TextBackground?)null, "#000000", 3.2), (CaptionTracks.LookOf(c), c.Box, c.StrokeColor, c.StrokeWidth)));
+        CaptionTracks.Restyle(project, groups, new CaptionRestyle { Look = CaptionLook.None }, measurer);
+        Assert.All(cues, c => Assert.Equal((CaptionLook.None, (string?)null, 0.0), (CaptionTracks.LookOf(c), c.StrokeColor, c.StrokeWidth)));
+        CaptionTracks.Restyle(project, groups, new CaptionRestyle { Look = CaptionLook.Box }, measurer);
+        Assert.All(cues, c => Assert.Equal((CaptionTracks.BoxColor, 10.0, 6.0), (c.Box!.Color, c.Box.Padding, c.Box.CornerRadius)));
+
+        // The place, inside the title-safe margin, the box's padding in from it.
+        var safe = ProjectChecker.SafeArea(project);
+        Assert.Equal((18.0, 342.0), (safe.Top, safe.Bottom));
+        CaptionTracks.Restyle(project, groups, new CaptionRestyle { Place = CaptionPlace.Top }, measurer);
+        Assert.All(cues, c => Assert.Equal((0.0, 28.0, CaptionPlace.Top), (c.AnchorY, c.Y.Value, CaptionTracks.PlaceOf(project, c))));
+        CaptionTracks.Restyle(project, groups, new CaptionRestyle { Place = CaptionPlace.Middle }, measurer);
+        Assert.All(cues, c => Assert.Equal((Math.Round(measurer.Measure(c).Height / 2, 3), 180.0, CaptionPlace.Middle), (c.AnchorY, c.Y.Value, CaptionTracks.PlaceOf(project, c))));
+        CaptionTracks.Restyle(project, groups, new CaptionRestyle { Place = CaptionPlace.Bottom, MaxWidth = 300 }, measurer);
+        Assert.All(cues, c => Assert.Equal((Math.Round(measurer.Measure(c).Height, 3), 332.0, 300.0, 150.0), (c.AnchorY, c.Y.Value, c.MaxWidth!.Value, c.AnchorX)));
+
+        // A font for one track; a font file it had is let go.
+        project.Assets.Add(new Asset { Id = "brand", Type = AssetType.Font, File = "assets/brand.ttf" });
+        cues[2].FontAsset = "brand";
+        Assert.Equal("restyled 1 caption(s) in 'captions_ja': font Noto Sans JP",
+            new RestyleCaptionsOperation(["captions_ja"], new CaptionRestyle { FontFamily = " Noto Sans JP " }, _ => measurer).Apply(project));
+        Assert.Equal(("Segoe UI", "Noto Sans JP", (string?)null), (one.FontFamily, cues[2].FontFamily, cues[2].FontAsset));
+        Assert.Empty(ProjectValidator.Validate(project));
+
+        Assert.Equal("font Arial, size 40px, an outline, lines up to 500px, at the top",
+            CaptionTracks.Describe(new CaptionRestyle { FontFamily = "Arial", FontSize = 40, Look = CaptionLook.Outline, MaxWidth = 500, Place = CaptionPlace.Top }));
+        Assert.Equal("the size must be more than 0 px (got 0)", Assert.Throws<ZeyoCutException>(() => CaptionTracks.Restyle(project, groups, new CaptionRestyle { FontSize = 0 }, measurer)).Message);
+        Assert.Equal("give the font's name, such as Segoe UI", Assert.Throws<ZeyoCutException>(() => CaptionTracks.Restyle(project, groups, new CaptionRestyle { FontFamily = " " }, measurer)).Message);
+        one.Y.Keyframes = [new Keyframe { Time = 1, Value = 300 }];
+        Assert.Equal("caption 'captions_en_1' moves up or down (its Y has keyframes), so it can't be put at the top; remove its Y keyframes first",
+            Assert.Throws<ZeyoCutException>(() => CaptionTracks.Restyle(project, groups, new CaptionRestyle { Place = CaptionPlace.Top }, measurer)).Message);
     }
 
     [Fact]

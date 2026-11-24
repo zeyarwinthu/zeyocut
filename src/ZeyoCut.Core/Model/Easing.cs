@@ -11,5 +11,8 @@ public enum Easing
     EaseInOut,
     EaseOutBack,
     EaseOutBounce,
-    EaseOutElastic
+    EaseOutElastic,
+
+    // Its curve is the keyframe's Bezier: CSS's cubic-bezier(x1, y1, x2, y2).
+    CubicBezier
 }

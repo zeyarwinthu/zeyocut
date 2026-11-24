@@ -40,7 +40,8 @@ public static class PreviewAudio
     public static string PathOf(string projectDirectory, string key) =>
         Path.Combine(projectDirectory, ChunkedExport.CacheFolder, Folder, $"mix-{key}.m4a");
 
-    // Writes the mix to output (through a .partial.m4a file) and returns what the export does to it.
+    // Writes the mix to output (through a .partial.m4a file of its own) and returns what the export
+    // does to it. A mix another program put there in the meantime is kept.
     public static IReadOnlyList<string> Make(Project project, string projectDirectory, FfmpegPaths ffmpeg, string output, CancellationToken cancellationToken)
     {
         var audio = FfmpegArgs.AudioClips(project, projectDirectory);
@@ -54,7 +55,7 @@ public static class PreviewAudio
         var mix = Exporter.PlanAudio(project, audio, duration, ffmpeg, notes, null, cancellationToken)
             ?? throw new ZeyoCutException("nothing in the project is heard");
         Directory.CreateDirectory(Path.GetDirectoryName(output)!);
-        var partial = Path.ChangeExtension(output, ".partial.m4a");
+        var partial = PartialFile.For(output);
         try
         {
             var result = ProcessRunner.RunLines(ffmpeg.Ffmpeg, FfmpegArgs.PreviewMixArguments(audio, mix, duration, partial), null, null, cancellationToken);
@@ -63,7 +64,14 @@ public static class PreviewAudio
                 throw new ZeyoCutException($"ffmpeg could not mix the sound (exit code {result.ExitCode}):\n{result.StandardError}");
             }
 
-            File.Move(partial, output, overwrite: true);
+            try
+            {
+                File.Move(partial, output);
+            }
+            catch (IOException) when (File.Exists(output))
+            {
+            }
+
             return notes;
         }
         finally

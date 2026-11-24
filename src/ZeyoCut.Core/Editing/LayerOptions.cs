@@ -17,6 +17,30 @@ public sealed record ProjectOptions
     // LUFS; 0 turns loudness normalization off.
     public double? LoudnessTarget { get; init; }
     public bool? Ducking { get; init; }
+
+    // dB, 0 to -40, and seconds.
+    public double? DuckLevel { get; init; }
+    public double? DuckFadeIn { get; init; }
+    public double? DuckFadeOut { get; init; }
+
+    // A role's mixer strip: Gain (dB), Pan (-1 left to 1 right) and Muted change Role's.
+    public AudioRole? Role { get; init; }
+    public double? Gain { get; init; }
+    public double? Pan { get; init; }
+    public bool? Muted { get; init; }
+}
+
+// A new project, as create_project makes it: a preset sets the canvas, frame rate and loudness, and
+// a size or frame rate given as well wins over the preset's.
+public sealed record NewProjectOptions
+{
+    public required string Name { get; init; }
+    public int? Width { get; init; }
+    public int? Height { get; init; }
+    public int? Fps { get; init; }
+    public double Duration { get; init; } = 10;
+    public string BackgroundColor { get; init; } = "#FFFFFF";
+    public string? Preset { get; init; }
 }
 
 public record VisualLayerOptions

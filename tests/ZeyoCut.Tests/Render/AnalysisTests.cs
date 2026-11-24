@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 
+using ZeyoCut.Core;
 using ZeyoCut.Core.Editing;
 using ZeyoCut.Core.Model;
 using ZeyoCut.Core.Serialization;
@@ -150,5 +151,36 @@ public class AnalysisTests
         var blue = TestImages.Pixel(image, 6 + 160 + 6 + 80, 6 + 60);
         Assert.True(red.Red > 200 && red.Blue < 60, $"first cell is {red}");
         Assert.True(blue.Blue > 200 && blue.Red < 60, $"second cell is {blue}");
+    }
+
+    // The editor's waveforms: the loudest sample of each 1/200 s, here of a 440 Hz tone at half of
+    // full scale for a second, then a second of silence.
+    [Fact]
+    public void PeaksFollowAKnownTone()
+    {
+        var ffmpeg = Ffmpeg.Require();
+        var directory = TestPaths.NewDirectory("analysis-peaks");
+        var file = Path.Combine(directory, "tone.wav");
+        var made = ProcessRunner.Run(ffmpeg.Ffmpeg, ["-v", "error", "-y", "-f", "lavfi", "-i", "aevalsrc=exprs='if(lt(t,1),0.5*sin(2*PI*440*t),0)':s=48000:d=2", "-c:a", "pcm_s16le", file], TimeSpan.FromSeconds(60));
+        Assert.True(made.ExitCode == 0, made.StandardError);
+
+        var peaks = AudioAnalyzer.Peaks(ffmpeg.Ffmpeg, file, 200, TestContext.Current.CancellationToken);
+        Assert.Equal(400, peaks.Length);
+        Assert.All(peaks[1..199], p => Assert.InRange(p, 0.48, 0.52));
+        Assert.All(peaks[202..], p => Assert.InRange(p, 0, 0.01));
+
+        // The mixer's meter reads the two sides apart: left and right of each 1/200 s in turn.
+        var stereo = Path.Combine(directory, "stereo.wav");
+        made = ProcessRunner.Run(ffmpeg.Ffmpeg, ["-v", "error", "-y", "-f", "lavfi", "-i", "aevalsrc=exprs='0.5*sin(2*PI*440*t)|0.25*sin(2*PI*440*t)':s=48000:d=1", "-c:a", "pcm_s16le", stereo], TimeSpan.FromSeconds(60));
+        Assert.True(made.ExitCode == 0, made.StandardError);
+        var sides = AudioAnalyzer.Peaks(ffmpeg.Ffmpeg, stereo, 200, TestContext.Current.CancellationToken, channels: 2);
+        Assert.Equal(400, sides.Length);
+        Assert.All(Enumerable.Range(1, 198), i => Assert.InRange(sides[2 * i], 0.48, 0.52));
+        Assert.All(Enumerable.Range(1, 198), i => Assert.InRange(sides[2 * i + 1], 0.23, 0.27));
+        Assert.Throws<ArgumentOutOfRangeException>(() => AudioAnalyzer.Peaks(ffmpeg.Ffmpeg, stereo, 200, TestContext.Current.CancellationToken, channels: 6));
+
+        // Footage without sound has none to show.
+        var silent = TestVideos.Ramp(Path.Combine(directory, "silent.mp4"), seconds: 1);
+        Assert.Throws<ZeyoCutException>(() => AudioAnalyzer.Peaks(ffmpeg.Ffmpeg, silent, 200, TestContext.Current.CancellationToken));
     }
 }

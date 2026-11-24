@@ -9,7 +9,10 @@ public enum AssetType
     Image,
     Audio,
     Font,
-    Video
+    Video,
+
+    // A look: a 3D LUT from a .cube file, which a clip's grade lays over it.
+    Lut
 }
 
 public sealed class Asset
@@ -48,4 +51,8 @@ public sealed class Asset
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? Normalized { get; set; }
+
+    // Names grouping it with other assets, as bins do (AssetTags).
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public List<string>? Tags { get; set; }
 }

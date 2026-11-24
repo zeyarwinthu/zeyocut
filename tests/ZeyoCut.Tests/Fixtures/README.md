@@ -12,7 +12,7 @@ The tests only check how many faces and plates are found and where. Nothing iden
 
 ## Old projects
 
-`project-v1.json` to `project-v5.json` are `project.json` files as earlier versions of ZeyoCut saved them, for the migration tests. Their assets aren't included; the tests only read the files.
+`project-v1.json` to `project-v12.json` are `project.json` files as earlier versions of ZeyoCut saved them, for the migration tests. Their assets aren't included; the tests only read the files.
 
 | File | Format | Saved by | What's in it |
 |---|---|---|---|
@@ -21,3 +21,10 @@ The tests only check how many faces and plates are found and where. Nothing iden
 | `project-v3.json` | 3 | Phase 3's smoke run | the camera, blur, mask, tint, outline, shadow and a motion path, over video and text |
 | `project-v4.json` | 4 | Phase 4's smoke run | a presenter cut out of the footage with text behind them |
 | `project-v5.json` | 5 | Phase 6's smoke run | two redactions following three tracks over two clips |
+| `project-v6.json` | 6 | ZeyoCut 0.1.0's code, before format 7 | the comic-panels example (captions in English, Japanese and Burmese with language tags) plus three markers added with `add_markers`' code |
+| `project-v7.json` | 7 | The manual editor's code, before format 8 | the tora-jump example: a cat rig with drawings, keyframes eased `linear`, `easeIn`, `easeOut`, `easeInOut` and `easeOutBack`, text and two sound effects |
+| `project-v8.json` | 8 | The manual editor's Animate view, before format 9 | the tora-jump example with two of Tora's Position Y keyframes given a `cubicBezier` easing, and two sound effects whose volume is a number |
+| `project-v9.json` | 9 | The manual editor's Audio view, before format 10 | the comic-panels example with each role's gain, pan and mute, a duck level and fades, and a sound effect's volume keyframes |
+| `project-v10.json` | 10 | The manual editor's Media browser, before format 11 | the timeline-demo the editor's screenshots use: three clips of one street video, two tracks of it and two redactions (solid and blur), captions, music and a logo |
+| `project-v11.json` | 11 | The manual editor's Track & blur view, before format 12 | the same timeline-demo after the Track & blur view's screenshots: its redactions with a `shape` (one an `ellipse`) and `smooth`, the third hiding a box tracked by hand |
+| `project-v12.json` | 12 | The manual editor's Color view, before format 13 | the same timeline-demo after the Color view's screenshots: `street_b` graded (exposure, highlights, shadows and temperature in its `grade`, with contrast and saturation) and given to `street` and `street_2` with Apply to all street clips, and the redactions hidden |

@@ -88,8 +88,14 @@ public class DeliveryExportTests
 
         var args = FfmpegArgs.Build(new EncodeSettings(1280, 720, 30, 90, 18), clips, "out.mp4", mix);
         var filter = args[args.IndexOf("-filter_complex") + 1];
-        Assert.Contains("[a1]asplit=2[voicemix][voicekey];[voicekey]apad[voicepad];[a2][voicepad]sidechaincompress=threshold=0.03:ratio=6:attack=20:release=400:makeup=1[ducked]", filter);
-        Assert.Contains("[voicemix][ducked][a3]amix=inputs=3:duration=longest:dropout_transition=0:normalize=0,asetpts=N/SR/TB,loudnorm=I=-14:TP=-1:LRA=11:measured_I=-23.5:measured_TP=-4.2:measured_LRA=6.3:measured_thresh=-34:offset=0.4:linear=true:print_format=summary,aresample=48000,apad[aout]", filter);
+        // The music goes down 12 dB where the voice plays (all of it here) and comes back up over 1.5s after.
+        var level = Math.Pow(10, -12 / 20.0);
+        var duck = FfmpegArgs.DuckPoints(clips, mix);
+        Assert.Equal([0.0, 3.0, 4.5], duck.Select(d => d.Time));
+        Assert.Equal([level, level, 1.0], duck.Select(d => d.Value), (a, b) => Math.Abs(a - b) < 1e-9);
+        Assert.Contains($"[a2]asetnsamples=n=480:p=0,volume=volume='{FfmpegArgs.Expression(duck)}':eval=frame[ducked]", filter);
+        Assert.DoesNotContain("sidechaincompress", filter);
+        Assert.Contains("[a1][ducked][a3]amix=inputs=3:duration=longest:dropout_transition=0:normalize=0,asetpts=N/SR/TB,loudnorm=I=-14:TP=-1:LRA=11:measured_I=-23.5:measured_TP=-4.2:measured_LRA=6.3:measured_thresh=-34:offset=0.4:linear=true:print_format=summary,aresample=48000,apad[aout]", filter);
 
         var wide = FfmpegArgs.Build(new EncodeSettings(1280, 720, 30, 90, 18), clips, "out.mp4", mix with { Measured = measured with { InputLra = 14.2 } });
         Assert.Contains(":LRA=16:measured_I=", wide[wide.IndexOf("-filter_complex") + 1]);
@@ -100,20 +106,20 @@ public class DeliveryExportTests
         Assert.EndsWith("-map [aout] -t 3 -f null -", line);
         var measureFilter = measure[measure.IndexOf("-filter_complex") + 1];
         Assert.Contains("[0:a]atrim=start=0:duration=3", measureFilter);
-        Assert.Contains("[a0]asplit=2[voicemix][voicekey]", measureFilter);
-        Assert.Contains("[voicemix][ducked][a2]amix=inputs=3:duration=longest:dropout_transition=0:normalize=0,asetpts=N/SR/TB,loudnorm=I=-14:TP=-1:LRA=11:print_format=json[aout]", measureFilter);
+        Assert.Contains($"[a1]asetnsamples=n=480:p=0,volume=volume='{FfmpegArgs.Expression(duck)}':eval=frame[ducked]", measureFilter);
+        Assert.Contains("[a0][ducked][a2]amix=inputs=3:duration=longest:dropout_transition=0:normalize=0,asetpts=N/SR/TB,loudnorm=I=-14:TP=-1:LRA=11:print_format=json[aout]", measureFilter);
         Assert.DoesNotContain("apad[aout]", measureFilter);
 
         List<AudioClip> twoVoices = [clips[0], clips[0] with { LayerId = "talk_2", Start = 3 }, clips[1]];
         var pair = FfmpegArgs.Build(new EncodeSettings(1280, 720, 30, 180, 18), twoVoices, "out.mp4", mix with { LoudnessTarget = null });
         var pairFilter = pair[pair.IndexOf("-filter_complex") + 1];
-        Assert.Contains("[a1][a2]amix=inputs=2:duration=longest:dropout_transition=0:normalize=0,asetpts=N/SR/TB[voice];", pairFilter);
-        Assert.Contains("[voice]asplit=2[voicemix][voicekey]", pairFilter);
-        Assert.Contains("[voicemix][ducked]amix=inputs=2:duration=longest:dropout_transition=0:normalize=0,asetpts=N/SR/TB,apad[aout]", pairFilter);
+        // Back to back, the two voice clips are one stretch of ducking.
+        Assert.Equal([0.0, 6.0, 7.5], FfmpegArgs.DuckPoints(twoVoices, mix).Select(d => d.Time));
+        Assert.Contains("[a1][a2][ducked]amix=inputs=3:duration=longest:dropout_transition=0:normalize=0,asetpts=N/SR/TB,apad[aout]", pairFilter);
 
         var plain = FfmpegArgs.Build(new EncodeSettings(1280, 720, 30, 90, 18), clips, "out.mp4", new AudioMix(false, null, -1, null));
         var plainFilter = plain[plain.IndexOf("-filter_complex") + 1];
-        Assert.DoesNotContain("sidechaincompress", plainFilter);
+        Assert.DoesNotContain("[ducked]", plainFilter);
         Assert.DoesNotContain("loudnorm", plainFilter);
         Assert.DoesNotContain("asetpts=N/SR/TB", plainFilter);
         Assert.Contains("[a1][a2][a3]amix=inputs=3:duration=longest:dropout_transition=0:normalize=0,apad[aout]", plainFilter);
@@ -206,17 +212,17 @@ public class DeliveryExportTests
             (BandLevel(ffmpeg, file, 0.2, 0.6, 1000), BandLevel(ffmpeg, file, 1.4, 0.9, 1000), BandLevel(ffmpeg, file, 4.1, 0.5, 1000));
 
         var ducked = Export(session, ffmpeg, "ducked.mp4");
-        Assert.Contains("music ducked under voice", ducked.Notes!);
+        Assert.Contains("music ducked -12 dB under voice", ducked.Notes!);
         var on = MusicLevels(ducked.OutputPath);
 
         session.Mutate("no ducking", p => ProjectEditor.UpdateProject(p, new ProjectOptions { Ducking = false }));
         var flat = Export(session, ffmpeg, "flat.mp4");
-        Assert.DoesNotContain("music ducked under voice", flat.Notes!);
+        Assert.DoesNotContain(flat.Notes!, n => n.StartsWith("music ducked"));
         var off = MusicLevels(flat.OutputPath);
 
         _output.WriteLine($"ducking on:  music {on.Before:0.0} / {on.During:0.0} / {on.After:0.0} dB (before / during / after the voice)");
         _output.WriteLine($"ducking off: music {off.Before:0.0} / {off.During:0.0} / {off.After:0.0} dB");
-        Assert.True(on.During < on.Before - 6, $"music should drop more than 6 dB under the voice (before {on.Before:0.0} dB, during {on.During:0.0} dB)");
+        Assert.InRange(on.During - on.Before, -13, -11);
         Assert.InRange(on.After - on.Before, -1.5, 1.5);
         Assert.InRange(off.During - off.Before, -1.5, 1.5);
     }

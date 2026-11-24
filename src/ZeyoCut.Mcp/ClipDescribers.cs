@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 using Microsoft.Extensions.DependencyInjection;
+using ZeyoCut.Core;
 using ZeyoCut.Mcp.Tools;
 using ZeyoCut.Render.Video;
 

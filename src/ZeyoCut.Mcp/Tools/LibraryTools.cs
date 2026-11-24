@@ -156,7 +156,7 @@ public static class LibraryTools
         }
 
         var folder = string.IsNullOrWhiteSpace(directory)
-            ? Path.Combine(state.Settings.ProjectsRoot, ProjectTools.SafeFolderName(name))
+            ? Path.Combine(state.Settings.ProjectsRoot, ProjectStore.FolderName(name))
             : AllowedFolders.Project(state.Settings, directory);
         var warnings = new List<string>();
         var project = Templates.Create(state.Library, template, folder, name.Trim(), duration, warnings);
@@ -164,6 +164,18 @@ public static class LibraryTools
         state.Open(session);
         return WithWarnings($"created and opened project '{project.Name}' from template '{template.Trim()}' at {session.Directory}\n"
             + $"{project.Width}x{project.Height} @ {project.Fps} fps, {Num(project.Duration)}s\n{LayerTree.Format(session.Snapshot()).TrimEnd()}", warnings);
+    });
+
+    [McpServerTool(Name = "add_template")]
+    [Description("Add a library template's layers to the open project as one block starting at 'at' (one undo step): a lower third, a chapter card, an end screen. Each layer keeps its time from the template's start, and layers that ran to the template's end end where it does. Pictures, text and footage go on draw levels above the project's; ids the project already has get a number; the template's files are copied into the project's assets, or the project's own copy is used. A template with tracked footage only makes new projects (new_project_from_template).")]
+    public static string AddTemplate(
+        EditorState state,
+        [Description("Template name from list_library.")] string name,
+        [Description("Where the template's start goes on the timeline, seconds. Default 0.")] double at = 0) => Guard(() =>
+    {
+        var session = state.Session;
+        var placed = session.Mutate($"add_template {name}", p => Templates.Add(p, session.Directory, state.Library, name, at));
+        return WithWarnings(Templates.Describe(placed), placed.Warnings);
     });
 
     [McpServerTool(Name = "list_library")]

@@ -11,6 +11,35 @@ public class VideoEncoderTests
 {
     private static string Line(IEnumerable<string> arguments) => string.Join(" ", arguments);
 
+    // A stand-in for FFmpeg in 'directory': it counts its calls in calls.txt, fails call 'takesAll'
+    // after taking every frame and the calls in 'failing' at once, as Quick Sync does now and then,
+    // and runs the rest with libx264 for h264_qsv.
+    private static (string Path, string Calls) StandIn(string directory, FfmpegPaths ffmpeg, int takesAll, params int[] failing)
+    {
+        var calls = Path.Combine(directory, "calls.txt");
+        var path = Path.Combine(directory, "ffmpeg.cmd");
+        var fail = string.Concat(failing.Select(n => $"if %n%=={n} goto fail\n"));
+        File.WriteAllText(path, $"""
+            @echo off
+            set /a n=0
+            if exist "{calls}" set /p n=<"{calls}"
+            set /a n+=1
+            >"{calls}" echo %n%
+            if %n%=={takesAll} goto all
+            {fail}set "arguments=%*"
+            "{ffmpeg.Ffmpeg}" %arguments:h264_qsv=libx264%
+            exit /b %errorlevel%
+            :all
+            "{ffmpeg.Ffmpeg}" -hide_banner -loglevel error -f rawvideo -pix_fmt rgba -s 320x240 -i pipe:0 -f null -
+            :fail
+            >&2 echo [h264_qsv @ 0000000000000000] Invalid FrameType:0.
+            exit /b 1
+
+            """.Replace("\n", "\r\n"));
+        File.Delete(calls);
+        return (path, calls);
+    }
+
     [Fact]
     public void AutoTakesTheFirstGpuEncoderThatWorksAndRemembersIt()
     {
@@ -154,5 +183,54 @@ public class VideoEncoderTests
 
         var again = Exporter.Export(project, directory, Path.Combine(directory, "exports", "gpu2.mp4"), 18, ffmpeg, cancellationToken: ct, workers: 2, encoder: new EncoderChoice(VideoEncoder.Qsv, "a test"));
         Assert.Equal(2, again.Times!.ReusedChunks);
+    }
+
+    // A GPU encoder that fails on a chunk is given the chunk again: Intel Quick Sync now and then hands
+    // back an empty frame when frames come faster than it encodes them. libx264 isn't: its failures
+    // don't come and go. The stand-in for FFmpeg fails the first call (after taking every frame) and
+    // the third (at once).
+    [Fact]
+    public void AChunkAGpuEncoderFailedOnIsEncodedAgain()
+    {
+        var ffmpeg = Ffmpeg.Require();
+        var ct = TestContext.Current.CancellationToken;
+        var directory = TestPaths.NewDirectory("encoder-again");
+        var session = ProjectSession.Create(directory, TestProjects.Empty(width: 320, height: 240, fps: 30, duration: 4));
+        session.Mutate("title", p => ProjectEditor.AddTextLayer(p, new TextLayerOptions { Id = "title", Text = "GPU", FontFamily = "Segoe UI", FontSize = 40, Color = "#FFFFFF" }));
+        var project = session.Snapshot();
+        var (standIn, calls) = StandIn(directory, ffmpeg, 1, 3);
+        ExportResult Export(string name, EncoderChoice? encoder)
+        {
+            File.Delete(calls);
+            return Exporter.Export(project, directory, Path.Combine(directory, "exports", name), 18, ffmpeg with { Ffmpeg = standIn }, cancellationToken: ct, workers: 1, encoder: encoder);
+        }
+
+        Assert.StartsWith("ffmpeg failed with exit code 1:\n[h264_qsv @ 0000000000000000] Invalid FrameType:0.", Assert.ThrowsAny<ZeyoCutException>(() => Export("cpu.mp4", null)).Message);
+        Assert.Equal("2", File.ReadAllText(calls).Trim());
+
+        // The first chunk is encoded three times, the second once, and then they're joined.
+        var gpu = Export("gpu.mp4", new EncoderChoice(VideoEncoder.Qsv, "a test"));
+        Assert.Equal("5", File.ReadAllText(calls).Trim());
+        Assert.Contains("h264_qsv failed 2 time(s); each time, the chunk it failed on was encoded again (first: Invalid FrameType:0.)", gpu.Notes!);
+        Assert.Equal((2, 0), (gpu.Times!.Chunks, gpu.Times.ReusedChunks));
+        Assert.Equal(("h264", 120), (gpu.Media.VideoCodec, gpu.Media.VideoFrames));
+    }
+
+    // An encoder's test encode is tried three times before the encoder counts as not working: one
+    // empty frame from Quick Sync would otherwise have auto use libx264 on this computer until FFmpeg
+    // or the hardware changes (encoders.json).
+    [Fact]
+    public void AnEncodersTestIsTriedThreeTimesBeforeItCountsAsNotWorking()
+    {
+        var ffmpeg = Ffmpeg.Require();
+        var directory = TestPaths.NewDirectory("encoder-test-again");
+
+        var (standIn, calls) = StandIn(directory, ffmpeg, 0, 1, 2);
+        Assert.Null(VideoEncoders.Try(ffmpeg with { Ffmpeg = standIn }, VideoEncoder.Qsv));
+        Assert.Equal("3", File.ReadAllText(calls).Trim());
+
+        (standIn, calls) = StandIn(directory, ffmpeg, 0, 1, 2, 3);
+        Assert.Equal("Invalid FrameType:0.", VideoEncoders.Try(ffmpeg with { Ffmpeg = standIn }, VideoEncoder.Qsv));
+        Assert.Equal("3", File.ReadAllText(calls).Trim());
     }
 }

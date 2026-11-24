@@ -369,7 +369,7 @@ public static class Preview
     }
 
     // The video assets shown at the frame that have a proxy, so a preview draws them from it.
-    private static List<string> Proxied(FrameRenderer renderer, Project project, int frame) =>
+    public static List<string> Proxied(FrameRenderer renderer, Project project, int frame) =>
         SceneEvaluator.Evaluate(project, FrameMath.TimeOf(project, frame), cutouts: true)
             .Where(e => e.Shown && e.Opacity > 0)
             .Select(e => e.Layer is VideoLayer video ? project.FindAsset(video.Asset) : null)

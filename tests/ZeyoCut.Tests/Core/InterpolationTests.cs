@@ -60,6 +60,16 @@ public class InterpolationTests
     }
 
     [Fact]
+    public void ACubicBezierKeyframeShapesItsSegmentWithItsNumbers()
+    {
+        var track = Track(0, (1, 100, Easing.CubicBezier), (3, 300, Easing.Linear));
+        track.Keyframes[0].Bezier = [0, 0, 0.4, 1];
+        Assert.Equal(100 + 200 * 0.765988682530208, Interpolator.Evaluate(track, 2), 1e-7);
+        Assert.Equal(100 + 200 * 0.941991889400904, Interpolator.Evaluate(track, 2.5), 1e-7);
+        Assert.Equal(300, Interpolator.Evaluate(track, 3));
+    }
+
+    [Fact]
     public void HoldKeepsValueUntilNextKeyframe()
     {
         var track = Track(0, (0, 10, Easing.Hold), (1, 20, Easing.Linear));

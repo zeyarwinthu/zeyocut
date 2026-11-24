@@ -41,7 +41,7 @@ public class LibraryTests
         var body = (ImageLayer)project.FindLayer("tora_body")!;
         body.X.Keyframes = [Key(0, 300, Easing.EaseInOut), Key(1, 500)];
         body.Y.Keyframes = [Key(0, 200, Easing.EaseOut), Key(0.5, 150, Easing.EaseIn), Key(1, 200)];
-        body.ScaleY.Keyframes = [Key(0, 1), Key(0.5, 1.2), Key(1, 1)];
+        body.ScaleY.Keyframes = [new Keyframe { Time = 0, Value = 1, Easing = Easing.CubicBezier, Bezier = [0.3, 1.4, 0.6, 1] }, Key(0.5, 1.2), Key(1, 1)];
         var head = (ImageLayer)project.FindLayer("tora_head")!;
         head.Rotation.Keyframes = [Key(0, 0, Easing.EaseOutBack), Key(0.5, 20, Easing.EaseInOut), Key(1, 0)];
         head.Drawing.Keyframes = [new DrawingKeyframe { Time = 0, Value = "normal" }, new DrawingKeyframe { Time = 0.5, Value = "shocked" }, new DrawingKeyframe { Time = 0.9, Value = "normal" }];
@@ -268,6 +268,64 @@ public class LibraryTests
             Assert.Throws<ZeyoCutException>(() => Templates.Create(library, "channel", directory + "-short", "short", 1, warnings)).Message);
         Assert.Contains("a project already exists in",
             Assert.Throws<ZeyoCutException>(() => Templates.Create(library, "channel", directory, "again", null, warnings)).Message);
+    }
+
+    // add_template: the layers as a block from the time, with their children, drawings and keyframes,
+    // renamed where the project has their ids, above its levels; files reused or copied in.
+    [Fact]
+    public void ATemplateAddsItsLayersToAnOpenProjectAsABlock()
+    {
+        var (project, directory) = RigProject("library-add-template");
+        var library = new Library(TestPaths.NewDirectory("library-add-template-lib"));
+        Animate(project);
+        Templates.Save(project, directory, library, "hop", ["tora_body"], null, overwrite: false);
+
+        var placed = Templates.Add(project, directory, library, "HOP", 1.5);
+        Assert.Equal(("hop", 1.5), (placed.Name, placed.At));
+        Assert.Equal(["tora_body_2", "tora_head_2", "tora_tail_2"], placed.Layers);
+        Assert.Equal((0, 4), (placed.AddedAssets.Count, placed.ReusedAssets.Count));
+        var body = (ImageLayer)project.FindLayer("tora_body_2")!;
+        var head = (ImageLayer)project.FindLayer("tora_head_2")!;
+        Assert.Equal(("tora_body_2", "tora_body_2"), (head.ParentId!, project.FindLayer("tora_tail_2")!.ParentId!));
+        Assert.Equal((1.5, 5.5, 13), (body.Start, body.End!.Value, body.ZIndex));
+        Assert.Equal([1.5, 2.5], body.X.Keyframes.Select(k => k.Time));
+        Assert.Equal([1.5, 2.0, 2.4], head.Drawing.Keyframes.Select(k => k.Time));
+        Assert.Equal(((ImageLayer)project.FindLayer("tora_head")!).Drawings, head.Drawings);
+        Assert.Equal(["the template runs to 5.5s, past the project's end (4s)"], placed.Warnings);
+        Assert.Equal("added template 'hop' at 1.5s: 3 layer(s): tora_body_2, tora_head_2, tora_tail_2; reused 4 asset(s) already in the project", Templates.Describe(placed));
+
+        var other = TestProjects.Empty(width: 320, height: 180, duration: 8);
+        var otherDirectory = TestPaths.NewDirectory("library-add-template-other");
+        var copied = Templates.Add(other, otherDirectory, library, "hop", 0);
+        Assert.Equal(["tora_body", "tora_head", "tora_tail"], copied.Layers);
+        Assert.Equal(4, copied.AddedAssets.Count);
+        Assert.All(other.Assets, a => Assert.True(File.Exists(ProjectStore.AssetPath(otherDirectory, a))));
+        Assert.Equal(["the template is 640x360 and the project 320x180; its layers keep their pixel positions"], copied.Warnings);
+        Assert.Equal((0.0, 4.0, 0), (other.FindLayer("tora_tail")!.Start, other.FindLayer("tora_tail")!.End!.Value, other.FindLayer("tora_tail")!.ZIndex));
+        ProjectValidator.ThrowIfInvalid(other);
+
+        Assert.Contains("at must be 0 or later", Assert.Throws<ZeyoCutException>(() => Templates.Add(other, otherDirectory, library, "hop", -1)).Message);
+    }
+
+    // A look's LUT goes with the layers that look through it, as their drawings do.
+    [Fact]
+    public void ATemplateTakesTheLutItsLayersLookThrough()
+    {
+        var (project, directory) = RigProject("library-template-look");
+        var library = new Library(TestPaths.NewDirectory("library-template-look-lib"));
+        var lut = new Asset { Id = "warm", Type = AssetType.Lut, File = "assets/warm.cube" };
+        project.Assets.Add(lut);
+        File.WriteAllText(ProjectStore.AssetPath(directory, lut), CubeLutTests.Curves());
+        ColorEditor.SetColor(project, "tora_body", new ColorChange(new Dictionary<string, double>(), Look: "warm"));
+        Templates.Save(project, directory, library, "warm hop", ["tora_body"], null, overwrite: false);
+
+        var other = TestProjects.Empty(width: 640, height: 360, duration: 8);
+        var otherDirectory = TestPaths.NewDirectory("library-template-look-other");
+        Templates.Add(other, otherDirectory, library, "warm hop", 0);
+        var asset = other.FindAsset(((ImageLayer)other.FindLayer("tora_body")!).Grade!.Look!.Asset)!;
+        Assert.Equal(AssetType.Lut, asset.Type);
+        Assert.True(File.Exists(ProjectStore.AssetPath(otherDirectory, asset)));
+        ProjectValidator.ThrowIfInvalid(other);
     }
 
     [Fact]

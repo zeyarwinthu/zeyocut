@@ -23,7 +23,11 @@ public readonly record struct CoverBox(int Frame, double X, double Y, double Wid
 // shot does). Frames the track lost count as missed. Between two detections the box moves straight
 // from one to the other and grows with each frame away from the nearer one, so no frame between them
 // is uncovered, even across a cut; past the ends it holds the nearest detection and grows the same way. Every box is padded by paddingPercent of its width and height, and its edges
-// are smoothed over a few frames into an envelope that always contains the frame's own box.
+// are smoothed over a few frames into an envelope that always contains the frame's own box. With
+// smooth, the padded box's center and size are averaged over SmoothFrames frames on each side
+// instead (fewer near the ends, the same number on both sides, so steady motion is kept as it is),
+// which evens out a tracker's jitter; each box is then grown where it has to be to contain the
+// frame's own box without its padding (with the growth of missed frames).
 public sealed class RedactionCover
 {
     // Each missed frame away from the nearest detection grows every side by this share of the box's
@@ -32,6 +36,9 @@ public sealed class RedactionCover
 
     // The envelope spans this many frames on each side.
     public const int Smoothing = 2;
+
+    // With smooth, the average spans this many frames on each side.
+    public const int SmoothFrames = 6;
 
     // A hold that a scene cut ends still covers this many frames past the cut, in case the cut was
     // found a frame early or late.
@@ -64,7 +71,7 @@ public sealed class RedactionCover
     public CoverBox? At(int frame) => frame >= First && frame - First < _boxes.Length ? _boxes[frame - First] : null;
 
     // cuts: the frames where a shot starts (Cuts); none means every hold runs its full length.
-    public static RedactionCover Of(IReadOnlyList<TrackedFrame> frames, int frameCount, double paddingPercent, int holdFrames, IReadOnlyList<int>? cuts = null)
+    public static RedactionCover Of(IReadOnlyList<TrackedFrame> frames, int frameCount, double paddingPercent, int holdFrames, IReadOnlyList<int>? cuts = null, bool smooth = false)
     {
         var found = frames
             .Where(f => !f.Lost && f.Frame >= 0 && f.Frame < frameCount && f.Width > 0 && f.Height > 0 && double.IsFinite(f.X + f.Y + f.Width + f.Height))
@@ -94,6 +101,7 @@ public sealed class RedactionCover
 
         var pad = paddingPercent / 100;
         var raw = new CoverBox[last - first + 1];
+        var own = new CoverBox[raw.Length];
         var next = 0;
         for (var frame = first; frame <= last; frame++)
         {
@@ -102,29 +110,35 @@ public sealed class RedactionCover
                 next++;
             }
 
+            (double X, double Y, double Width, double Height) box;
+            int missed;
+            CoverKind kind;
             if (next < found.Count && found[next].Frame == frame)
             {
-                raw[frame - first] = Padded(frame, Box(found[next]), pad, 0, CoverKind.Detected);
+                (box, missed, kind) = (Box(found[next]), 0, CoverKind.Detected);
             }
             else if (next == 0)
             {
-                raw[frame - first] = Padded(frame, Box(found[0]), pad, found[0].Frame - frame, CoverKind.Held);
+                (box, missed, kind) = (Box(found[0]), found[0].Frame - frame, CoverKind.Held);
             }
             else if (next == found.Count)
             {
-                raw[frame - first] = Padded(frame, Box(found[^1]), pad, frame - found[^1].Frame, CoverKind.Held);
+                (box, missed, kind) = (Box(found[^1]), frame - found[^1].Frame, CoverKind.Held);
             }
             else
             {
                 var a = found[next - 1];
                 var b = found[next];
                 var t = (frame - a.Frame) / (double)(b.Frame - a.Frame);
-                var between = (a.X + (b.X - a.X) * t, a.Y + (b.Y - a.Y) * t, a.Width + (b.Width - a.Width) * t, a.Height + (b.Height - a.Height) * t);
-                raw[frame - first] = Padded(frame, between, pad, Math.Min(frame - a.Frame, b.Frame - frame), CoverKind.Gap);
+                box = (a.X + (b.X - a.X) * t, a.Y + (b.Y - a.Y) * t, a.Width + (b.Width - a.Width) * t, a.Height + (b.Height - a.Height) * t);
+                (missed, kind) = (Math.Min(frame - a.Frame, b.Frame - frame), CoverKind.Gap);
             }
+
+            raw[frame - first] = Padded(frame, box, pad, missed, kind);
+            own[frame - first] = Padded(frame, box, 0, missed, kind);
         }
 
-        return new RedactionCover(first, Envelope(raw), cutBefore, cutAfter);
+        return new RedactionCover(first, smooth ? Smoothed(raw, own) : Envelope(raw), cutBefore, cutAfter);
     }
 
     // The frames where a shot starts, from the scene cuts analyze_video found in the footage. None
@@ -155,6 +169,37 @@ public sealed class RedactionCover
         var marginX = box.Width * pad + grow;
         var marginY = box.Height * pad + grow;
         return new CoverBox(frame, box.X - marginX, box.Y - marginY, box.Width + 2 * marginX, box.Height + 2 * marginY, kind);
+    }
+
+    // Each box's center and size averaged over the frames around it (as many on each side), then grown
+    // where it has to be to contain the frame's own box.
+    private static CoverBox[] Smoothed(CoverBox[] raw, CoverBox[] own)
+    {
+        var count = raw.Length;
+        var boxes = new CoverBox[count];
+        for (var i = 0; i < count; i++)
+        {
+            var reach = Math.Min(SmoothFrames, Math.Min(i, count - 1 - i));
+            double centerX = 0, centerY = 0, width = 0, height = 0;
+            for (var j = i - reach; j <= i + reach; j++)
+            {
+                centerX += raw[j].X + raw[j].Width / 2;
+                centerY += raw[j].Y + raw[j].Height / 2;
+                width += raw[j].Width;
+                height += raw[j].Height;
+            }
+
+            var n = 2 * reach + 1;
+            var (w, h) = (width / n, height / n);
+            var mine = own[i];
+            var x = Math.Min(centerX / n - w / 2, mine.X);
+            var y = Math.Min(centerY / n - h / 2, mine.Y);
+            var x2 = Math.Max(centerX / n + w / 2, mine.X + mine.Width);
+            var y2 = Math.Max(centerY / n + h / 2, mine.Y + mine.Height);
+            boxes[i] = new CoverBox(mine.Frame, x, y, x2 - x, y2 - y, mine.Kind);
+        }
+
+        return boxes;
     }
 
     // Each edge goes out to its farthest over the frames around it, then is averaged over them: every

@@ -55,7 +55,7 @@ public static class DebugOverlay
             outline.StrokeWidth = 1.5f;
             outline.Color = color;
 
-            if (LocalBounds(renderer, project, layer.Layer, time) is { } bounds)
+            if (LayerOutlines.LocalBounds(renderer, project, layer.Layer, time) is { } bounds)
             {
                 using var builder = new SKPathBuilder();
                 builder.MoveTo(layer.World.Map(bounds.Left, bounds.Top, scale));
@@ -165,34 +165,5 @@ public static class DebugOverlay
         }
 
         return rect;
-    }
-
-    private static SKRect? LocalBounds(FrameRenderer renderer, Project project, VisualLayer layer, double time)
-    {
-        switch (layer)
-        {
-            case ImageLayer image:
-                var drawing = renderer.CurrentDrawing(project, image, time);
-                if (drawing is null)
-                {
-                    return null;
-                }
-
-                if (image.FlipX)
-                {
-                    var flippedLeft = (float)(2 * image.AnchorX - drawing.Width);
-                    return new SKRect(flippedLeft, 0, flippedLeft + drawing.Width, drawing.Height);
-                }
-
-                return new SKRect(0, 0, drawing.Width, drawing.Height);
-            case TextLayer text:
-                var layout = renderer.Text.Layout(project, renderer.ProjectDirectory, text);
-                return new SKRect(0, 0, layout.BoxWidth, layout.BoxHeight);
-            case VideoLayer video when project.FindAsset(video.Asset) is { } asset:
-                var (width, height) = VideoTiming.CropSize(video, asset);
-                return new SKRect(0, 0, (float)width, (float)height);
-            default:
-                return null;
-        }
     }
 }

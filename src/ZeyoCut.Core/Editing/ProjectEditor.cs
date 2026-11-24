@@ -14,14 +14,44 @@ public static class ProjectEditor
 {
     public static string LayerIds(Project project) => Ids.List(project.Layers.Select(l => l.Id));
 
+    // A new project's settings; ProjectSession.Create checks them when it saves the project.
+    public static Project NewProject(NewProjectOptions options)
+    {
+        if (string.IsNullOrWhiteSpace(options.Name))
+        {
+            throw new ZeyoCutException("name is required");
+        }
+
+        var preset = string.IsNullOrWhiteSpace(options.Preset) ? null : Presets.Get(options.Preset);
+        var project = new Project
+        {
+            Name = options.Name.Trim(),
+            Width = options.Width ?? preset?.Width ?? 1920,
+            Height = options.Height ?? preset?.Height ?? 1080,
+            Fps = options.Fps ?? preset?.Fps ?? 30,
+            Duration = options.Duration,
+            BackgroundColor = options.BackgroundColor,
+        };
+        if (preset is not null)
+        {
+            project.Audio.LoudnessTarget = preset.Loudness;
+        }
+
+        return project;
+    }
+
     public static ProjectUpdate UpdateProject(Project project, ProjectOptions options)
     {
         if (options.Name is null && options.Width is null && options.Height is null && options.Fps is null
             && options.Duration is null && options.BackgroundColor is null
-            && options.Preset is null && options.LoudnessTarget is null && options.Ducking is null)
+            && options.Preset is null && options.LoudnessTarget is null && options.Ducking is null
+            && options.DuckLevel is null && options.DuckFadeIn is null && options.DuckFadeOut is null
+            && options.Role is null && options.Gain is null && options.Pan is null && options.Muted is null)
         {
-            throw new ZeyoCutException("nothing to change; pass at least one of name, width, height, fps, duration, backgroundColor, preset, loudnessTarget, ducking");
+            throw new ZeyoCutException("nothing to change; pass at least one of name, width, height, fps, duration, backgroundColor, preset, loudnessTarget, ducking, duckLevel, duckFadeIn, duckFadeOut, or role with gain, pan or muted");
         }
+
+        CheckMix(options);
 
         if (options.Preset is { } presetName)
         {
@@ -105,6 +135,48 @@ public static class ProjectEditor
         {
             changes.Add($"music ducking {(ducking ? "on" : "off")}");
             project.Audio.Ducking = ducking;
+        }
+
+        var audio = project.Audio;
+        if (options.DuckLevel is { } level && level != audio.DuckLevel)
+        {
+            changes.Add($"duck level {Decibels(audio.DuckLevel)} → {Decibels(level)}");
+            audio.DuckLevel = level;
+        }
+
+        if (options.DuckFadeIn is { } fadeIn && fadeIn != audio.DuckFadeIn)
+        {
+            changes.Add($"duck fade in {Num(audio.DuckFadeIn)}s → {Num(fadeIn)}s");
+            audio.DuckFadeIn = fadeIn;
+        }
+
+        if (options.DuckFadeOut is { } fadeOut && fadeOut != audio.DuckFadeOut)
+        {
+            changes.Add($"duck fade out {Num(audio.DuckFadeOut)}s → {Num(fadeOut)}s");
+            audio.DuckFadeOut = fadeOut;
+        }
+
+        if (options.Role is { } role)
+        {
+            var mix = audio.For(role);
+            var roleName = EnumNames.ToName(role);
+            if (options.Gain is { } gain && gain != mix.Gain)
+            {
+                changes.Add($"{roleName} gain {Decibels(mix.Gain)} → {Decibels(gain)}");
+                mix.Gain = gain;
+            }
+
+            if (options.Pan is { } pan && pan != mix.Pan)
+            {
+                changes.Add($"{roleName} pan {PanText(mix.Pan)} → {PanText(pan)}");
+                mix.Pan = pan;
+            }
+
+            if (options.Muted is { } muted && muted != mix.Muted)
+            {
+                changes.Add($"{roleName} {(muted ? "muted" : "unmuted")}");
+                mix.Muted = muted;
+            }
         }
 
         if (changes.Count == 0)
@@ -355,7 +427,7 @@ public static class ProjectEditor
             End = options.End,
             TrimIn = options.TrimIn ?? 0,
             TrimOut = options.TrimOut,
-            Volume = options.Volume ?? 1,
+            Volume = new AnimatedValue(options.Volume ?? 1),
             Role = options.Role is null ? AudioRole.Music : EnumNames.Parse<AudioRole>(options.Role, "role"),
             FadeIn = options.FadeIn ?? 0,
             FadeOut = options.FadeOut ?? 0,
@@ -394,7 +466,7 @@ public static class ProjectEditor
             TrimIn = trimIn,
             TrimOut = Math.Min(trimOut, duration),
             Speed = speed,
-            Volume = options.Volume ?? 1,
+            Volume = new AnimatedValue(options.Volume ?? 1),
             Muted = options.Muted ?? false,
             Role = options.Role is null ? AudioRole.Voice : EnumNames.Parse<AudioRole>(options.Role, "role"),
             FadeIn = options.FadeIn ?? 0,
@@ -425,6 +497,50 @@ public static class ProjectEditor
         project.Duration = rounded;
         return true;
     }
+
+    // gain, pan and muted go with a role, and their ranges.
+    private static void CheckMix(ProjectOptions options)
+    {
+        if (options.Role is null && (options.Gain is not null || options.Pan is not null || options.Muted is not null))
+        {
+            throw new ZeyoCutException("gain, pan and muted set a role's mix; pass role too (voice, music or effects)");
+        }
+
+        if (options.Role is not null && options.Gain is null && options.Pan is null && options.Muted is null)
+        {
+            throw new ZeyoCutException("role picks whose gain, pan and muted change; pass at least one of them");
+        }
+
+        if (options.Gain is { } gain && (!double.IsFinite(gain) || gain < RoleMix.MinGain || gain > RoleMix.MaxGain))
+        {
+            throw new ZeyoCutException($"gain must be between {Num(RoleMix.MinGain)} and {Num(RoleMix.MaxGain)} dB (got {Num(gain)})");
+        }
+
+        if (options.Pan is { } pan && (!double.IsFinite(pan) || pan < -1 || pan > 1))
+        {
+            throw new ZeyoCutException($"pan must be between -1 (left) and 1 (right) (got {Num(pan)})");
+        }
+
+        if (options.DuckLevel is { } level && (!double.IsFinite(level) || level < AudioSettings.MinDuckLevel || level > 0))
+        {
+            throw new ZeyoCutException($"duckLevel must be between {Num(AudioSettings.MinDuckLevel)} and 0 dB (got {Num(level)})");
+        }
+
+        foreach (var (name, fade) in new[] { ("duckFadeIn", options.DuckFadeIn), ("duckFadeOut", options.DuckFadeOut) })
+        {
+            if (fade is { } seconds && (!double.IsFinite(seconds) || seconds < 0 || seconds > AudioSettings.MaxDuckFade))
+            {
+                throw new ZeyoCutException($"{name} must be between 0 and {Num(AudioSettings.MaxDuckFade)} seconds (got {Num(seconds)})");
+            }
+        }
+    }
+
+    // 0 dB, -6 dB, +3 dB.
+    public static string Decibels(double value) => value.ToString("+0.#;-0.#;0", CultureInfo.InvariantCulture) + " dB";
+
+    // center, 50% left, 100% right.
+    public static string PanText(double pan) =>
+        Math.Abs(pan) < 0.005 ? "center" : $"{Math.Round(Math.Abs(pan) * 100).ToString(CultureInfo.InvariantCulture)}% {(pan < 0 ? "left" : "right")}";
 
     public static IReadOnlyList<string> UpdateLayer(Project project, string layerId, JsonObject changes)
     {
@@ -625,6 +741,139 @@ public static class ProjectEditor
         }
 
         return map;
+    }
+
+    // Draws a visual layer at zIndex, its children moved by as much, so they keep their places
+    // relative to it. With insert, the layer and its children get levels of their own from zIndex
+    // up: when another layer is drawn at one of those levels, every other layer at zIndex or above
+    // moves up to make room, keeping the order they had.
+    public static string Reorder(Project project, string layerId, int zIndex, bool insert)
+    {
+        var layer = GetVisualLayer(project, layerId);
+        var family = Subtree(project, layer.Id).OfType<VisualLayer>().ToList();
+        var lowest = family.Min(l => l.ZIndex);
+        var span = family.Max(l => l.ZIndex) - lowest + 1;
+        var moved = 0;
+        if (insert)
+        {
+            var others = project.Layers.Where(l => l is VisualLayer or CutoutLayer && !family.Contains(l)).ToList();
+            if (others.Any(l => l.ZIndex >= zIndex && l.ZIndex < zIndex + span))
+            {
+                foreach (var other in others.Where(l => l.ZIndex >= zIndex))
+                {
+                    other.ZIndex += span;
+                    moved++;
+                }
+            }
+        }
+
+        var delta = insert ? zIndex - lowest : zIndex - layer.ZIndex;
+        foreach (var item in family)
+        {
+            item.ZIndex += delta;
+        }
+
+        var children = family.Count > 1 ? $" with {family.Count - 1} child layer(s)" : "";
+        var room = moved > 0 ? $"; {moved} layer(s) drawn at z={zIndex} or above moved up {span}" : "";
+        return $"'{layerId}' now draws at z={layer.ZIndex}{children}{room}";
+    }
+
+    // New draw levels that put layers which never show at the same time on one level, so the
+    // timeline needs few lanes. Each layer stays above every layer drawn under it that shows at some
+    // of the same time, so every frame is drawn as before. A subject cutout shows while its sources
+    // do, and a layer without an end counts as never ending. Returns only the layers whose level
+    // changes, and none when the top-level layers would need as many levels as they use now.
+    public static Dictionary<string, int> PackedLevels(Project project)
+    {
+        var drawn = new List<(Layer Layer, int Index, double Start, double End)>();
+        for (var i = 0; i < project.Layers.Count; i++)
+        {
+            switch (project.Layers[i])
+            {
+                case VisualLayer visual:
+                    drawn.Add((visual, i, visual.Start, Until(visual)));
+                    break;
+                case CutoutLayer cutout when cutout.Sources.Select(project.FindLayer).OfType<VisualLayer>().ToList() is { Count: > 0 } sources:
+                    drawn.Add((cutout, i, sources.Min(s => s.Start), sources.Max(Until)));
+                    break;
+            }
+        }
+
+        drawn.Sort((a, b) => a.Layer.ZIndex != b.Layer.ZIndex ? a.Layer.ZIndex.CompareTo(b.Layer.ZIndex) : a.Index.CompareTo(b.Index));
+        bool Overlap(int a, int b) => drawn[a].Start < drawn[b].End && drawn[b].Start < drawn[a].End;
+        bool TopLevel(int i) => drawn[i].Layer.ParentId is null;
+
+        // First each layer goes just above the layers under it that show with it, a top-level layer
+        // onto an even level: the levels child layers (which have no lanes) need between them then
+        // don't keep top-level layers apart.
+        var first = new int[drawn.Count];
+        for (var i = 0; i < drawn.Count; i++)
+        {
+            for (var j = 0; j < i; j++)
+            {
+                if (Overlap(i, j))
+                {
+                    first[i] = Math.Max(first[i], first[j] + 1);
+                }
+            }
+
+            if (TopLevel(i) && first[i] % 2 == 1)
+            {
+                first[i]++;
+            }
+        }
+
+        // Then, from the bottom up, each level is made as low as it goes, the top-level layers that
+        // share one moving together. Layers on one level never show together, and every layer under
+        // one that shows with it is on a lower level, which is done by then.
+        var levels = new int[drawn.Count];
+        var units = Enumerable.Range(0, drawn.Count).GroupBy(i => TopLevel(i) ? (first[i], -1) : (first[i], i)).OrderBy(u => u.Key.Item1);
+        foreach (var unit in units)
+        {
+            var level = unit.Max(i => Enumerable.Range(0, drawn.Count).Where(j => first[j] < first[i] && Overlap(i, j)).Select(j => levels[j] + 1).DefaultIfEmpty(0).Max());
+            foreach (var i in unit)
+            {
+                levels[i] = level;
+            }
+        }
+
+        var changed = new Dictionary<string, int>(StringComparer.Ordinal);
+        int Used(Func<int, int> level) => Enumerable.Range(0, drawn.Count).Where(TopLevel).Select(level).Distinct().Count();
+        if (Used(i => levels[i]) >= Used(i => drawn[i].Layer.ZIndex))
+        {
+            return changed;
+        }
+
+        for (var i = 0; i < drawn.Count; i++)
+        {
+            if (levels[i] != drawn[i].Layer.ZIndex)
+            {
+                changed[drawn[i].Layer.Id] = levels[i];
+            }
+        }
+
+        return changed;
+
+        static double Until(Layer layer) => layer is VideoLayer video ? video.TimelineEnd : layer.End ?? double.PositiveInfinity;
+    }
+
+    // Moves layers onto the levels PackedLevels gives.
+    public static string PackLanes(Project project)
+    {
+        var levels = PackedLevels(project);
+        if (levels.Count == 0)
+        {
+            throw new ZeyoCutException("the lanes are already packed: no two of them can share a draw level without changing what's drawn on top");
+        }
+
+        int Used() => project.Layers.Where(l => l is VisualLayer or CutoutLayer && l.ParentId is null).Select(l => l.ZIndex).Distinct().Count();
+        var before = Used();
+        foreach (var (id, level) in levels)
+        {
+            project.FindLayer(id)!.ZIndex = level;
+        }
+
+        return $"packed the top-level layers from {before} draw level(s) onto {Used()}; {levels.Count} layer(s) changed level, and every frame is drawn as before";
     }
 
     public static List<Layer> Subtree(Project project, string rootId)

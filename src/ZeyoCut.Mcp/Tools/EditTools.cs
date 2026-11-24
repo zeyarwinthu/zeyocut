@@ -65,6 +65,15 @@ public static class EditTools
         [Description("New start time, seconds.")] double start) => Guard(() =>
             Describe(state.Session.Mutate($"move_layer {layerId}", p => TimelineEditor.MoveLayer(p, layerId, start))));
 
+    [McpServerTool(Name = "trim_layer")]
+    [Description("Trim a layer's start, end or both, as dragging the edge of a clip does: the rest stays where it is on the timeline. Trimming in cuts the layer and its children shorter, keyframes included (a child with nothing left is removed); trimming out shows more of it, as far as a video or audio layer's source goes. Fades stay at the new edges. The project grows if the layer now runs past the end.")]
+    public static string TrimLayer(
+        EditorState state,
+        string layerId,
+        [Description("New start time, seconds. Leave out to keep the start.")] double? start = null,
+        [Description("New end time, seconds. Leave out to keep the end.")] double? end = null) => Guard(() =>
+            Describe(state.Session.Mutate($"trim_layer {layerId}", p => TimelineEditor.TrimLayer(p, layerId, start, end))));
+
     [McpServerTool(Name = "set_speed")]
     [Description("Change a video layer's playback speed (0.1..10) keeping its start; its keyframes and children stretch with it. With ripple (default) the layers after it move to stay back to back and the project duration changes by the same amount.")]
     public static string SetSpeed(

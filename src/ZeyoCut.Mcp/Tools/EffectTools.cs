@@ -34,6 +34,58 @@ public static class EffectTools
         return WithWarnings(change.Summary, change.Warnings);
     });
 
+    [McpServerTool(Name = "set_color")]
+    [Description("Grade an image or video clip (one undo step): exposure in stops (-3 to 3; 1 doubles the light), contrast and saturation (0 to 4, 1 as shot), highlights and shadows (-1 to 1: darken or brighten the light or the dark parts; black and white stay), temperature (-1 bluer to 1 warmer) and tint (-1 greener to 1 more magenta); 0 leaves each of those as shot. Values you leave out keep theirs. from copies another clip's color as fixed values (a clip whose color has keyframes can't be copied); reset=true puts the clip back as shot first; sameFootage=true then gives every other clip of the same video (or picture) this clip's color, and takes their color keyframes away. The color wheels move red, green and blue in one part of the picture: lift the dark parts (black moves, white stays), gamma the middle (black and white stay) and gain the light parts (white moves, black stays); channels you leave out keep theirs. look lays a LUT asset (a .cube file from import_asset) over the clip after everything else, by lookAmount (0 to 1; a new look is 1); look \"none\" takes it off. Once a clip has a grade, set_keyframes animates grade.exposure, grade.highlights, grade.shadows, grade.temperature and grade.tint, grade.lift.red/green/blue (and gamma, gain) once that wheel is set, and grade.look.amount once it has a look; contrast and saturation are animatable as ever. Brightness isn't part of the color here: update_layer sets it.")]
+    public static string SetColor(
+        EditorState state,
+        [Description("Image or video layer id.")] string layerId,
+        [Description("Stops of light, -3 to 3.")] double? exposure = null,
+        [Description("0 to 4, 1 as shot; 0 is flat gray.")] double? contrast = null,
+        [Description("-1 to 1: darkens (below 0) or brightens the light parts.")] double? highlights = null,
+        [Description("-1 to 1: deepens (below 0) or lifts the dark parts.")] double? shadows = null,
+        [Description("-1 (bluer) to 1 (warmer).")] double? temperature = null,
+        [Description("-1 (greener) to 1 (more magenta).")] double? tint = null,
+        [Description("0 to 4, 1 as shot; 0 is black and white.")] double? saturation = null,
+        [Description("Shadows wheel: {red, green, blue}, each -1 to 1.")] ColorWheelArg? lift = null,
+        [Description("Midtones wheel: {red, green, blue}, each -1 to 1.")] ColorWheelArg? gamma = null,
+        [Description("Highlights wheel: {red, green, blue}, each -1 to 1.")] ColorWheelArg? gain = null,
+        [Description("LUT asset id to lay over the clip, or \"none\" to take the look off.")] string? look = null,
+        [Description("How much of the look shows, 0 to 1.")] double? lookAmount = null,
+        [Description("Another clip to copy the color of.")] string? from = null,
+        [Description("Put the clip's color back as shot first: contrast and saturation 1, no grade.")] bool reset = false,
+        [Description("Then give every other clip of the same footage this clip's color.")] bool sameFootage = false) => Guard(() =>
+    {
+        var values = new Dictionary<string, double>();
+        foreach (var (name, value) in new[] { ("exposure", exposure), ("contrast", contrast), ("highlights", highlights), ("shadows", shadows), ("temperature", temperature), ("tint", tint), ("saturation", saturation) })
+        {
+            if (value is { } given)
+            {
+                values[name] = given;
+            }
+        }
+
+        foreach (var (wheel, given) in new[] { ("lift", lift), ("gamma", gamma), ("gain", gain) })
+        {
+            foreach (var (channel, value) in new[] { ("red", given?.Red), ("green", given?.Green), ("blue", given?.Blue) })
+            {
+                if (value is { } set)
+                {
+                    values[$"{wheel}.{channel}"] = set;
+                }
+            }
+        }
+
+        if (lookAmount is { } amount)
+        {
+            values[ColorEditor.LookAmount] = amount;
+        }
+
+        var named = look is null ? null : string.Equals(look.Trim(), "none", StringComparison.OrdinalIgnoreCase) ? "" : look.Trim();
+        var change = new ColorChange(values, string.IsNullOrWhiteSpace(from) ? null : from.Trim(), reset, sameFootage, named);
+        var result = state.Session.Mutate($"set_color {layerId}", p => ColorEditor.SetColor(p, layerId, change));
+        return WithWarnings(result.Summary, result.Warnings);
+    });
+
     [McpServerTool(Name = "set_mask")]
     [Description("Add, change or remove the layer's mask (one undo step): the layer shows only inside a rectangle, an ellipse or an image's opaque pixels, or only outside with invert=true. The box (x, y = top-left corner, width, height) is in the layer's own pixels, like its anchor, so it moves, turns and scales with the layer; a new mask fits the layer's content unless you give it. An image mask stretches the image asset's alpha over the box. feather softens the edge over about that many pixels. x, y, width, height and feather are animatable with set_keyframes as mask.x, mask.y, mask.width, mask.height, mask.feather (a growing width is a wipe). Fields you leave out keep their value. remove=true removes the mask.")]
     public static string SetMask(

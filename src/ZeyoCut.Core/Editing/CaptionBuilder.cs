@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 using System.Globalization;
+using System.Text;
 using ZeyoCut.Core.Animation;
 using ZeyoCut.Core.Model;
 using ZeyoCut.Core.Serialization;
@@ -356,6 +357,58 @@ public static class CaptionBuilder
         return [$"auto: {found}; {names} would be covered more than {Num(threshold)}%, so {(front.Count == 1 ? "it draws" : "they draw")} in front of {shown} (a caption can't fade there, since the subject is its own layer); the other captions stay behind it"];
     }
 
+    // What the behindSubject=auto fades are measured on that differs between the project the captions
+    // were added to and the project now: a caption, what covers them, a layer they follow (parents,
+    // the clips a cutout follows), an asset those use, the order they draw in, the canvas size, the
+    // frame rate or the camera. Null when none of it changed, as after an edit to another layer or a
+    // save that changed nothing but the revision.
+    public static string? FadesChanged(Project added, Project now, CaptionResult result)
+    {
+        var subject = result.Subject!;
+        var measured = new HashSet<string>(StringComparer.Ordinal);
+        var pending = new Stack<string>([.. result.LayerIds, .. subject.Cover, .. subject.Clips]);
+        while (pending.TryPop(out var id))
+        {
+            if (!measured.Add(id))
+            {
+                continue;
+            }
+
+            foreach (var layer in new[] { added.FindLayer(id), now.FindLayer(id) }.OfType<Layer>())
+            {
+                if (layer.ParentId is { } parent)
+                {
+                    pending.Push(parent);
+                }
+
+                if (layer is CutoutLayer cutout)
+                {
+                    cutout.Sources.ForEach(pending.Push);
+                }
+            }
+        }
+
+        foreach (var delta in ProjectDiff.Deltas(added, now))
+        {
+            var changed = delta.Kind switch
+            {
+                "settings" when delta.Id is "width" or "height" => "the canvas size",
+                "settings" when delta.Id == "fps" => "the frame rate",
+                "camera" => "the camera",
+                "layer" when measured.Contains(delta.Id) => $"layer '{delta.Id}'",
+                "asset" when ProjectChecker.Users(added, delta.Id).Concat(ProjectChecker.Users(now, delta.Id)).Any(measured.Contains) => $"asset '{delta.Id}'",
+                _ => null,
+            };
+            if (changed is not null)
+            {
+                return changed;
+            }
+        }
+
+        var order = added.Layers.Select(l => l.Id).Where(measured.Contains);
+        return order.SequenceEqual(now.Layers.Select(l => l.Id).Where(measured.Contains)) ? null : "the order of the layers";
+    }
+
     // The spans where some caption is covered more than the threshold: runs of such frames, joined
     // when less than MergeGap apart.
     public static List<FrontSpan> FrontSpans(IReadOnlyList<CaptionCover> over, int fps, double duration)
@@ -442,6 +495,37 @@ public static class CaptionBuilder
 
     public static string Srt(IReadOnlyList<(double Start, double End, string Text)> cues) =>
         string.Concat(cues.Select((c, i) => $"{i + 1}\r\n{AnalysisFiles.SrtTime(c.Start)} --> {AnalysisFiles.SrtTime(c.End)}\r\n{c.Text.Replace("\r\n", "\n").Replace("\n", "\r\n")}\r\n\r\n"));
+
+    // An .srt file's name as export_srt takes it: a plain name like "talk.srt" without folders, with
+    // .srt added when it has no extension.
+    public static string SrtFileName(string fileName)
+    {
+        if (string.IsNullOrWhiteSpace(fileName) || fileName.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0)
+        {
+            throw new ZeyoCutException($"fileName '{fileName}' must be a plain file name like \"talk.srt\" without folders");
+        }
+
+        var name = fileName.Trim();
+        var extension = Path.GetExtension(name);
+        if (extension.Length == 0)
+        {
+            return name + ".srt";
+        }
+
+        return extension.Equals(".srt", StringComparison.OrdinalIgnoreCase)
+            ? name
+            : throw new ZeyoCutException($"export_srt writes .srt files (got '{extension}')");
+    }
+
+    // Writes cues as an .srt file (UTF-8 without a byte order mark) to the project's exports folder,
+    // as export_srt does; returns its path.
+    public static string WriteSrt(string directory, string fileName, IReadOnlyList<(double Start, double End, string Text)> cues)
+    {
+        var output = Path.Combine(directory, ProjectStore.ExportsFolder, fileName);
+        Directory.CreateDirectory(Path.GetDirectoryName(output)!);
+        File.WriteAllText(output, Srt(cues), new UTF8Encoding(false));
+        return output;
+    }
 
     private sealed record StyleSpec(double Size, bool Bold, string? Stroke, double StrokeWidth, TextBackground? Box, double Y, bool Bottom, double LineHeight, double MaxWidth);
 

@@ -29,29 +29,20 @@ public static class ProjectTools
         [Description("Optional absolute folder for the project inside the projects root, instead of <projectsRoot>/<name>.")] string? directory = null,
         [Description("youtube_1080p or shorts_1080p.")] string? preset = null) => Guard(() =>
     {
-        if (string.IsNullOrWhiteSpace(name))
+        var project = ProjectEditor.NewProject(new NewProjectOptions
         {
-            throw new ZeyoCutException("name is required");
-        }
-
-        var chosen = string.IsNullOrWhiteSpace(preset) ? null : Presets.Get(preset);
-        var folder = string.IsNullOrWhiteSpace(directory)
-            ? Path.Combine(state.Settings.ProjectsRoot, SafeFolderName(name))
-            : AllowedFolders.Project(state.Settings, directory);
-        var project = new Project
-        {
-            Name = name.Trim(),
-            Width = width ?? chosen?.Width ?? 1920,
-            Height = height ?? chosen?.Height ?? 1080,
-            Fps = fps ?? chosen?.Fps ?? 30,
+            Name = name,
+            Width = width,
+            Height = height,
+            Fps = fps,
             Duration = duration,
             BackgroundColor = backgroundColor,
-        };
-        if (chosen is not null)
-        {
-            project.Audio.LoudnessTarget = chosen.Loudness;
-        }
-
+            Preset = preset,
+        });
+        var chosen = string.IsNullOrWhiteSpace(preset) ? null : Presets.Get(preset);
+        var folder = string.IsNullOrWhiteSpace(directory)
+            ? Path.Combine(state.Settings.ProjectsRoot, ProjectStore.FolderName(name))
+            : AllowedFolders.Project(state.Settings, directory);
         var session = ProjectSession.Create(folder, project);
         state.Open(session);
         return $"created and opened project '{project.Name}' at {session.Directory}{(chosen is null ? "" : $" (preset {chosen.Name}: {chosen.Description})")}\n"
@@ -61,7 +52,7 @@ public static class ProjectTools
     });
 
     [McpServerTool(Name = "update_project")]
-    [Description("Change the open project's settings. Only the parameters you pass change. Keyframe times are in seconds, so changing fps keeps the timing; changing the canvas size does not move layers (for landscape footage on a new vertical canvas use reframe_to_vertical). Extend the duration when a voiceover or music runs past the end; the result warns about audio that would be cut and keyframes or layers past a shorter end. Audio: loudnessTarget (LUFS, two-pass loudnorm at export; 0 = off) and ducking (music under voice).")]
+    [Description("Change the open project's settings. Only the parameters you pass change. Keyframe times are in seconds, so changing fps keeps the timing; changing the canvas size does not move layers (for landscape footage on a new vertical canvas use reframe_to_vertical). Extend the duration when a voiceover or music runs past the end; the result warns about audio that would be cut and keyframes or layers past a shorter end. Audio: loudnessTarget (LUFS, two-pass loudnorm at export; 0 = off); ducking (music under voice) with duckLevel, duckFadeIn and duckFadeOut; and a role's mixer strip: role with gain, pan and muted (every clip of that role, in the export and the editor's preview).")]
     public static string UpdateProject(
         EditorState state,
         [Description("New display name (the folder is not renamed).")] string? name = null,
@@ -72,7 +63,14 @@ public static class ProjectTools
         [Description("Background color #RRGGBB or #RRGGBBAA.")] string? backgroundColor = null,
         [Description("youtube_1080p (1920x1080) or shorts_1080p (1080x1920): sets width, height, fps and loudness.")] string? preset = null,
         [Description("Export loudness in LUFS, -40..-5 (-14 for YouTube and most platforms); 0 turns normalization off.")] double? loudnessTarget = null,
-        [Description("Duck music (role music) under voice (role voice) in the export.")] bool? ducking = null) => Guard(() =>
+        [Description("Duck music (role music) under voice (role voice) in the export.")] bool? ducking = null,
+        [Description("How far ducking lowers the music where voice clips play, in dB: 0 to -40 (default -12).")] double? duckLevel = null,
+        [Description("Seconds the music takes to go down before a voice clip starts, 0-5 (default 0.5).")] double? duckFadeIn = null,
+        [Description("Seconds the music takes to come back up after a voice clip ends, 0-5 (default 1.5).")] double? duckFadeOut = null,
+        [Description("voice, music or effects: the role whose gain, pan and muted change. Voice holds videos' own sound and narration.")] string? role = null,
+        [Description("The role's gain in dB, -60 to +6 (0 = as the clips are).")] double? gain = null,
+        [Description("The role's balance, -1 (left only) through 0 (center) to 1 (right only).")] double? pan = null,
+        [Description("Silence every clip of the role (true) or bring it back (false).")] bool? muted = null) => Guard(() =>
     {
         var session = state.Session;
         var update = session.Mutate("update_project", p => ProjectEditor.UpdateProject(p, new ProjectOptions
@@ -86,6 +84,13 @@ public static class ProjectTools
             Preset = preset,
             LoudnessTarget = loudnessTarget,
             Ducking = ducking,
+            DuckLevel = duckLevel,
+            DuckFadeIn = duckFadeIn,
+            DuckFadeOut = duckFadeOut,
+            Role = string.IsNullOrWhiteSpace(role) ? null : EnumNames.Parse<AudioRole>(role, "role"),
+            Gain = gain,
+            Pan = pan,
+            Muted = muted,
         }));
         var project = session.Snapshot();
         return WithWarnings($"updated project '{project.Name}': {string.Join("; ", update.Changes)}\n{Summary(project)}", update.Warnings);
@@ -133,6 +138,23 @@ public static class ProjectTools
         return WithWarnings(text, problems.Select(p => "project.json problem: " + p));
     });
 
+    [McpServerTool(Name = "open_in_editor")]
+    [Description("Open a project in ZeyoCut's editor window on this computer, so the user can fine-tune it by hand: move, trim and split clips on a timeline, place, crop and animate layers with keyframes, set effects, color adjustments and face-blur settings, edit caption text and style, change volumes, export. Masks, motion paths, transitions and speed stay with the tools. Default: the open project. The editor saves each change to project.json as it is made; your next tool call starts with a note of what the user changed, your edits are made on top of theirs, and the editor shows yours within a second. A project already open in the editor comes to the front instead of opening twice.")]
+    public static string OpenInEditor(
+        EditorState state,
+        [Description("Project name from list_projects, or an absolute path to a project folder inside the projects root. Default: the open project.")] string? project = null) => Guard(() =>
+    {
+        var directory = string.IsNullOrWhiteSpace(project) ? state.Session.Directory : state.ResolveProjectDirectory(project);
+        if (!ProjectStore.IsProjectDirectory(directory))
+        {
+            throw new ZeyoCutException($"no project found at '{directory}'; projects: {Ids.List(FindProjects(state).Select(p => p.Name))}");
+        }
+
+        var editor = EditorLauncher.Find(state.Settings);
+        var process = EditorLauncher.Start(editor, [directory]);
+        return $"opened {directory} in the editor ({editor}, process {process}); the user can now edit it by hand while you keep working on it";
+    });
+
     [McpServerTool(Name = "get_project")]
     [Description("Return the full project model (project.json) of the open project.")]
     public static string GetProject(EditorState state) => Guard(() => ProjectJson.Serialize(state.Session.Snapshot()));
@@ -160,25 +182,27 @@ public static class ProjectTools
     });
 
     [McpServerTool(Name = "undo")]
-    [Description("Undo the last change to the open project (in-memory history of this session, up to 200 steps).")]
+    [Description("Undo the last change to the open project (in-memory history of this session, up to 200 steps). When another program (such as the editor) has saved since, only what that change did is put back, and the other program's changes stay; it's refused when the other program changed the same layers or settings since. After such a refusal, the next undo steps over that change, which stays as it is, and undoes the one before it; the reply names the change it stepped over.")]
     public static string Undo(EditorState state) => Guard(() =>
     {
         var session = state.Session;
-        var label = session.Undo();
-        return $"undid: {label} ({session.UndoCount} more undo step(s), {session.RedoCount} redo step(s))";
+        var label = session.Undo(out var over);
+        var stepped = over.Count == 0 ? "" : $". Stepped over {string.Join(", ", over.Select(l => $"'{l}'"))}, which can't be undone on top of another program's changes";
+        return $"undid: {label} ({session.UndoCount} more undo step(s), {session.RedoCount} redo step(s)){stepped}";
     });
 
     [McpServerTool(Name = "redo")]
-    [Description("Redo the last undone change.")]
+    [Description("Redo the last undone change. When another program (such as the editor) has saved since, it's refused when that program changed the same layers or settings since the undo. After such a refusal, the next redo steps over that change, which stays undone, and redoes the one undone before it; the reply names the change it stepped over.")]
     public static string Redo(EditorState state) => Guard(() =>
     {
         var session = state.Session;
-        var label = session.Redo();
-        return $"redid: {label} ({session.UndoCount} undo step(s), {session.RedoCount} more redo step(s))";
+        var label = session.Redo(out var over);
+        var stepped = over.Count == 0 ? "" : $". Stepped over {string.Join(", ", over.Select(l => $"'{l}'"))}, which can't be redone on top of another program's changes";
+        return $"redid: {label} ({session.UndoCount} undo step(s), {session.RedoCount} more redo step(s)){stepped}";
     });
 
     [McpServerTool(Name = "restore_backup")]
-    [Description("List the open project's backups, newest first, or put one back. Before every save the project.json being replaced is copied to the project's backups folder, named after the edit saved over it; the last 20 are kept. When open_project updates a file from an older ZeyoCut, the file as it was is kept there too, for good. Backups hold project.json only, not the assets. Restoring is one undo step, and what it replaces is backed up as well.")]
+    [Description("List the open project's backups, newest first, or put one back. Before every save the project.json being replaced is copied to the project's backups folder, named after the edit saved over it; the last 20 are kept, and the last 20 the editor saved besides (labelled editor ...), with the copy of the project as the other of the two last left it. When open_project updates a file from an older ZeyoCut, the file as it was is kept there too, for good. Backups hold project.json only, not the assets. Restoring is one undo step, and what it replaces is backed up as well.")]
     public static string RestoreBackup(
         EditorState state,
         [Description("A backup's name from the list; its time (e.g. 20261104-161502-123) is enough. Omit to list them.")] string? backup = null) => Guard(() =>
@@ -218,7 +242,7 @@ public static class ProjectTools
         }
 
         var found = ProjectBackups.Find(session.Directory, backup);
-        session.Replace($"restore_backup {found.Name.Split(" before ")[0]}", ProjectBackups.Load(found));
+        session.Replace(ProjectBackups.RestoreLabel(found), ProjectBackups.Load(found));
         return $"restored {found.Name} ({When(found)}); undo puts back what was there\n{LayerTree.Format(session.Snapshot())}";
     });
 
@@ -263,11 +287,4 @@ public static class ProjectTools
 
     private static string Summary(Project project) =>
         $"{project.Width}x{project.Height} @ {project.Fps} fps, {Num(project.Duration)}s ({FrameMath.FrameCount(project)} frames), background {project.BackgroundColor}";
-
-    internal static string SafeFolderName(string name)
-    {
-        var invalid = Path.GetInvalidFileNameChars();
-        var cleaned = new string(name.Trim().Select(c => invalid.Contains(c) ? '_' : c).ToArray()).Trim('.', ' ');
-        return cleaned.Length == 0 ? "project" : cleaned;
-    }
 }

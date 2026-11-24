@@ -1,0 +1,38 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <RootNamespace>ZeyoCut.Editor</RootNamespace>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>zeyocut.ico</ApplicationIcon>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Using Include="System.IO" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\ZeyoCut.Core\ZeyoCut.Core.csproj" />
+    <ProjectReference Include="..\ZeyoCut.Render\ZeyoCut.Render.csproj" />
+  </ItemGroup>
+
+  <!-- The sample project the Welcome offers, next to the exe as in the release zip and the bundle. -->
+  <ItemGroup>
+    <None Include="..\..\examples\tora-jump\**" LinkBase="examples\tora-jump" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <Target Name="ExcludeSymbolsFromPublish" AfterTargets="ComputeResolvedFilesToPublishList">
+    <ItemGroup>
+      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)" Condition="'%(Extension)' == '.pdb'" />
+    </ItemGroup>
+  </Target>
+
+  <Target Name="ExcludeAiNativesFromPublish" AfterTargets="ComputeResolvedFilesToPublishList">
+    <ItemGroup>
+      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)" Condition="'%(Filename)' == 'OpenCvSharpExtern' Or $([System.String]::Copy('%(Filename)').StartsWith('opencv_')) Or $([System.String]::Copy('%(Filename)').StartsWith('onnxruntime')) Or '%(Filename)' == 'DirectML'" />
+    </ItemGroup>
+  </Target>
+
+</Project>

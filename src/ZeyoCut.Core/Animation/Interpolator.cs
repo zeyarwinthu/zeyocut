@@ -35,7 +35,7 @@ public static class Interpolator
         }
 
         var u = (time - a.Time) / span;
-        return a.Value + (b.Value - a.Value) * EasingFunctions.Apply(a.Easing, u);
+        return a.Value + (b.Value - a.Value) * EasingFunctions.Apply(a.Easing, u, a.Bezier);
     }
 
     public static string Evaluate(DrawingTrack track, double time)

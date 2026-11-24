@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 
+using System.Globalization;
 using ZeyoCut.Core.Animation;
 using ZeyoCut.Core.Model;
 
@@ -45,6 +46,11 @@ public static class ProjectValidator
             else if (!ProjectStore.IsAssetFile(asset.File))
             {
                 errors.Add($"asset '{asset.Id}': file '{asset.File}' must be a file in the project's {ProjectStore.AssetsFolder} folder");
+            }
+
+            if (AssetTags.Problem(asset) is { } tags)
+            {
+                errors.Add(tags);
             }
 
             if (asset.Type == AssetType.Video)
@@ -176,6 +182,7 @@ public static class ProjectValidator
             }
 
             ValidateTimes(value.Keyframes.Select(k => k.Time).ToList(), $"camera.{name}", errors);
+            ValidateEasings(value.Keyframes, $"camera.{name}", errors);
         }
 
         var zooms = camera.Zoom.Keyframes.Select(k => k.Value).Prepend(camera.Zoom.Value);
@@ -225,6 +232,48 @@ public static class ProjectValidator
         if (!double.IsFinite(project.Audio.TruePeak) || project.Audio.TruePeak < -9 || project.Audio.TruePeak > 0)
         {
             errors.Add($"audio.truePeak must be between -9 and 0 dBTP (got {project.Audio.TruePeak})");
+        }
+
+        if (!double.IsFinite(project.Audio.DuckLevel) || project.Audio.DuckLevel < AudioSettings.MinDuckLevel || project.Audio.DuckLevel > 0)
+        {
+            errors.Add($"audio.duckLevel must be between {AudioSettings.MinDuckLevel} and 0 dB (got {project.Audio.DuckLevel})");
+        }
+
+        foreach (var (name, fade) in new[] { ("duckFadeIn", project.Audio.DuckFadeIn), ("duckFadeOut", project.Audio.DuckFadeOut) })
+        {
+            if (!double.IsFinite(fade) || fade < 0 || fade > AudioSettings.MaxDuckFade)
+            {
+                errors.Add($"audio.{name} must be between 0 and {AudioSettings.MaxDuckFade} seconds (got {fade})");
+            }
+        }
+
+        foreach (var role in Enum.GetValues<AudioRole>())
+        {
+            var mix = project.Audio.For(role);
+            var name = $"audio.{EnumNames.ToName(role)}";
+            if (!double.IsFinite(mix.Gain) || mix.Gain < RoleMix.MinGain || mix.Gain > RoleMix.MaxGain)
+            {
+                errors.Add($"{name}.gain must be between {RoleMix.MinGain} and {RoleMix.MaxGain} dB (got {mix.Gain})");
+            }
+
+            if (!double.IsFinite(mix.Pan) || mix.Pan < -1 || mix.Pan > 1)
+            {
+                errors.Add($"{name}.pan must be between -1 and 1 (got {mix.Pan})");
+            }
+        }
+    }
+
+    // The static volume, and every keyframe's, from 0 to 10.
+    private static void ValidateVolume(AnimatedValue volume, string prefix, List<string> errors)
+    {
+        if (!double.IsFinite(volume.Value) || volume.Value < 0 || volume.Value > 10)
+        {
+            errors.Add($"{prefix}: volume must be between 0 and 10 (1 = original level)");
+        }
+
+        if (volume.Keyframes.Any(k => double.IsFinite(k.Value) && (k.Value < 0 || k.Value > 10)))
+        {
+            errors.Add($"{prefix}.volume: keyframe values must be between 0 and 10 (1 = original level)");
         }
     }
 
@@ -413,6 +462,8 @@ public static class ProjectValidator
                 {
                     errors.Add($"{prefix}: {id}.{name} keyframes need times of 0 or more and finite values{(size ? " above 0" : "")}");
                 }
+
+                ValidateEasings(value.Keyframes, $"{prefix}.{id}.{name}", errors);
             }
         }
     }
@@ -475,6 +526,7 @@ public static class ProjectValidator
         }
 
         ValidateTimes(layer.Opacity.Keyframes.Select(k => k.Time).ToList(), $"{prefix}.opacity", errors);
+        ValidateEasings(layer.Opacity.Keyframes, $"{prefix}.opacity", errors);
         if (layer.Opacity.Keyframes.Any(k => !double.IsFinite(k.Value)))
         {
             errors.Add($"{prefix}.opacity: keyframe values must be finite numbers");
@@ -496,6 +548,7 @@ public static class ProjectValidator
             }
 
             ValidateTimes(value.Keyframes.Select(k => k.Time).ToList(), $"{prefix}.{name}", errors);
+            ValidateEasings(value.Keyframes, $"{prefix}.{name}", errors);
             if (value.Keyframes.Any(k => !double.IsFinite(k.Value)))
             {
                 errors.Add($"{prefix}.{name}: keyframe values must be finite numbers");
@@ -505,6 +558,29 @@ public static class ProjectValidator
 
     private static void ValidateEffects(VisualLayer layer, string prefix, Dictionary<string, Asset> assets, List<string> errors)
     {
+        if (layer is IColorAdjustable { Grade: { } grade })
+        {
+            foreach (var control in ColorEditor.Controls.Where(c => c.Graded))
+            {
+                if (ColorEditor.Value(grade, control.Name) is { } value)
+                {
+                    ValidateRange(value, control.Min, control.Max, $"{prefix}: {control.Property}", errors);
+                }
+            }
+
+            if (grade.Look is { } look)
+            {
+                if (!assets.TryGetValue(look.Asset ?? "", out var lut))
+                {
+                    errors.Add($"{prefix}: grade.look.asset '{look.Asset}' not found; LUT assets: {Ids.List(assets.Values.Where(a => a.Type == AssetType.Lut).Select(a => a.Id))}");
+                }
+                else if (lut.Type != AssetType.Lut)
+                {
+                    errors.Add($"{prefix}: grade.look.asset '{look.Asset}' is {Article(lut.Type)}, not a LUT");
+                }
+            }
+        }
+
         if (layer.Shadow is { } shadow)
         {
             ValidateColor(shadow.Color, $"{prefix}: shadow.color", errors);
@@ -721,9 +797,12 @@ public static class ProjectValidator
             errors.Add($"{prefix}: asset '{layer.Asset}' is {Article(asset.Type)}, not audio");
         }
 
-        if (!double.IsFinite(layer.Volume) || layer.Volume < 0 || layer.Volume > 10)
+        ValidateVolume(layer.Volume, prefix, errors);
+        ValidateTimes(layer.Volume.Keyframes.Select(k => k.Time).ToList(), $"{prefix}.volume", errors);
+        ValidateEasings(layer.Volume.Keyframes, $"{prefix}.volume", errors);
+        if (layer.Volume.Keyframes.Any(k => !double.IsFinite(k.Value)))
         {
-            errors.Add($"{prefix}: volume must be between 0 and 10 (1 = original level)");
+            errors.Add($"{prefix}.volume: keyframe values must be finite numbers");
         }
 
         if (!double.IsFinite(layer.TrimIn) || layer.TrimIn < 0)
@@ -791,10 +870,7 @@ public static class ProjectValidator
             errors.Add($"{prefix}: trimOut ({layer.TrimOut}) is past the end of '{asset.Id}' ({duration}s)");
         }
 
-        if (!double.IsFinite(layer.Volume) || layer.Volume < 0 || layer.Volume > 10)
-        {
-            errors.Add($"{prefix}: volume must be between 0 and 10 (1 = original level)");
-        }
+        ValidateVolume(layer.Volume, prefix, errors);
 
         if (!double.IsFinite(layer.FadeIn) || layer.FadeIn < 0 || !double.IsFinite(layer.FadeOut) || layer.FadeOut < 0)
         {
@@ -814,6 +890,17 @@ public static class ProjectValidator
             else if (asset is { Width: { } width, Height: { } height } && (cropWidth > width + 1e-6 || cropHeight > height + 1e-6))
             {
                 errors.Add($"{prefix}: the crop ({cropWidth}x{cropHeight}) is larger than the source ({width}x{height})");
+            }
+        }
+    }
+
+    private static void ValidateEasings(List<Keyframe> keys, string where, List<string> errors)
+    {
+        foreach (var key in keys.Where(k => k.Easing == Easing.CubicBezier))
+        {
+            if (EasingFunctions.BezierProblem(key.Bezier) is { } problem)
+            {
+                errors.Add($"{where}: the keyframe at {key.Time.ToString("0.######", CultureInfo.InvariantCulture)}s has easing cubicBezier and {problem}");
             }
         }
     }
@@ -869,11 +956,12 @@ public static class ProjectValidator
     private static string ImageAssets(Dictionary<string, Asset> assets) =>
         Ids.List(assets.Values.Where(a => a.Type == AssetType.Image).Select(a => a.Id));
 
-    private static string Article(AssetType type) => type switch
+    internal static string Article(AssetType type) => type switch
     {
         AssetType.Image => "an image",
         AssetType.Audio => "audio",
         AssetType.Video => "a video",
+        AssetType.Lut => "a LUT",
         _ => "a font"
     };
 }

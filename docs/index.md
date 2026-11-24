@@ -1,6 +1,6 @@
 # ZeyoCut
 
-**A video and animation editor that an AI model drives.** ZeyoCut has no window of its own: it is an [MCP](https://modelcontextprotocol.io) server for Windows. You tell Claude, or another MCP client, what you want. The model builds the project through ZeyoCut's tools, looks at rendered frames to check its work, and exports the MP4.
+**A video and animation editor that an AI model drives.** ZeyoCut is an [MCP](https://modelcontextprotocol.io) server for Windows. You tell Claude, or another MCP client, what you want. The model builds the project through ZeyoCut's tools, looks at rendered frames to check its work, and exports the MP4. A window for fine-tuning the same project by hand, [the editor](editor.md), opens it while the model keeps working on it.
 
 ![Tora, a cartoon cat, jumps with squash and stretch under a title in English and Japanese](tora-demo.gif)
 
@@ -17,6 +17,7 @@ ZeyoCut is free and open source under the MIT License, and runs entirely on your
 - **Privacy blur.** An AI model on your computer finds every face or license plate in a clip. Each one is tracked and hidden with a fail-safe that leaves no frame uncovered, and a report lists the spans to check before you export. Nobody is recognized and no plate is read.
 - **Cutouts and tracking.** Backgrounds come off green-screen footage, generated art and ordinary footage of people, titles go behind the person, and a name or a sticker can follow a face.
 - **Checks and hand-off.** Checks before export find glitches, loudness problems and project mistakes. The timeline exports as OpenTimelineIO or FCPXML for DaVinci Resolve or Final Cut Pro.
+- **Fine-tuning by hand.** [The editor](editor.md) opens the project the model is working on: move and trim clips on a timeline, place and animate layers with keyframes, set effects, fix captions and export, while the model keeps working.
 
 ## How it works
 

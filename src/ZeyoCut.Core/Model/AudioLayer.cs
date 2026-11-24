@@ -12,7 +12,7 @@ public sealed class AudioLayer : Layer
     public string Asset { get; set; } = "";
     public double TrimIn { get; set; }
     public double? TrimOut { get; set; }
-    public double Volume { get; set; } = 1;
+    public AnimatedValue Volume { get; set; } = new(1);
     public AudioRole Role { get; set; } = AudioRole.Music;
     public double FadeIn { get; set; }
     public double FadeOut { get; set; }

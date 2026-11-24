@@ -80,7 +80,8 @@ public sealed class ExportJobManager
     // Picks the video encoder for a CRF when the export starts; without it, exports use libx264.
     public Func<int, EncoderChoice>? ChooseEncoder { get; init; }
 
-    public ExportJob Start(Project snapshot, string projectDirectory, string outputPath, int crf, FfmpegPaths ffmpeg, Action<string>? log = null, Preset? preset = null)
+    // workers is the number of render threads, Exporter.DefaultWorkers when null.
+    public ExportJob Start(Project snapshot, string projectDirectory, string outputPath, int crf, FfmpegPaths ffmpeg, Action<string>? log = null, Preset? preset = null, int? workers = null)
     {
         ProjectValidator.ThrowIfInvalid(snapshot);
         MatteFiles.ThrowIfPending(snapshot, projectDirectory);
@@ -94,7 +95,7 @@ public sealed class ExportJobManager
             ["preset"] = preset?.Name,
             ["project"] = JsonNode.Parse(ProjectJson.Serialize(snapshot)),
         };
-        Run(job, snapshot, crf, () => ffmpeg, log, preset, _store?.NewRecord(id, Kind, Describe(job), resume));
+        Run(job, snapshot, crf, () => ffmpeg, log, preset, _store?.NewRecord(id, Kind, Describe(job), resume), workers);
         return job;
     }
 
@@ -161,7 +162,7 @@ public sealed class ExportJobManager
         return notes;
     }
 
-    private void Run(ExportJob job, Project snapshot, int crf, Func<FfmpegPaths> ffmpeg, Action<string>? log, Preset? preset, JobRecord? record)
+    private void Run(ExportJob job, Project snapshot, int crf, Func<FfmpegPaths> ffmpeg, Action<string>? log, Preset? preset, JobRecord? record, int? workers = null)
     {
         _jobs[job.Id] = job;
         if (record is not null && _store is { } store)
@@ -184,7 +185,7 @@ public sealed class ExportJobManager
                     log,
                     job.Cancellation.Token,
                     preset,
-                    workers: Exporter.DefaultWorkers,
+                    workers: workers ?? Exporter.DefaultWorkers,
                     encoder: ChooseEncoder?.Invoke(crf));
                 job.State = ExportState.Completed;
             }

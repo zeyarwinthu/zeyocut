@@ -4,6 +4,10 @@ using System.Text.Json;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using SkiaSharp;
+using ZeyoCut.Core;
+using ZeyoCut.Core.Editing;
+using ZeyoCut.Core.Model;
+using ZeyoCut.Core.Serialization;
 using ZeyoCut.Mcp;
 using ZeyoCut.Render;
 using ZeyoCut.Tests.TestSupport;
@@ -15,21 +19,21 @@ public class McpServerTests
     private static readonly string[] ExpectedTools =
     [
         "create_project", "open_project", "update_project", "get_project", "list_projects", "undo", "redo", "restore_backup",
-        "import_asset", "import_folder", "list_assets",
+        "import_asset", "import_folder", "list_assets", "relink_asset", "tag_assets",
         "add_image_layer", "add_text_layer", "add_audio_layer", "update_layer", "remove_layer", "duplicate_layer", "list_layers",
         "set_keyframes", "remove_keyframes", "clear_keyframes",
         "render_frame", "render_contact_sheet", "preview_server",
         "start_export", "get_export_status", "report_render_stats", "export_language_versions",
         "import_video", "add_video_layer", "get_job_status", "reframe_to_vertical",
-        "split_layer", "remove_range", "move_layer", "set_speed", "add_transition",
+        "split_layer", "remove_range", "move_layer", "trim_layer", "set_speed", "add_transition",
         "add_markers", "remove_markers", "export_markers", "build_from_script",
         "analyze_video", "get_transcript", "view_source", "remove_silences", "cut_by_transcript",
         "generate_captions", "add_caption_track", "export_srt", "import_srt",
-        "save_rig", "add_rig", "save_action", "apply_action", "save_style", "apply_style", "save_template", "new_project_from_template", "list_library",
+        "save_rig", "add_rig", "save_action", "apply_action", "save_style", "apply_style", "save_template", "new_project_from_template", "add_template", "list_library",
         "set_camera", "camera_shake",
         "frame_diff", "audio_levels", "check_project",
         "list_sfx", "add_sfx", "detect_beats", "auto_lip_flap",
-        "set_effect", "set_mask", "set_motion_path",
+        "set_effect", "set_color", "set_mask", "set_motion_path",
         "export_batch", "export_thumbnail", "export_frames",
         "remove_background", "refine_matte", "text_behind_subject", "text_occlusion",
         "system_check", "get_logs",
@@ -37,6 +41,7 @@ public class McpServerTests
         "apply_redaction", "tracks_to_keyframes", "redaction_report",
         "detect_and_track",
         "prerender_layers", "export_otio", "export_fcpxml",
+        "open_in_editor",
     ];
 
     [Fact]
@@ -174,6 +179,18 @@ public class McpServerTests
 
         await using (var client = await StartServer(root, Path.Combine(root, "projects"), logs, ct))
         {
+            // A client that lists the tools, as clients do once they connect, is noted for the editor's Welcome.
+            Assert.Null(ClientConnection.Read(logs));
+            var listed = DateTimeOffset.Now;
+            await client.ListToolsAsync(cancellationToken: ct);
+            var connection = ClientConnection.Read(logs);
+            Assert.NotNull(connection);
+            Assert.Equal(("ZeyoCut.Tests", true), (connection.Client, connection.Time >= listed.AddSeconds(-1) && connection.Time <= DateTimeOffset.Now));
+            Assert.Equal([ClientConnection.FileName], Directory.GetFiles(logs, "*.json").Select(Path.GetFileName));
+            File.WriteAllText(ClientConnection.PathIn(logs), "{ not json");
+            Assert.Null(ClientConnection.Read(logs));
+            Assert.Null(ClientConnection.Read(Path.Combine(root, "no logs")));
+
             Assert.Equal($"no log entries containing \"create_project\" in {logs}", await CallOk(client, "get_logs", new() { ["contains"] = "create_project" }, ct));
             await CallOk(client, "create_project", new() { ["name"] = "logged", ["width"] = 320, ["height"] = 240, ["fps"] = 10, ["duration"] = 1.0 }, ct);
             var typo = await Call(client, "update_layer", new() { ["layerId"] = "ghost", ["changes"] = new Dictionary<string, object?> { ["x"] = 5 } }, ct);
@@ -345,6 +362,14 @@ public class McpServerTests
         var moved = await CallOk(client, "move_layer", new() { ["layerId"] = "street_clip", ["start"] = 0.25 }, ct);
         Assert.Contains("moved 'street_clip' by +0.25s: now 0.25–1.25s", moved);
 
+        Assert.Contains("trimmed 'street_clip': now 0.25–1s (was 0.25–1.25s)", await CallOk(client, "trim_layer", new() { ["layerId"] = "street_clip", ["end"] = 1 }, ct));
+        Assert.Contains("trimmed 'street_clip': now 0–1s (was 0.25–1s)", await CallOk(client, "trim_layer", new() { ["layerId"] = "street_clip", ["start"] = 0 }, ct));
+        var tooLong = await Call(client, "trim_layer", new() { ["layerId"] = "street_clip", ["end"] = 2 }, ct);
+        Assert.True(tooLong.IsError);
+        Assert.Contains("'street_clip' can end at 1.25s at the latest: its source has nothing after that", Text(tooLong));
+
+        await CallOk(client, "undo", new(), ct);
+        await CallOk(client, "undo", new(), ct);
         await CallOk(client, "undo", new(), ct);
         await CallOk(client, "undo", new(), ct);
         await CallOk(client, "undo", new(), ct);
@@ -536,6 +561,317 @@ public class McpServerTests
     }
 
     [Fact]
+    public async Task ServerSetsEachRolesMixTheDuckingAndVolumeKeyframesAsTheEditorDoes()
+    {
+        Ffmpeg.Require();
+        var ct = TestContext.Current.CancellationToken;
+        var root = TestPaths.NewDirectory("mcp-mix");
+        var tone = Path.Combine(root, "song.wav");
+        ZeyoCut.Mcp.Demo.ToneGenerator.WriteTone(tone, 440, 2, 0.1);
+        var file = Path.Combine(root, "projects", "mix", "project.json");
+
+        await using var client = await StartServer(root, Path.Combine(root, "projects"), Path.Combine(root, "logs"), ct);
+        await CallOk(client, "create_project", new() { ["name"] = "mix", ["width"] = 320, ["height"] = 180, ["fps"] = 10, ["duration"] = 2.0 }, ct);
+        await CallOk(client, "import_asset", new() { ["path"] = tone }, ct);
+        await CallOk(client, "add_audio_layer", new() { ["asset"] = "song", ["id"] = "song" }, ct);
+        var before = File.ReadAllText(file);
+
+        var mix = await CallOk(client, "update_project", new() { ["role"] = "music", ["gain"] = -6, ["pan"] = -0.5, ["muted"] = false, ["duckLevel"] = -18, ["duckFadeOut"] = 0.75 }, ct);
+        Assert.Contains("updated project 'mix': duck level -12 dB → -18 dB; duck fade out 1.5s → 0.75s; music gain 0 dB → -6 dB; music pan center → 50% left", mix);
+        var keys = await CallOk(client, "set_keyframes", new()
+        {
+            ["entries"] = new object[]
+            {
+                new Dictionary<string, object?> { ["layerId"] = "song", ["property"] = "volume", ["time"] = 0, ["value"] = 1 },
+                new Dictionary<string, object?> { ["layerId"] = "song", ["property"] = "volume", ["time"] = 2, ["value"] = 0.25, ["easing"] = "easeIn" },
+            },
+        }, ct);
+        Assert.Contains("on song.volume", keys);
+        Assert.Contains("keys: volume(2)", await CallOk(client, "list_layers", new(), ct));
+
+        var badRole = await Call(client, "update_project", new() { ["role"] = "drums", ["gain"] = 1 }, ct);
+        Assert.Contains("unknown role 'drums'", Text(badRole));
+        var noRole = await Call(client, "update_project", new() { ["pan"] = 0.5 }, ct);
+        Assert.Contains("gain, pan and muted set a role's mix; pass role too (voice, music or effects)", Text(noRole));
+
+        // The editor's operations make the same project from the same start.
+        var editor = ProjectJson.Deserialize(before);
+        new UpdateProjectOperation(new ProjectOptions { Role = AudioRole.Music, Gain = -6, Pan = -0.5, Muted = false, DuckLevel = -18, DuckFadeOut = 0.75 }).Apply(editor);
+        new SetKeyframesOperation(
+        [
+            new KeyframeEntry("song", "volume", 0, JsonSerializer.SerializeToElement(1)),
+            new KeyframeEntry("song", "volume", 2, JsonSerializer.SerializeToElement(0.25), "easeIn"),
+        ]).Apply(editor);
+        editor.Revision = ProjectJson.Deserialize(File.ReadAllText(file)).Revision;
+        Assert.Equal(TestProjects.WithoutRevision(File.ReadAllText(file)), TestProjects.WithoutRevision(ProjectJson.Serialize(editor)));
+    }
+
+    // add_audio_layer and add_image_layer's insert and overwrite make the project the editor's
+    // AddClipOperation makes from the same start.
+    [Fact]
+    public async Task ServerInsertsAndOverwritesClipsAsTheEditorDoes()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var root = TestPaths.NewDirectory("mcp-clip-edits");
+        foreach (var (name, seconds) in new[] { ("a", 3.0), ("b", 2.0), ("c", 1.0) })
+        {
+            ZeyoCut.Mcp.Demo.ToneGenerator.WriteTone(Path.Combine(root, $"{name}.wav"), 440, seconds, 0.1);
+        }
+
+        var card = TestImages.Solid(Path.Combine(root, "card.png"), 20, 10, SKColors.Blue);
+        var file = Path.Combine(root, "projects", "edits", "project.json");
+        await using var client = await StartServer(root, Path.Combine(root, "projects"), Path.Combine(root, "logs"), ct);
+        await CallOk(client, "create_project", new() { ["name"] = "edits", ["width"] = 320, ["height"] = 180, ["fps"] = 10, ["duration"] = 8.0 }, ct);
+        foreach (var path in new[] { "a.wav", "b.wav", "c.wav" }.Select(f => Path.Combine(root, f)).Append(card))
+        {
+            await CallOk(client, "import_asset", new() { ["path"] = path }, ct);
+        }
+
+        await CallOk(client, "add_audio_layer", new() { ["asset"] = "a", ["role"] = "voice" }, ct);
+        await CallOk(client, "add_audio_layer", new() { ["asset"] = "b", ["role"] = "voice", ["start"] = 3.0 }, ct);
+        await CallOk(client, "add_image_layer", new() { ["asset"] = "card", ["id"] = "bg", ["end"] = 8.0, ["zIndex"] = 0 }, ct);
+        var before = File.ReadAllText(file);
+
+        var inserted = await CallOk(client, "add_audio_layer", new() { ["asset"] = "c", ["role"] = "voice", ["start"] = 1.0, ["edit"] = "insert" }, ct);
+        Assert.StartsWith("inserted audio layer 'c' at 1s\nsplit 'a' at 1s into 'a' and 'a_2'; moved 2 later layer(s) 1s later; the project is 9s long (was 8s)\n", inserted.ReplaceLineEndings("\n"));
+        var overwritten = await CallOk(client, "add_image_layer", new() { ["asset"] = "card", ["start"] = 2.0, ["end"] = 7.0, ["zIndex"] = 0, ["edit"] = "overwrite" }, ct);
+        Assert.StartsWith("added image layer 'card', anchor (10,5), z=0\ncut 'bg' under it; new pieces: bg_2 (from bg)\n", overwritten.ReplaceLineEndings("\n"));
+        var noEnd = await Call(client, "add_image_layer", new() { ["asset"] = "card", ["start"] = 2.0, ["edit"] = "insert" }, ct);
+        Assert.Contains("insert needs the picture's length: give it an end", Text(noEnd));
+        var badMode = await Call(client, "add_audio_layer", new() { ["asset"] = "c", ["edit"] = "replace" }, ct);
+        Assert.Contains("unknown edit 'replace'", Text(badMode));
+
+        var editor = ProjectJson.Deserialize(before);
+        new AddClipOperation(AssetType.Audio, "c", 1, Role: "voice", Edit: ClipEdit.Insert).Apply(editor);
+        new AddClipOperation(AssetType.Image, "card", 2, ZIndex: 0, Edit: ClipEdit.Overwrite).Apply(editor);
+        editor.Revision = ProjectJson.Deserialize(File.ReadAllText(file)).Revision;
+        Assert.Equal(TestProjects.WithoutRevision(File.ReadAllText(file)), TestProjects.WithoutRevision(ProjectJson.Serialize(editor)));
+        Assert.Equal((0.0, 1.0, 2.0, 4.0), (editor.FindLayer("a")!.Start, ((AudioLayer)editor.FindLayer("a")!).End!.Value, editor.FindLayer("a_2")!.Start, editor.FindLayer("b")!.Start));
+        Assert.Equal((2.0, 7.0), (editor.FindLayer("bg")!.End!.Value, editor.FindLayer("bg_2")!.Start));
+
+        Assert.StartsWith("undid: add_image_layer card", await CallOk(client, "undo", new(), ct));
+        Assert.StartsWith("undid: add_audio_layer c", await CallOk(client, "undo", new(), ct));
+        Assert.Equal(TestProjects.WithoutRevision(before), TestProjects.WithoutRevision(File.ReadAllText(file)));
+    }
+
+    // add_transition makes the project the editor's AddTransitionOperation makes, on one cut, and on
+    // every cut of a lane in turn as the Effects view's Apply to every cut does in one step.
+    [Fact]
+    public async Task ServerAddsTransitionsAsTheEditorDoes()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var root = TestPaths.NewDirectory("mcp-transitions");
+        var card = TestImages.Solid(Path.Combine(root, "card.png"), 20, 10, SKColors.Blue);
+        var file = Path.Combine(root, "projects", "cuts", "project.json");
+        await using var client = await StartServer(root, Path.Combine(root, "projects"), Path.Combine(root, "logs"), ct);
+        await CallOk(client, "create_project", new() { ["name"] = "cuts", ["width"] = 320, ["height"] = 180, ["fps"] = 10, ["duration"] = 6.0 }, ct);
+        await CallOk(client, "import_asset", new() { ["path"] = card }, ct);
+        foreach (var (id, start) in new[] { ("one", 0.0), ("two", 2.0), ("three", 4.0) })
+        {
+            await CallOk(client, "add_image_layer", new() { ["asset"] = "card", ["id"] = id, ["start"] = start, ["end"] = start + 2, ["zIndex"] = 0 }, ct);
+        }
+
+        var before = File.ReadAllText(file);
+        void Same(Project editor)
+        {
+            editor.Revision = ProjectJson.Deserialize(File.ReadAllText(file)).Revision;
+            Assert.Equal(TestProjects.WithoutRevision(File.ReadAllText(file)), TestProjects.WithoutRevision(ProjectJson.Serialize(editor)));
+        }
+
+        var slid = await CallOk(client, "add_transition", new() { ["layerA"] = "one", ["layerB"] = "two", ["type"] = "slide", ["duration"] = 0.6, ["direction"] = "up" }, ct);
+        var editor = ProjectJson.Deserialize(before);
+        var summary = new AddTransitionOperation("one", "two", TransitionType.Slide, 0.6, TransitionDirection.Up).Apply(editor);
+        Assert.Equal(slid.ReplaceLineEndings("\n").Split('\n')[0], summary.Split("; the project is")[0]);
+        Same(editor);
+        Assert.StartsWith("undid: add_transition one two", await CallOk(client, "undo", new(), ct));
+
+        await CallOk(client, "add_transition", new() { ["layerA"] = "one", ["layerB"] = "two", ["duration"] = 0.4 }, ct);
+        await CallOk(client, "add_transition", new() { ["layerA"] = "two", ["layerB"] = "three", ["duration"] = 0.4 }, ct);
+        editor = ProjectJson.Deserialize(before);
+        var every = new BatchOperation("add_transition (2 cuts)", [
+            new AddTransitionOperation("one", "two", TransitionType.Crossfade, 0.4),
+            new AddTransitionOperation("two", "three", TransitionType.Crossfade, 0.4)]);
+        Assert.Equal(["one", "two", "three"], every.Layers);
+        every.Apply(editor);
+        Same(editor);
+        Assert.True(editor.FindLayer("three")!.Start < 4);
+    }
+
+    // set_color makes the project the editor's SetColorOperation makes: values, a copy of another
+    // clip's color, every clip of the same footage, and reset; the grade then animates.
+    [Fact]
+    public async Task ServerGradesClipsAsTheEditorDoes()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var root = TestPaths.NewDirectory("mcp-color");
+        var street = TestImages.Solid(Path.Combine(root, "street.png"), 20, 10, SKColors.Gray);
+        var sky = TestImages.Solid(Path.Combine(root, "sky.png"), 20, 10, SKColors.SkyBlue);
+        var file = Path.Combine(root, "projects", "graded", "project.json");
+        await using var client = await StartServer(root, Path.Combine(root, "projects"), Path.Combine(root, "logs"), ct);
+        await CallOk(client, "create_project", new() { ["name"] = "graded", ["width"] = 320, ["height"] = 180, ["fps"] = 10, ["duration"] = 6.0 }, ct);
+        await CallOk(client, "import_asset", new() { ["path"] = street }, ct);
+        await CallOk(client, "import_asset", new() { ["path"] = sky }, ct);
+        foreach (var (id, asset, start) in new[] { ("street_a", "street", 0.0), ("sky_a", "sky", 2.0), ("street_b", "street", 4.0) })
+        {
+            await CallOk(client, "add_image_layer", new() { ["asset"] = asset, ["id"] = id, ["start"] = start, ["end"] = start + 2, ["zIndex"] = 0 }, ct);
+        }
+
+        var before = File.ReadAllText(file);
+        var editor = ProjectJson.Deserialize(before);
+        void Same(EditOperation operation, string reply)
+        {
+            var summary = operation.Apply(editor);
+            var lines = reply.ReplaceLineEndings("\n").Split('\n');
+            Assert.Equal(lines[0] + string.Concat(lines.Where(l => l.StartsWith("- ", StringComparison.Ordinal)).Select(l => "; " + l[2..])), summary);
+            editor.Revision = ProjectJson.Deserialize(File.ReadAllText(file)).Revision;
+            Assert.Equal(TestProjects.WithoutRevision(File.ReadAllText(file)), TestProjects.WithoutRevision(ProjectJson.Serialize(editor)));
+        }
+
+        var graded = await CallOk(client, "set_color", new() { ["layerId"] = "street_a", ["exposure"] = 0.3, ["contrast"] = 1.12, ["highlights"] = -0.2, ["shadows"] = 0.18, ["temperature"] = 0.35, ["saturation"] = 1.2 }, ct);
+        Assert.Equal("color of 'street_a': exposure 0.3, contrast 1.12, highlights -0.2, shadows 0.18, temperature 0.35, saturation 1.2", graded);
+        Same(new SetColorOperation("street_a", new ColorChange(new Dictionary<string, double> { ["exposure"] = 0.3, ["contrast"] = 1.12, ["highlights"] = -0.2, ["shadows"] = 0.18, ["temperature"] = 0.35, ["saturation"] = 1.2 })), graded);
+
+        var everyClip = await CallOk(client, "set_color", new() { ["layerId"] = "street_a", ["sameFootage"] = true }, ct);
+        Assert.EndsWith("; the same on street_b (every clip of 'street')", everyClip);
+        Same(new SetColorOperation("street_a", new ColorChange(new Dictionary<string, double>(), SameFootage: true)), everyClip);
+
+        var copied = await CallOk(client, "set_color", new() { ["layerId"] = "sky_a", ["from"] = "street_a", ["tint"] = -0.1 }, ct);
+        Assert.StartsWith("copied the color of 'street_a' to 'sky_a': ", copied);
+        Same(new SetColorOperation("sky_a", new ColorChange(new Dictionary<string, double> { ["tint"] = -0.1 }, From: "street_a")), copied);
+
+        Assert.Contains("grade(exposure 0.3, highlights -0.2, shadows 0.18, temperature 0.35, tint -0.1)", await CallOk(client, "list_layers", new(), ct));
+        await CallOk(client, "set_keyframes", new() { ["entries"] = new object[] { new { layerId = "sky_a", property = "grade.temperature", time = 2.0, value = -1.0 }, new { layerId = "sky_a", property = "grade.temperature", time = 4.0, value = 1.0 } } }, ct);
+        Assert.Contains("'sky_a' animates its temperature with keyframes; its color is copied as fixed values", Text(await Call(client, "set_color", new() { ["layerId"] = "street_b", ["from"] = "sky_a" }, ct)));
+        new SetKeyframesOperation(
+        [
+            new KeyframeEntry("sky_a", "grade.temperature", 2, JsonSerializer.SerializeToElement(-1.0)),
+            new KeyframeEntry("sky_a", "grade.temperature", 4, JsonSerializer.SerializeToElement(1.0)),
+        ]).Apply(editor);
+
+        // The wheels and a look: a .cube file imported as a LUT asset, laid over the clip, then off.
+        var cube = Path.Combine(root, "warm.cube");
+        File.WriteAllText(cube, ZeyoCut.Tests.Core.CubeLutTests.Curves());
+        await CallOk(client, "import_asset", new() { ["path"] = cube }, ct);
+        Assert.Contains("warm [lut] assets/warm.cube (a look for set_color)", await CallOk(client, "list_assets", new(), ct));
+        editor = ProjectJson.Deserialize(File.ReadAllText(file));
+        var wheels = await CallOk(client, "set_color", new() { ["layerId"] = "street_b", ["lift"] = new { red = -0.02, blue = 0.04 }, ["gain"] = new { green = 0.1 }, ["look"] = "warm", ["lookAmount"] = 0.6 }, ct);
+        Assert.EndsWith("saturation 1.2, lift.red -0.02, lift.blue 0.04, gain.green 0.1, look warm at 0.6", wheels);
+        Same(new SetColorOperation("street_b", new ColorChange(new Dictionary<string, double> { ["lift.red"] = -0.02, ["lift.blue"] = 0.04, ["gain.green"] = 0.1, ["look.amount"] = 0.6 }, Look: "warm")), wheels);
+        var off = await CallOk(client, "set_color", new() { ["layerId"] = "street_b", ["look"] = "none" }, ct);
+        Same(new SetColorOperation("street_b", new ColorChange(new Dictionary<string, double>(), Look: "")), off);
+        Assert.Contains("look.amount is how much of the look shows", Text(await Call(client, "set_color", new() { ["layerId"] = "street_b", ["lookAmount"] = 0.5 }, ct)));
+
+        var reset = await CallOk(client, "set_color", new() { ["layerId"] = "sky_a", ["reset"] = true }, ct);
+        Assert.StartsWith("put the color of 'sky_a' back as shot", reset);
+        Same(new SetColorOperation("sky_a", new ColorChange(new Dictionary<string, double>(), Reset: true)), reset);
+        Assert.Contains("exposure must be between -3 and 3 (got 5)", Text(await Call(client, "set_color", new() { ["layerId"] = "street_a", ["exposure"] = 5.0 }, ct)));
+        Assert.StartsWith("undid: set_color sky_a", await CallOk(client, "undo", new(), ct));
+    }
+
+    // add_text_layer's style, animateIn and animateOut make the project the editor's AddTitleOperation
+    // makes, and the presets are the keyframes TitleAnimationOperation puts on a layer already there.
+    [Fact]
+    public async Task ServerAnimatesTitlesAsTheEditorDoes()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var root = TestPaths.NewDirectory("mcp-titles");
+        var directory = Path.Combine(root, "projects", "titles");
+        var file = Path.Combine(directory, "project.json");
+        await using var client = await StartServer(root, Path.Combine(root, "projects"), Path.Combine(root, "logs"), ct);
+        await CallOk(client, "create_project", new() { ["name"] = "titles", ["width"] = 320, ["height"] = 180, ["fps"] = 10, ["duration"] = 6.0 }, ct);
+        await CallOk(client, "add_text_layer", new() { ["text"] = "Gold", ["id"] = "gold", ["fontSize"] = 24, ["color"] = "#FFD700", ["bold"] = true, ["end"] = 2.0 }, ct);
+        await CallOk(client, "save_style", new() { ["layerId"] = "gold", ["name"] = "Gold" }, ct);
+        var before = File.ReadAllText(file);
+        void Same(Project editor)
+        {
+            editor.Revision = ProjectJson.Deserialize(File.ReadAllText(file)).Revision;
+            Assert.Equal(TestProjects.WithoutRevision(File.ReadAllText(file)), TestProjects.WithoutRevision(ProjectJson.Serialize(editor)));
+        }
+
+        var added = await CallOk(client, "add_text_layer", new() { ["text"] = "Hello", ["id"] = "hello", ["style"] = "Gold", ["start"] = 1.0, ["end"] = 4.0, ["animateIn"] = "pop", ["animateOut"] = "slide up" }, ct);
+        Assert.Contains("\"easing\":\"easeOutBack\"", added);
+        var library = new Library(Path.Combine(root, "library"));
+        using var renderer = new FrameRenderer(directory);
+        var editor = ProjectJson.Deserialize(before);
+        var title = new AddTitleOperation(new TextLayerOptions { Text = "Hello", Id = "hello", Start = 1, End = 4 }, library.Load<TextStyle>(LibraryKind.Style, "Gold"), directory, library,
+            TitleAnimation.Pop, TitleAnimation.SlideUp, p => new ZeyoCut.Render.Text.TextMeasurer(renderer, p));
+        Assert.Equal("add_text_layer hello", title.Label);
+        Assert.Equal("added text layer 'hello' at 1s in style 'Gold'", title.Apply(editor));
+        Same(editor);
+
+        editor = ProjectJson.Deserialize(before);
+        new TitleAnimationOperation("gold", TitleSide.In, TitleAnimation.Fade).Apply(editor);
+        new TitleAnimationOperation("gold", TitleSide.Out, TitleAnimation.Fade).Apply(editor);
+        Assert.StartsWith("undid: add_text_layer hello", await CallOk(client, "undo", new(), ct));
+        await CallOk(client, "remove_layer", new() { ["layerId"] = "gold" }, ct);
+        await CallOk(client, "add_text_layer", new() { ["text"] = "Gold", ["id"] = "gold", ["fontSize"] = 24, ["color"] = "#FFD700", ["bold"] = true, ["end"] = 2.0, ["animateIn"] = "fade", ["animateOut"] = "fade" }, ct);
+        Same(editor);
+        Assert.Equal(TitleAnimation.Fade, TitleAnimations.Detect(editor, (VisualLayer)editor.FindLayer("gold")!, TitleSide.Out));
+
+        var unknown = await Call(client, "add_text_layer", new() { ["text"] = "No", ["animateIn"] = "spin" }, ct);
+        Assert.Contains("unknown animateIn 'spin'; valid values: fade, pop, slideUp", Text(unknown));
+    }
+
+    // add_template and apply_style make the project the editor's AddTemplateOperation and
+    // ApplyStyleOperation make: the template's layers as a block from the playhead, renamed where the
+    // project has their ids, above the project's levels, with its files copied in.
+    [Fact]
+    public async Task ServerAddsTemplatesAndStylesAsTheEditorDoes()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var root = TestPaths.NewDirectory("mcp-add-template");
+        var card = TestImages.Solid(Path.Combine(root, "card.png"), 40, 20, SKColors.Blue);
+        var directory = Path.Combine(root, "projects", "show");
+        var file = Path.Combine(directory, "project.json");
+        await using var client = await StartServer(root, Path.Combine(root, "projects"), Path.Combine(root, "logs"), ct);
+        await CallOk(client, "create_project", new() { ["name"] = "kit", ["width"] = 320, ["height"] = 180, ["fps"] = 10, ["duration"] = 3.0 }, ct);
+        await CallOk(client, "import_asset", new() { ["path"] = card }, ct);
+        await CallOk(client, "add_image_layer", new() { ["asset"] = "card", ["id"] = "bar", ["start"] = 0.5, ["zIndex"] = 2 }, ct);
+        await CallOk(client, "add_text_layer", new() { ["text"] = "Name", ["id"] = "name", ["parentId"] = "bar", ["start"] = 0.5, ["end"] = 2.5, ["zIndex"] = 3, ["animateIn"] = "fade" }, ct);
+        await CallOk(client, "add_text_layer", new() { ["text"] = "Gold", ["id"] = "gold", ["fontSize"] = 20, ["color"] = "#FFD700", ["bold"] = true, ["zIndex"] = 3 }, ct);
+        await CallOk(client, "save_style", new() { ["layerId"] = "gold", ["name"] = "Gold" }, ct);
+        await CallOk(client, "save_template", new() { ["name"] = "lower third", ["layerIds"] = new[] { "bar" } }, ct);
+
+        await CallOk(client, "create_project", new() { ["name"] = "show", ["width"] = 320, ["height"] = 180, ["fps"] = 10, ["duration"] = 6.0 }, ct);
+        await CallOk(client, "import_asset", new() { ["path"] = card }, ct);
+        await CallOk(client, "add_image_layer", new() { ["asset"] = "card", ["id"] = "bar", ["end"] = 6.0, ["zIndex"] = 4 }, ct);
+        var before = File.ReadAllText(file);
+        var copy = Path.Combine(root, "editor-copy");
+        Directory.CreateDirectory(Path.Combine(copy, "assets"));
+        foreach (var asset in Directory.GetFiles(Path.Combine(directory, "assets")))
+        {
+            File.Copy(asset, Path.Combine(copy, "assets", Path.GetFileName(asset)));
+        }
+
+        var added = await CallOk(client, "add_template", new() { ["name"] = "Lower Third", ["at"] = 2.0 }, ct);
+        Assert.Equal("added template 'lower third' at 2s: 2 layer(s): bar_2, name; reused 1 asset(s) already in the project", added);
+        var library = new Library(Path.Combine(root, "library"));
+        var editor = ProjectJson.Deserialize(before);
+        var template = new AddTemplateOperation("Lower Third", 2, copy, library);
+        Assert.Equal(added, template.Apply(editor));
+        editor.Revision = ProjectJson.Deserialize(File.ReadAllText(file)).Revision;
+        Assert.Equal(TestProjects.WithoutRevision(File.ReadAllText(file)), TestProjects.WithoutRevision(ProjectJson.Serialize(editor)));
+        var (bar, name) = (editor.FindLayer("bar_2")!, (TextLayer)editor.FindLayer("name")!);
+        Assert.Equal((2.5, 5.0, 5, "bar_2"), (bar.Start, bar.End!.Value, bar.ZIndex, name.ParentId!));
+        Assert.Equal((2.5, 4.5, 6), (name.Start, name.End!.Value, name.ZIndex));
+        Assert.Equal([2.5, 3.0], name.Opacity.Keyframes.Select(k => k.Time));
+
+        var late = await CallOk(client, "add_template", new() { ["name"] = "lower third", ["at"] = 4.0 }, ct);
+        Assert.Contains("added template 'lower third' at 4s: 2 layer(s): bar_3, name_2", late);
+        Assert.Contains("the template runs to 7s, past the project's end (6s)", late);
+        Assert.Contains("no template named 'credits' in the library", Text(await Call(client, "add_template", new() { ["name"] = "credits" }, ct)));
+        Assert.StartsWith("undid: add_template lower third", await CallOk(client, "undo", new(), ct));
+
+        var styled = await CallOk(client, "apply_style", new() { ["name"] = "Gold", ["layerId"] = "name" }, ct);
+        using var renderer = new FrameRenderer(copy);
+        var style = new ApplyStyleOperation(library.Load<TextStyle>(LibraryKind.Style, "Gold"), "name", copy, library, p => new ZeyoCut.Render.Text.TextMeasurer(renderer, p));
+        Assert.Equal("apply_style Gold to name", style.Label);
+        Assert.Equal(styled, style.Apply(editor));
+        editor.Revision = ProjectJson.Deserialize(File.ReadAllText(file)).Revision;
+        Assert.Equal(TestProjects.WithoutRevision(File.ReadAllText(file)), TestProjects.WithoutRevision(ProjectJson.Serialize(editor)));
+    }
+
+    [Fact]
     public async Task ServerAppliesDeliveryPresets()
     {
         Ffmpeg.Require();
@@ -709,11 +1045,28 @@ public class McpServerTests
         }, ct);
         Assert.Contains("unknown camera property 'opacity'", Text(badProperty));
 
+        // A cubic bezier easing: its four numbers are saved with the keyframe.
+        Assert.Contains("set 2 keyframe(s) (2 added, 0 replaced) on camera.rotation", await CallOk(client, "set_keyframes", new()
+        {
+            ["entries"] = new object[]
+            {
+                new Dictionary<string, object?> { ["layerId"] = "camera", ["property"] = "rotation", ["time"] = 0, ["value"] = 0, ["bezier"] = new[] { 0.42, 0, 0.58, 1 } },
+                new Dictionary<string, object?> { ["layerId"] = "camera", ["property"] = "rotation", ["time"] = 1, ["value"] = 0 },
+            },
+        }, ct));
+        var saved = JsonDocument.Parse(File.ReadAllText(Path.Combine(root, "projects", "cam", "project.json"))).RootElement.GetProperty("camera").GetProperty("rotation").GetProperty("keyframes")[0];
+        Assert.Equal("""{"time":0,"value":0,"easing":"cubicBezier","bezier":[0.42,0,0.58,1]}""", JsonSerializer.Serialize(saved));
+        var badBezier = await Call(client, "set_keyframes", new()
+        {
+            ["entries"] = new object[] { new Dictionary<string, object?> { ["layerId"] = "camera", ["property"] = "rotation", ["time"] = 0, ["value"] = 0, ["bezier"] = new[] { 2.0, 0, 0.58, 1 } } },
+        }, ct);
+        Assert.Contains("bezier's x1 and x2 must be from 0 to 1, so the curve has one value at each time (got [2, 0, 0.58, 1])", Text(badBezier));
+
         var shake = await CallOk(client, "camera_shake", new() { ["startTime"] = 0.5, ["duration"] = 1.0, ["intensity"] = 8 }, ct);
         Assert.Contains("camera shake 0.5–1.5s: 8 px, 12 direction changes per second, seed 1; 39 keyframe(s) on shakeX, shakeY, shakeRotation", shake);
         Assert.Contains("more than half the frame rate (10 fps)", shake);
         var tree = await CallOk(client, "list_layers", new(), ct);
-        Assert.Contains("camera: x=50 y=120 zoom=2 rotation=0  keys: x(2) shakeX(13) shakeY(13) shakeRotation(13)", tree);
+        Assert.Contains("camera: x=50 y=120 zoom=2 rotation=0  keys: x(2) rotation(2) shakeX(13) shakeY(13) shakeRotation(13)", tree);
         Assert.Contains("ignoreCamera", tree);
 
         using (var frame = DecodeImage(await Call(client, "render_frame", new() { ["time"] = 0.0 }, ct)))
@@ -786,6 +1139,74 @@ public class McpServerTests
 
         Assert.Contains("framediff_1: completed", status);
         Assert.Contains("- f10 1s glitch: ", status);
+    }
+
+    [Fact]
+    public async Task ServerRelinksAnAssetWhoseFileIsGone()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var root = TestPaths.NewDirectory("mcp-relink");
+        var clouds = TestImages.Solid(Path.Combine(root, "clouds.png"), 40, 20, SKColors.Red);
+        var tone = Path.Combine(root, "tone.wav");
+        ZeyoCut.Mcp.Demo.ToneGenerator.WriteTone(tone, 440, 1, 0.1);
+
+        await using var client = await StartServer(root, Path.Combine(root, "projects"), Path.Combine(root, "logs"), ct);
+        await CallOk(client, "create_project", new() { ["name"] = "relink", ["width"] = 320, ["height"] = 180, ["fps"] = 10, ["duration"] = 1.0 }, ct);
+        await CallOk(client, "import_asset", new() { ["path"] = clouds }, ct);
+        await CallOk(client, "add_image_layer", new() { ["asset"] = "clouds", ["id"] = "sky" }, ct);
+        File.Delete(Path.Combine(root, "projects", "relink", "assets", "clouds.png"));
+        Assert.Contains("asset 'clouds' (assets/clouds.png) has no file; used by sky, which won't render or export; put the file back, or point the asset at it with relink_asset",
+            await CallOk(client, "check_project", new(), ct));
+
+        var sound = await Call(client, "relink_asset", new() { ["assetId"] = "clouds", ["path"] = tone }, ct);
+        Assert.True(sound.IsError);
+        Assert.Contains("'tone.wav' is an audio file, and asset 'clouds' needs an image", Text(sound));
+        Assert.False(File.Exists(Path.Combine(root, "projects", "relink", "assets", "tone.wav")));
+
+        var moved = Directory.CreateDirectory(Path.Combine(root, "moved")).FullName;
+        var wider = TestImages.Solid(Path.Combine(moved, "clouds.png"), 60, 20, SKColors.Lime);
+        Assert.Equal("relinked clouds [image] assets/clouds.png (60x20 px)\nWarnings:\n- 'clouds' was 40x20 px and is now 60x20 px",
+            await CallOk(client, "relink_asset", new() { ["assetId"] = "clouds", ["path"] = wider }, ct));
+        Assert.DoesNotContain("has no file", await CallOk(client, "check_project", new(), ct));
+        Assert.StartsWith("undid: relink_asset clouds", await CallOk(client, "undo", new(), ct));
+    }
+
+    [Fact]
+    public async Task ServerTagsAssetsAndListsTheirTags()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var root = TestPaths.NewDirectory("mcp-tags");
+        var body = TestImages.Solid(Path.Combine(root, "tora_body.png"), 22, 24, SKColors.Orange);
+        var head = TestImages.Solid(Path.Combine(root, "tora_head.png"), 24, 20, SKColors.Orange);
+        var boing = Path.Combine(root, "boing.wav");
+        ZeyoCut.Mcp.Demo.ToneGenerator.WriteTone(boing, 440, 0.6, 0.1);
+
+        await using var client = await StartServer(root, Path.Combine(root, "projects"), Path.Combine(root, "logs"), ct);
+        await CallOk(client, "create_project", new() { ["name"] = "tags", ["width"] = 320, ["height"] = 180, ["fps"] = 10, ["duration"] = 1.0 }, ct);
+        foreach (var file in new[] { body, head, boing })
+        {
+            await CallOk(client, "import_asset", new() { ["path"] = file }, ct);
+        }
+
+        await CallOk(client, "add_image_layer", new() { ["asset"] = "tora_body", ["id"] = "tora" }, ct);
+        Assert.Equal("'tora_body' tags: none → Tora rig; 'tora_head' tags: none → Tora rig",
+            await CallOk(client, "tag_assets", new() { ["assetIds"] = new[] { "tora_body", "tora_head" }, ["add"] = new[] { "Tora rig" } }, ct));
+        Assert.Equal("'boing' tags: none → SFX, Cartoon",
+            await CallOk(client, "tag_assets", new() { ["assetIds"] = new[] { "boing" }, ["add"] = new[] { "SFX", "Cartoon" } }, ct));
+        Assert.Equal(
+            "- tora_body [image] assets/tora_body.png (22x24 px); tags: Tora rig; used by: tora\n"
+            + "- tora_head [image] assets/tora_head.png (24x20 px); tags: Tora rig; used by: (none)\n"
+            + "- boing [audio] assets/boing.wav (0.6s); tags: SFX, Cartoon; used by: (none)",
+            (await CallOk(client, "list_assets", new(), ct)).ReplaceLineEndings("\n"));
+
+        var unchanged = await Call(client, "tag_assets", new() { ["assetIds"] = new[] { "boing" }, ["add"] = new[] { "sfx" } }, ct);
+        Assert.True(unchanged.IsError);
+        Assert.Contains("nothing changed; 'boing' has tags: SFX, Cartoon", Text(unchanged));
+        Assert.Equal("'boing' tags: SFX, Cartoon → SFX",
+            await CallOk(client, "tag_assets", new() { ["assetIds"] = new[] { "boing" }, ["remove"] = new[] { "cartoon" } }, ct));
+        Assert.Contains("\"tags\": [\n        \"SFX\"\n      ]", File.ReadAllText(Path.Combine(root, "projects", "tags", "project.json")).Replace("\r\n", "\n"));
+        Assert.StartsWith("undid: tag_assets boing", await CallOk(client, "undo", new(), ct));
+        Assert.Contains("tags: SFX, Cartoon", await CallOk(client, "list_assets", new(), ct));
     }
 
     [Fact]
@@ -1283,7 +1704,10 @@ public class McpServerTests
         var auto = await CallOk(client, "generate_captions", new() { ["assetId"] = "screen2", ["behindSubject"] = "auto" }, ct);
         Assert.Contains("\nput the captions behind the subject of 'talk': cutout 'captions_subject' draws the subject again above them, cut out with aiVideo (zIndex ", auto);
         Assert.Contains("\n- the matte is computed in the background as matte_3: 10 frames of clip 'screen2' with Robust Video Matting (MobileNetV3) on the CPU, about 2 s (a rough guess; system_check measures this computer)\n", auto);
-        Assert.Matches(@"\n- auto: \d+ caption frames are measured in the background as captions_1 once matte_3 is done, and the fades are added as their own undo step \(an edit made meanwhile makes it refuse, so run generate_captions again then\); until then the captions are behind the subject the whole time; poll get_job_status with jobId ""captions_1""\n", auto);
+        Assert.Matches(@"\n- auto: \d+ caption frames are measured in the background as captions_1 once matte_3 is done, and the fades are added as their own undo step \(an edit made meanwhile to the captions or to what covers them makes it refuse, so run generate_captions again then\); until then the captions are behind the subject the whole time; poll get_job_status with jobId ""captions_1""\n", auto);
+
+        // An edit to another layer meanwhile (as in the editor) doesn't stop the fades.
+        await CallOk(client, "update_layer", new() { ["layerId"] = "label", ["changes"] = new Dictionary<string, object?> { ["x"] = 10 } }, ct);
         var fades = await Finished("captions_1");
         Assert.Contains("captions_1: completed", fades);
         Assert.Contains("auto: the subject covers up to ", fades);
@@ -1293,11 +1717,12 @@ public class McpServerTests
         var meanwhile = await CallOk(client, "generate_captions", new() { ["assetId"] = "screen3", ["behindSubject"] = "auto", ["groupId"] = "subs" }, ct);
         Assert.Contains("cutout 'subs_subject'", meanwhile);
         Assert.Contains("as captions_2 once matte_4 is done", meanwhile);
-        await CallOk(client, "update_layer", new() { ["layerId"] = "label", ["changes"] = new Dictionary<string, object?> { ["x"] = 10 } }, ct);
+        await CallOk(client, "update_layer", new() { ["layerId"] = "subs_1", ["changes"] = new Dictionary<string, object?> { ["x"] = 10 } }, ct);
         var refusedFades = await Finished("captions_2");
         Assert.Contains("failed", refusedFades);
+        Assert.Contains("layer 'subs_1' changed ", refusedFades);
         Assert.Contains("so the fades weren't added (the captions stay behind the subject the whole time); run generate_captions again", refusedFades);
-        Assert.StartsWith("undid: update_layer label (", await CallOk(client, "undo", new(), ct));
+        Assert.StartsWith("undid: update_layer subs_1 (", await CallOk(client, "undo", new(), ct));
         var direct = await CallOk(client, "generate_captions", new() { ["assetId"] = "screen3", ["behindSubject"] = "auto", ["groupId"] = "subs" }, ct);
         Assert.Matches(@"\n- clip 'screen3': the matte is already computed: assets/screen3\.matte-aivideo-[0-9a-f]{8}\.mkv\n- auto: the subject covers up to ", direct);
         Assert.DoesNotContain("get_job_status", direct);
@@ -1463,7 +1888,7 @@ public class McpServerTests
         }
 
         var first = JsonDocument.Parse(File.ReadAllText(projectFile)).RootElement.GetProperty("tracks")[0];
-        Assert.Equal(6, JsonDocument.Parse(File.ReadAllText(projectFile)).RootElement.GetProperty("formatVersion").GetInt32());
+        Assert.Equal(13, JsonDocument.Parse(File.ReadAllText(projectFile)).RootElement.GetProperty("formatVersion").GetInt32());
         var firstFile = first.GetProperty("file").GetString()!;
         Assert.True(File.Exists(Path.Combine(root, "projects", "tracking", firstFile)));
 
@@ -1666,7 +2091,7 @@ public class McpServerTests
             "hid track_1 with 'redaction_1': pixelate, strength 50 (12 blocks across each box), padding 15%, feather 4 px, held 15 frames before and after"
             + "\n- it hides them on the video frame before a clip is drawn, in every clip that plays the footage ('square' plays in 'clip'), so moves, effects, the camera and subject cutouts all show it hidden"
             + "\n- track_1: frames 0–59 of 'square' covered (0–1.967s on 'clip'): 60 detected, 0 filled between detections, 0 held"
-            + "\n- check it with render_frame; update_layer changes its style, strength, paddingPercent, feather, holdFrames, color and visible; tracks_to_keyframes turns a track's box into keyframes to edit by hand",
+            + "\n- check it with render_frame; update_layer changes its style, strength, paddingPercent, feather, holdFrames, color, shape, smooth and visible; tracks_to_keyframes turns a track's box into keyframes to edit by hand",
             applied);
         var pixelated = await Square(1);
         Assert.True(pixelated.Zip(original).Count(p => p.First != p.Second) > pixelated.Length / 2, "the square isn't pixelated");
@@ -1678,6 +2103,26 @@ public class McpServerTests
         await CallOk(client, "split_layer", new() { ["layerId"] = "clip", ["time"] = 0.5 }, ct);
         Assert.All(await Square(1.5), c => Assert.True(c.Red < 12 && c.Green < 12 && c.Blue < 12, $"{c}"));
         Assert.Contains("redaction_1 [redaction]  hides=track_1  solid #000000 padding=15% feather=4 hold=15", await CallOk(client, "list_layers", new(), ct));
+
+        // An ellipse, smoothed: the square's corners show and its middle is hidden; update_layer goes
+        // back to the whole box.
+        static bool Black(SKColor c) => c.Red < 12 && c.Green < 12 && c.Blue < 12;
+        var ellipse = await CallOk(client, "apply_redaction", new() { ["trackIds"] = new[] { "track_1" }, ["style"] = "solid", ["feather"] = 0, ["shape"] = "ellipse", ["smooth"] = true }, ct);
+        Assert.StartsWith("changed how 'redaction_1' hides track_1: solid #000000, padding 15%, feather 0 px, held 15 frames before and after, the ellipse inside each box, its motion smoothed\n", ellipse);
+        Assert.Contains("redaction_1 [redaction]  hides=track_1  solid #000000 padding=15% feather=0 hold=15 ellipse smooth", await CallOk(client, "list_layers", new(), ct));
+        var round = await Square(1.5);
+        Assert.True(Black(round[20 * 40 + 20]), $"{round[20 * 40 + 20]}");
+        Assert.False(Black(round[0]), $"{round[0]}");
+        Assert.False(Black(round[39 * 40 + 39]), $"{round[39 * 40 + 39]}");
+        await CallOk(client, "update_layer", new() { ["layerId"] = "redaction_1", ["changes"] = new Dictionary<string, object?> { ["shape"] = "rectangle", ["feather"] = 4, ["smooth"] = false } }, ct);
+        Assert.All(await Square(1.5), c => Assert.True(Black(c), $"{c}"));
+        Assert.Contains("unknown shape 'circle'; valid values: rectangle, ellipse", Text(await Call(client, "apply_redaction", new() { ["trackIds"] = new[] { "track_1" }, ["shape"] = "circle" }, ct)));
+        Assert.Contains("undid: update_layer redaction_1", await CallOk(client, "undo", new(), ct));
+        Assert.Contains("undid: apply_redaction track_1", await CallOk(client, "undo", new(), ct));
+        var restored = await CallOk(client, "list_layers", new(), ct);
+        Assert.Contains("redaction_1 [redaction]  hides=track_1  solid #000000 padding=15% feather=4 hold=15", restored);
+        Assert.DoesNotContain("ellipse", restored);
+        Assert.DoesNotContain("smooth", restored);
 
         var keyed = await CallOk(client, "tracks_to_keyframes", new() { ["trackId"] = "track_1" }, ct);
         Assert.Matches(@"^made track_1's box on 'redaction_1' keyframes: x \d+, y \d+, width \d+, height \d+ over frames 0–59 of 'square' \(source 0–1\.967s; 0–0\.467s on 'clip', 0\.5–1\.967s on 'clip_2'\)\n- the times are the footage's own seconds", keyed);
@@ -2321,6 +2766,97 @@ public class McpServerTests
         Assert.Contains("こんにちは、世界。", File.ReadAllText(Path.Combine(projects, "tracks", "exports", "talk_ja.srt")));
     }
 
+    // The editor's Track & blur view tracks a drawn box, corrects it and hides it as track_object,
+    // reanchor_track and apply_redaction do: the same project, track files and redaction.
+    [Fact]
+    public async Task TheEditorTracksCorrectsAndHidesAsTheToolsDo()
+    {
+        var ffmpeg = Ffmpeg.Require();
+        var ct = TestContext.Current.CancellationToken;
+        var root = TestPaths.NewDirectory("mcp-tracking-editor");
+        var projects = Path.Combine(root, "projects");
+        var square = TestVideos.MovingSquare(Path.Combine(root, "square.mp4"), cover: (30, 35, 100, 75));
+        await using var client = await StartServer(root, projects, Path.Combine(root, "logs"), ct);
+        await CallOk(client, "create_project", new() { ["name"] = "tracking", ["width"] = 640, ["height"] = 360, ["fps"] = 30, ["duration"] = 2.0 }, ct);
+        var imported = await CallOk(client, "import_video", new() { ["path"] = square, ["id"] = "square" }, ct);
+        if (imported.Contains("in the background as "))
+        {
+            var job = imported.Split("in the background as ")[1].Split([' ', ';', ',', '\n'])[0];
+            var deadline = DateTime.UtcNow.AddSeconds(180);
+            while ((await CallOk(client, "get_job_status", new() { ["jobId"] = job }, ct)).Contains("running") && DateTime.UtcNow < deadline)
+            {
+                await Task.Delay(250, ct);
+            }
+        }
+
+        await CallOk(client, "add_video_layer", new() { ["id"] = "clip", ["assetId"] = "square" }, ct);
+        var server = Path.Combine(projects, "tracking");
+        var editor = Path.Combine(root, "editor");
+        foreach (var file in Directory.GetFiles(Path.Combine(server, "assets")).Append(Path.Combine(server, "project.json")))
+        {
+            var copy = Path.Combine(editor, Path.GetRelativePath(server, file));
+            Directory.CreateDirectory(Path.GetDirectoryName(copy)!);
+            File.Copy(file, copy);
+        }
+
+        var document = EditorDocument.Open(editor);
+        Dictionary<string, object?> Box(double x, double y, double width, double height) => new() { ["x"] = x, ["y"] = y, ["width"] = width, ["height"] = height };
+        void Track(TrackPlan plan, TrackData? old, string tool)
+        {
+            TrackRunner.Run(ffmpeg.Ffmpeg, editor, TrackRunner.SourceFile(editor, plan.Asset), plan, old, null, ct);
+            Assert.True(document.Apply(new SaveTrackOperation(plan.Track, plan.Replacing, tool)), document.Status);
+        }
+
+        void Same()
+        {
+            Assert.Equal(TestProjects.WithoutRevision(File.ReadAllText(Path.Combine(server, "project.json"))), TestProjects.WithoutRevision(File.ReadAllText(Path.Combine(editor, "project.json"))));
+            var file = document.View.Tracks[0].File;
+            Assert.Equal(File.ReadAllText(Path.Combine(server, file)), File.ReadAllText(Path.Combine(editor, file)));
+        }
+
+        await CallOk(client, "track_object", new() { ["layerId"] = "clip", ["time"] = 0.0, ["box"] = Box(40, 120, 80, 80) }, ct);
+        Track(TrackEditor.Plan(document.View, "clip", 0, 40, 120, 80, 80, TrackDirection.Forward, TrackMethod.Csrt, null, _ => false), null, "track_object");
+        Assert.Equal("tracked track_1: frames 0–59 of 'square'", document.Summary);
+        Same();
+
+        await CallOk(client, "reanchor_track", new() { ["trackId"] = "track_1", ["time"] = 4 / 3.0, ["box"] = Box(280, 200, 80, 80) }, ct);
+        var old = TrackFiles.Load(editor, document.View.FindTrack("track_1")!);
+        Track(TrackEditor.PlanCorrection(document.View, "track_1", 4 / 3.0, 280, 200, 80, 80, null), old, "reanchor_track");
+        Assert.Equal("corrected track_1: frames 0–59 of 'square'", document.Summary);
+        Same();
+
+        await CallOk(client, "apply_redaction", new() { ["trackIds"] = new[] { "track_1" }, ["style"] = "blur", ["strength"] = 70, ["shape"] = "ellipse", ["smooth"] = true }, ct);
+        Assert.True(document.Apply(new ApplyRedactionOperation(["track_1"], new RedactionSettings(RedactionStyle.Blur, 70, 15, 4, 15, "#000000", RedactionShape.Ellipse, true))), document.Status);
+        Assert.Equal("hid track_1 with 'redaction_1': blur strength=70 padding=15% feather=4 hold=15 ellipse smooth", document.Summary);
+        Same();
+    }
+
+    // The editor's Import .srt (ImportSrtOperation, measuring text as the editor does) makes the track import_srt makes.
+    [Fact]
+    public async Task TheEditorsSrtImportMakesTheTrackImportSrtMakes()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var root = TestPaths.NewDirectory("mcp-srt-editor");
+        var projects = Path.Combine(root, "projects");
+        var srt = Path.Combine(root, "talk.ja.srt");
+        File.WriteAllText(srt, "1\n00:00:00,500 --> 00:00:02,000\nこんにちは\n\n2\n00:00:02,500 --> 00:00:05,000\n元気\nですか\n");
+        await using var client = await StartServer(root, projects, Path.Combine(root, "logs"), ct);
+        await CallOk(client, "create_project", new() { ["name"] = "srt", ["width"] = 640, ["height"] = 360, ["fps"] = 10, ["duration"] = 4.0 }, ct);
+        var server = Path.Combine(projects, "srt");
+        var editor = Path.Combine(root, "editor");
+        Directory.CreateDirectory(editor);
+        File.Copy(Path.Combine(server, "project.json"), Path.Combine(editor, "project.json"));
+        Assert.StartsWith("imported talk.ja.srt (language ja from the file name", await CallOk(client, "import_srt", new() { ["path"] = srt }, ct));
+
+        var (cues, problems) = global::ZeyoCut.Core.Editing.CaptionTracks.ParseSrt(File.ReadAllText(srt));
+        var document = global::ZeyoCut.Core.Editing.EditorDocument.Open(editor);
+        using var renderer = new FrameRenderer(editor);
+        var font = global::ZeyoCut.Core.Editing.Languages.FontFor(global::ZeyoCut.Core.Editing.Languages.DefaultFonts, "ja");
+        Assert.True(document.Apply(new global::ZeyoCut.Core.Editing.ImportSrtOperation("talk.ja.srt", "ja", cues, problems, font, p => new global::ZeyoCut.Render.Text.TextMeasurer(renderer, p))), document.Status);
+        Assert.Equal("added the ja captions 'captions_ja': 2 caption(s) from talk.ja.srt; cue 2 (\"元気 / ですか\") runs past the project end (4s), so it ends there", document.Summary);
+        Assert.Equal(TestProjects.WithoutRevision(File.ReadAllText(Path.Combine(server, "project.json"))), TestProjects.WithoutRevision(File.ReadAllText(Path.Combine(editor, "project.json"))));
+    }
+
     [Fact]
     public async Task ServerExportsEachLanguageVersionWithItsOwnVoiceAndCaptions()
     {
@@ -2520,12 +3056,31 @@ public class McpServerTests
         await using var client = await StartServer(root, projects, Path.Combine(root, "logs"), ct);
 
         var opened = await CallOk(client, "open_project", new() { ["nameOrPath"] = "tora" }, ct);
-        Assert.Matches(@"\nupdated project\.json from format 1 \(saved by an older ZeyoCut\) to 6; the file as it was is kept as backups\\project-v1-\d{8}-\d{6}\.json\n", opened);
+        Assert.Matches(@"\nupdated project\.json from format 1 \(saved by an older ZeyoCut\) to 13; the file as it was is kept as backups\\project-v1-\d{8}-\d{6}\.json\n", opened);
         Assert.Contains("tora_head", opened);
         Assert.Single(Directory.GetFiles(Path.Combine(projects, "tora", "backups"), "project-v1-*.json"));
-        Assert.Contains("\"formatVersion\": 6", await CallOk(client, "get_project", new(), ct));
+        Assert.Matches("\"formatVersion\": 13,\r?\n  \"revision\": 1,", await CallOk(client, "get_project", new(), ct));
 
         Assert.DoesNotContain("updated project.json", await CallOk(client, "open_project", new() { ["nameOrPath"] = "tora" }, ct));
+    }
+
+    [Fact]
+    public async Task ServerOpensAProjectWhoseFootageIsOutsideItAndListsTheProblem()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var root = TestPaths.NewDirectory("mcp-open-outside");
+        var projects = Path.Combine(root, "projects");
+        var project = TestProjects.Empty();
+        project.Assets.Add(new ZeyoCut.Core.Model.Asset { Id = "big", Type = ZeyoCut.Core.Model.AssetType.Video, File = "assets/big.mp4", Width = 3840, Height = 2160, FrameRate = "30", FrameCount = 90, Duration = 3 });
+        ZeyoCut.Core.Editing.ProjectSession.Create(Path.Combine(projects, "outside"), project);
+        var file = Path.Combine(projects, "outside", "project.json");
+        File.WriteAllText(file, File.ReadAllText(file).Replace("assets/big.mp4", "../elsewhere/big.mp4", StringComparison.Ordinal));
+        await using var client = await StartServer(root, projects, Path.Combine(root, "logs"), ct);
+
+        // Footage over 2560 px gets a proxy when a project opens: not this one, whose file is never read.
+        var opened = await CallOk(client, "open_project", new() { ["nameOrPath"] = "outside" }, ct);
+        Assert.Contains("project.json problem: asset 'big': file '../elsewhere/big.mp4' must be a file in the project's assets folder", opened);
+        Assert.DoesNotContain("proxy", opened);
     }
 
     [Fact]

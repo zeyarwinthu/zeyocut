@@ -76,6 +76,18 @@ public class ProjectCheckTests
         Assert.DoesNotContain("'middle'", text);
     }
 
+    // What the editor's safe-area guide draws: inside the title-safe margins, and on a vertical canvas
+    // also clear of the Shorts player's strips.
+    [Fact]
+    public void TheSafeAreaIsWhatTheZonesLeave()
+    {
+        Assert.Equal((96, 54, 1824, 1026), Rounded(ProjectChecker.SafeArea(TestProjects.Empty(1920, 1080))));
+        Assert.Equal((54, 153.6, 950.4, 1440), Rounded(ProjectChecker.SafeArea(TestProjects.Empty(1080, 1920))));
+
+        static (double, double, double, double) Rounded((double Left, double Top, double Right, double Bottom) area) =>
+            (Math.Round(area.Left, 6), Math.Round(area.Top, 6), Math.Round(area.Right, 6), Math.Round(area.Bottom, 6));
+    }
+
     [Fact]
     public void AProjectWithoutProblemsSaysSo()
     {

@@ -27,8 +27,11 @@ public static class Exporter
     // (one per thread) and the decoders have cores left and the memory stays within a few GB.
     public static int DefaultWorkers => Math.Clamp(Environment.ProcessorCount / 4, 1, 4);
 
-    // A chunked export renders and caches the frames in chunks of this many seconds.
+    // A chunked export renders and caches the frames in chunks of this many seconds, in this folder of
+    // the project's cache.
     public const int ChunkSeconds = ChunkedExport.ChunkSeconds;
+
+    public const string ChunksFolder = ChunkedExport.ChunksFolder;
 
     // The memory one thread of a chunked export takes, by the pixels of the canvas or the file, whichever
     // is bigger. Measured with 4 threads on a 16-core laptop: about 1 GB at 1920x1080 (x264 medium, with
@@ -69,7 +72,7 @@ public static class Exporter
         var stopwatch = Stopwatch.StartNew();
         var output = Path.GetFullPath(outputPath);
         Directory.CreateDirectory(Path.GetDirectoryName(output)!);
-        var temp = Path.Combine(Path.GetDirectoryName(output)!, Path.GetFileNameWithoutExtension(output) + ".partial" + Path.GetExtension(output));
+        var temp = PartialFile.For(output);
 
         var audio = FfmpegArgs.AudioClips(project, projectDirectory);
         foreach (var clip in audio.Where(c => !File.Exists(c.Path)))
@@ -270,10 +273,25 @@ public static class Exporter
         }
 
         var settings = project.Audio;
-        var mix = new AudioMix(settings.Ducking, settings.LoudnessTarget, settings.TruePeak, null);
+        var mix = AudioMix.Of(settings);
         if (FfmpegArgs.Ducks(audio, mix))
         {
-            notes.Add("music ducked under voice");
+            notes.Add($"music ducked {ProjectEditor.Decibels(settings.DuckLevel)} under voice");
+        }
+
+        // The strips of the roles heard, and the muted roles that have sound.
+        var sounding = project.Layers
+            .Select(l => l switch { AudioLayer { Visible: true } a => a.Role, VideoLayer { Visible: true, Muted: false } v => v.Role, _ => (AudioRole?)null })
+            .OfType<AudioRole>()
+            .ToHashSet();
+        var strips = Enum.GetValues<AudioRole>()
+            .Select(role => (Role: role, Name: EnumNames.ToName(role), Strip: settings.For(role)))
+            .Where(r => r.Strip.Muted ? sounding.Contains(r.Role) : (r.Strip.Gain != 0 || r.Strip.Pan != 0) && audio.Any(c => c.Role == r.Role))
+            .Select(r => r.Strip.Muted ? $"{r.Name} muted" : $"{r.Name} {string.Join(", ", new[] { r.Strip.Gain != 0 ? ProjectEditor.Decibels(r.Strip.Gain) : null, r.Strip.Pan != 0 ? ProjectEditor.PanText(r.Strip.Pan) : null }.OfType<string>())}")
+            .ToList();
+        if (strips.Count > 0)
+        {
+            notes.Add($"mix: {string.Join("; ", strips)}");
         }
 
         if (settings.LoudnessTarget is not { } target)

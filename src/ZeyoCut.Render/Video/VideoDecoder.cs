@@ -43,8 +43,10 @@ public static class VideoDecoder
     public static double SeekSeconds(Asset asset, int frame) =>
         frame <= 0 ? 0 : VideoTiming.TimeOfFrame(asset, frame) - VideoTiming.TimeOfFrame(asset, 1) / 2;
 
-    // Frames are decoded at the source size, but never larger than twice the canvas.
-    public static (int Width, int Height) DecodeSize(Asset asset, Project project)
+    // Frames are decoded at the source size, but never larger than twice the canvas, so a clip zoomed
+    // in stays sharp. A smaller preview frame (render scale under 1) is drawn for speed: its clips
+    // decode at most at its own size, which also spares scaling every frame down.
+    public static (int Width, int Height) DecodeSize(Asset asset, Project project, double renderScale = 1)
     {
         var width = asset.Width ?? 0;
         var height = asset.Height ?? 0;
@@ -53,7 +55,8 @@ public static class VideoDecoder
             throw new ZeyoCutException($"video asset '{asset.Id}' has no frame size");
         }
 
-        var scale = Math.Min(1, Math.Min(2.0 * project.Width / width, 2.0 * project.Height / height));
+        var limit = renderScale < 1 ? renderScale : 2.0;
+        var scale = Math.Min(1, Math.Min(limit * project.Width / width, limit * project.Height / height));
         if (scale >= 1)
         {
             return (width, height);

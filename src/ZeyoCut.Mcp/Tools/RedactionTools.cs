@@ -14,7 +14,7 @@ namespace ZeyoCut.Mcp.Tools;
 public static class RedactionTools
 {
     [McpServerTool(Name = "apply_redaction")]
-    [Description("Hide tracked faces, plates or objects (one undo step): adds a redaction layer (type redaction) that hides the box of each track on the video frame before the clip is drawn, in every clip that plays the track's footage, so moves, effects, the camera and subject cutouts all show it hidden, and splits, trims and speed changes keep it in step. Styles: pixelate (default), blur, solid (a color). Strength scales with the box: the pixelate block (or blur radius) is the box's long side over 20 at strength 0 down to 4 at 100 (12 at the default 50), never under 4 source pixels, so a small plate is as unreadable as a big face. The fail-safe: every box is padded by paddingPercent; frames the track lost between two detections get a box moved straight between them that grows with each missed frame, so no frame between them is uncovered; the box is held (and grows) for holdFrames before the first detection and after the last, but not across a scene cut that analyze_video found in the footage; and the box's motion is smoothed while always containing the frame's own box. feather adds a soft edge outside the box. Running it again on the same tracks changes their redaction; tracks in another redaction move to the new one. update_layer changes the settings (style, strength, paddingPercent, feather, holdFrames, color, visible); tracks_to_keyframes turns a track's box into keyframes to edit by hand. Check with render_frame.")]
+    [Description("Hide tracked faces, plates or objects (one undo step): adds a redaction layer (type redaction) that hides the box of each track on the video frame before the clip is drawn, in every clip that plays the track's footage, so moves, effects, the camera and subject cutouts all show it hidden, and splits, trims and speed changes keep it in step. Styles: pixelate (default), blur, solid (a color). Strength scales with the box: the pixelate block (or blur radius) is the box's long side over 20 at strength 0 down to 4 at 100 (12 at the default 50), never under 4 source pixels, so a small plate is as unreadable as a big face. The fail-safe: every box is padded by paddingPercent; frames the track lost between two detections get a box moved straight between them that grows with each missed frame, so no frame between them is uncovered; the box is held (and grows) for holdFrames before the first detection and after the last, but not across a scene cut that analyze_video found in the footage; and the box's motion is smoothed while always containing the frame's own box. smooth keeps the box steady through a tracker's jitter: rather than widening to cover every frame's padded box, it takes the box's center and size averaged over 6 frames on each side, so it keeps one size; it always contains the track's own box, with the padding around the average. shape ellipse hides the ellipse inside each box instead of the whole box, as for a face. feather adds a soft edge outside the box. Running it again on the same tracks changes their redaction; tracks in another redaction move to the new one. update_layer changes the settings (style, strength, paddingPercent, feather, holdFrames, color, shape, smooth, visible); tracks_to_keyframes turns a track's box into keyframes to edit by hand. Check with render_frame.")]
     public static string ApplyRedaction(
         EditorState state,
         [Description("Track ids to hide (list_layers shows a clip's tracks as tracks=), or [\"all\"] for every track.")] string[] trackIds,
@@ -23,14 +23,17 @@ public static class RedactionTools
         [Description("Each side of the box grows by this percent of its width or height. Default 15.")] double paddingPercent = 15,
         [Description("Soft edge outside the box, in source pixels. Default 4.")] double feather = 4,
         [Description("Frames the box is held, and grows, before a track's first detection and after its last; a scene cut that analyze_video found ends the hold sooner. Default 15.")] int holdFrames = 15,
-        [Description("solid: the fill, #RRGGBB or #RRGGBBAA. Default #000000.")] string color = "#000000") => Guard(() =>
+        [Description("solid: the fill, #RRGGBB or #RRGGBBAA. Default #000000.")] string color = "#000000",
+        [Description("rectangle (the whole box) or ellipse (the ellipse inside it). Default rectangle.")] string shape = "rectangle",
+        [Description("Keep the box steady through jitter: its center and size averaged over 6 frames on each side, always containing the track's own box. Default false.")] bool smooth = false) => Guard(() =>
     {
         var kind = EnumNames.Parse<RedactionStyle>(style, "style");
+        var form = EnumNames.Parse<RedactionShape>(shape, "shape");
         var session = state.Session;
         var label = string.Join(",", (trackIds ?? []).Select(t => t?.Trim()));
         return session.Mutate($"apply_redaction {label}", p =>
         {
-            var change = RedactionEditor.Apply(p, trackIds, new RedactionSettings(kind, strength, paddingPercent, feather, holdFrames, color));
+            var change = RedactionEditor.Apply(p, trackIds, new RedactionSettings(kind, strength, paddingPercent, feather, holdFrames, color, form, smooth));
             return Describe(p, session.Directory, change);
         });
     });
@@ -49,7 +52,7 @@ public static class RedactionTools
             var layer = RedactionEditor.Of(p, track.Id)
                 ?? throw new ZeyoCutException($"track '{track.Id}' isn't hidden by a redaction yet; apply_redaction trackIds=[\"{track.Id}\"] first");
             var asset = p.FindAsset(track.Asset)!;
-            var cover = RedactionCover.Of(TrackFiles.Load(session.Directory, track).Frames, asset.FrameCount ?? 0, layer.PaddingPercent, layer.HoldFrames, RedactionCover.Cuts(session.Directory, asset));
+            var cover = RedactionCover.Of(TrackFiles.Load(session.Directory, track).Frames, asset.FrameCount ?? 0, layer.PaddingPercent, layer.HoldFrames, RedactionCover.Cuts(session.Directory, asset), layer.Smooth);
             if (cover.Boxes.Count == 0)
             {
                 throw new ZeyoCutException($"track '{track.Id}' has no frame where the tracker found the object, so it has no box to make keyframes from");
@@ -229,7 +232,7 @@ public static class RedactionTools
             }
 
             var data = TrackFiles.Load(directory, track);
-            var cover = RedactionCover.Of(data.Frames, asset.FrameCount ?? 0, layer.PaddingPercent, layer.HoldFrames, RedactionCover.Cuts(directory, asset));
+            var cover = RedactionCover.Of(data.Frames, asset.FrameCount ?? 0, layer.PaddingPercent, layer.HoldFrames, RedactionCover.Cuts(directory, asset), layer.Smooth);
             if (cover.Boxes.Count == 0)
             {
                 lines.Add($"{track.Id}: not covered at all: the tracker found the object on none of its frames; track it again with track_object");
@@ -252,10 +255,11 @@ public static class RedactionTools
         }
 
         lines.AddRange(change.Notes);
-        lines.Add("check it with render_frame; update_layer changes its style, strength, paddingPercent, feather, holdFrames, color and visible; tracks_to_keyframes turns a track's box into keyframes to edit by hand");
+        lines.Add("check it with render_frame; update_layer changes its style, strength, paddingPercent, feather, holdFrames, color, shape, smooth and visible; tracks_to_keyframes turns a track's box into keyframes to edit by hand");
         var verb = change.Created ? "hid" : "changed how";
         var what = change.Created ? $"{Ids.List(layer.Tracks)} with '{layer.Id}'" : $"'{layer.Id}' hides {Ids.List(layer.Tracks)}";
         return $"{verb} {what}: {how}, padding {Num(layer.PaddingPercent)}%, feather {Num(layer.Feather)} px, held {layer.HoldFrames} frames before and after"
+            + (layer.Shape == RedactionShape.Ellipse ? ", the ellipse inside each box" : "") + (layer.Smooth ? ", its motion smoothed" : "")
             + string.Concat(lines.Select(l => "\n- " + l));
     }
 

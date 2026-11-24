@@ -48,7 +48,7 @@ public class JsonRoundTripTests
             Start = 0.7,
             TrimIn = 0.1,
             TrimOut = 0.4,
-            Volume = 0.8,
+            Volume = new AnimatedValue(0.8),
             FadeIn = 0.05,
             FadeOut = 0.1,
         });
