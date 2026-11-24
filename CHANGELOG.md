@@ -8,6 +8,11 @@ when they open.
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-24
+
+This release adds the ZeyoCut editor, `ZeyoCut.Editor.exe`: a window for working on a project by
+hand while Claude edits the same project.
+
 ### Added
 
 - **The ZeyoCut editor:** `ZeyoCut.Editor.exe`, a window for working on a project by hand, in the
@@ -343,5 +348,6 @@ is an MCP server, for Claude and other MCP clients.
 - A project, template or rig can't point an asset outside its own folder.
 - ONNX Runtime's Windows telemetry is turned off; ZeyoCut itself collects nothing.
 
-[Unreleased]: https://github.com/zeyarwinthu/zeyocut/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/zeyarwinthu/zeyocut/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/zeyarwinthu/zeyocut/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/zeyarwinthu/zeyocut/releases/tag/v0.1.0
