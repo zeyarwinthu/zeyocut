@@ -2034,6 +2034,43 @@ public class WindowTests
         Assert.Equal(Visibility.Collapsed, Shown(window, "MediaPage"));
     });
 
+    // Closing a project from a view with Back to edit leaves Home showing, not that view.
+    [Fact]
+    public void ClosingAProjectFromAViewShowsHome() => TestWindow.Run("window-close-views", (window, folder) =>
+    {
+        var directory = Saved(folder, "closing");
+        TestFiles.Tone(Path.Combine(directory, ProjectStore.AssetsFolder, "song.wav"), 2, 440, 0.2);
+        ProjectSession.Open(directory).Mutate("import_asset song.wav", p =>
+        {
+            p.Assets.Add(new Asset { Id = "song", Type = AssetType.Audio, File = "assets/song.wav", Duration = 2 });
+            return 0;
+        });
+        var views = new (string Page, Action Open)[]
+        {
+            ("MediaPage", () => Click(window, "MediaBrowserButton")),
+            ("SourcePage", () =>
+            {
+                Click(window, "MediaBrowserButton");
+                SelectCards(window, "song");
+                Click(window, "BrowserSourceButton");
+            }),
+            ("TitlesPage", () => Click(window, "TitlesButton")),
+            ("EffectsPage", () => Click(window, "EffectsButton")),
+            ("ColorPage", () => Click(window, "ColorButton")),
+        };
+        foreach (var (page, open) in views)
+        {
+            window.OpenProject(directory);
+            TestWindow.Pump();
+            open();
+            TestWindow.Pump();
+            Assert.Equal(Visibility.Visible, Shown(window, page));
+            Click(window, "LogoButton");
+            TestWindow.Pump();
+            Assert.Equal((page, Visibility.Visible, Visibility.Collapsed), (page, Shown(window, "StartPage"), Shown(window, page)));
+        }
+    });
+
     // The source viewer plays a file alone. I and O mark the part to use, which , inserts and .
     // overwrites at the timeline's playhead as the add-layer tools' edit does, on Video 1; Audio off
     // adds the clip with its sound off, and Alt+X clears the marks. A sound goes in a role.

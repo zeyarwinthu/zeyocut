@@ -2668,6 +2668,10 @@ public partial class MainWindow : Window
         CaptionsPage.Visibility = Visibility.Collapsed;
         ActivityPage.Visibility = Visibility.Collapsed;
         ExportPage.Visibility = Visibility.Collapsed;
+        MediaPage.Visibility = Visibility.Collapsed;
+        SourcePage.Visibility = Visibility.Collapsed;
+        TitlesPage.Visibility = Visibility.Collapsed;
+        EffectsPage.Visibility = Visibility.Collapsed;
         ColorPage.Visibility = Visibility.Collapsed;
         StartPage.Visibility = Visibility.Visible;
         StartError.Text = error ?? "";
