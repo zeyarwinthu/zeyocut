@@ -721,7 +721,8 @@ public class McpServerTests
         void Same(EditOperation operation, string reply)
         {
             var summary = operation.Apply(editor);
-            Assert.Equal(reply.ReplaceLineEndings("\n").Split('\n')[0], summary.Split("; the keyframes")[0]);
+            var lines = reply.ReplaceLineEndings("\n").Split('\n');
+            Assert.Equal(lines[0] + string.Concat(lines.Where(l => l.StartsWith("- ", StringComparison.Ordinal)).Select(l => "; " + l[2..])), summary);
             editor.Revision = ProjectJson.Deserialize(File.ReadAllText(file)).Revision;
             Assert.Equal(TestProjects.WithoutRevision(File.ReadAllText(file)), TestProjects.WithoutRevision(ProjectJson.Serialize(editor)));
         }

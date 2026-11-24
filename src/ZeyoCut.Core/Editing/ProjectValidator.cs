@@ -956,7 +956,7 @@ public static class ProjectValidator
     private static string ImageAssets(Dictionary<string, Asset> assets) =>
         Ids.List(assets.Values.Where(a => a.Type == AssetType.Image).Select(a => a.Id));
 
-    private static string Article(AssetType type) => type switch
+    internal static string Article(AssetType type) => type switch
     {
         AssetType.Image => "an image",
         AssetType.Audio => "audio",

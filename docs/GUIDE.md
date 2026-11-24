@@ -1245,7 +1245,7 @@ A 1D LUT, an amount without a look, and a look that isn't a LUT:
 ```text
 An error occurred invoking 'import_asset': 'lift_1d.cube' is a 1D LUT (LUT_1D_SIZE); ZeyoCut takes 3D LUTs, with LUT_3D_SIZE
 An error occurred invoking 'set_color': look.amount is how much of the look shows, and 'street_2' has no look: give look, a LUT asset (import_asset takes .cube files)
-An error occurred invoking 'set_color': asset 'street' is a video asset, not lut; lut assets: warm_film
+An error occurred invoking 'set_color': look 'street' is a video, not a LUT; LUT assets: warm_film. import_asset takes .cube files
 ```
 Taking the look off takes its keyframes with it:
 ```json
@@ -1254,7 +1254,7 @@ Taking the look off takes its keyframes with it:
 ```text
 color of 'street_b': exposure 0.3, contrast 1.12, highlights -0.2, shadows 0.18, temperature 0.35, saturation 1.2, lift.red -0.02, lift.blue 0.04, gain.red 0.06, gain.green 0.03
 Warnings:
-- the keyframes of 'street_b''s look.amount were taken away
+- 'street_b' lost its keyframes on look.amount
 ```
 ```json
 { "layerId": "street", "reset": true }
@@ -1262,7 +1262,7 @@ Warnings:
 ```text
 put the color of 'street' back as shot
 Warnings:
-- the keyframes of 'street''s temperature were taken away
+- 'street' lost its keyframes on temperature
 ```
 
 ### `set_mask`

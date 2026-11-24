@@ -118,7 +118,7 @@ public class ColorTests
 
         var result = ColorEditor.SetColor(project, "other_1", new ColorChange(Values(("highlights", -0.2)), From: "clip_1"));
         Assert.Equal("copied the color of 'clip_1' to 'other_1': exposure -0.5, contrast 1.12, highlights -0.2, shadows 0.18", result.Summary);
-        Assert.Equal(["the keyframes of 'other_1''s saturation were taken away"], result.Warnings);
+        Assert.Equal(["'other_1' lost its keyframes on saturation"], result.Warnings);
         Assert.Empty(other.Saturation.Keyframes);
         Assert.NotSame(Clip(project, "clip_1").Grade, other.Grade);
         Assert.Equal(0, Clip(project, "clip_1").Grade!.Highlights.Value);
@@ -241,8 +241,10 @@ public class ColorTests
 
         // Refused: a look that isn't a LUT, an amount without a look, a look written by hand that
         // isn't there.
-        Assert.Equal("asset 'clip' is a video asset, not lut; lut assets: warm_sunset, bleach",
+        Assert.Equal("look 'clip' is a video, not a LUT; LUT assets: warm_sunset, bleach. import_asset takes .cube files",
             Assert.Throws<ZeyoCutException>(() => ColorEditor.SetColor(project, "clip_1", new ColorChange(Values(), Look: "clip"))).Message);
+        Assert.Equal("look 'sepia' not found; LUT assets: warm_sunset, bleach. import_asset takes .cube files",
+            Assert.Throws<ZeyoCutException>(() => ColorEditor.SetColor(project, "clip_1", new ColorChange(Values(), Look: "sepia"))).Message);
         Assert.Equal("look.amount is how much of the look shows, and 'clip_2' has no look: give look, a LUT asset (import_asset takes .cube files)",
             Assert.Throws<ZeyoCutException>(() => ColorEditor.SetColor(project, "clip_2", new ColorChange(Values(("look.amount", 0.5))))).Message);
         Assert.Equal("look.amount must be between 0 and 1 (got 1.5)",

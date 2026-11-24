@@ -83,6 +83,14 @@ public static class ColorEditor
         _ => throw new ArgumentException($"'{channel}' isn't red, green or blue", nameof(channel)),
     };
 
+    // The LUT asset a look names.
+    private static string LookAssetOf(Project project, string id)
+    {
+        var luts = $"LUT assets: {Ids.List(project.Assets.Where(a => a.Type == AssetType.Lut).Select(a => a.Id))}. import_asset takes .cube files";
+        var asset = project.FindAsset(id) ?? throw new ZeyoCutException($"look '{id}' not found; {luts}");
+        return asset.Type == AssetType.Lut ? asset.Id : throw new ZeyoCutException($"look '{id}' is {ProjectValidator.Article(asset.Type)}, not a LUT; {luts}");
+    }
+
     // The LUT asset the clip's look uses, if it has one.
     public static string? LookAsset(Layer layer) => layer is IColorAdjustable { Grade.Look.Asset: { Length: > 0 } asset } ? asset : null;
 
@@ -168,7 +176,7 @@ public static class ColorEditor
         }
 
         var look = change.Look is { } named
-            ? named.Trim().Length == 0 ? null : ProjectEditor.GetAsset(project, named.Trim(), AssetType.Lut).Id
+            ? named.Trim().Length == 0 ? null : LookAssetOf(project, named.Trim())
             : (source ?? (change.Reset ? null : layer))?.Grade?.Look?.Asset;
         if (look is null && given.Any(g => g.Control.Name == LookAmount))
         {
@@ -188,7 +196,7 @@ public static class ColorEditor
         {
             if (KeyNames(layer) is { Count: > 0 } keyed)
             {
-                warnings.Add($"the keyframes of '{layerId}''s {string.Join(", ", keyed)} were taken away");
+                warnings.Add($"'{layerId}' lost its keyframes on {string.Join(", ", keyed)}");
             }
 
             layer.Contrast = new AnimatedValue(1);
@@ -207,7 +215,7 @@ public static class ColorEditor
             {
                 if (layer.Grade!.Look!.Amount.Keyframes.Count > 0)
                 {
-                    warnings.Add($"the keyframes of '{layerId}''s {LookAmount} were taken away");
+                    warnings.Add($"'{layerId}' lost its keyframes on {LookAmount}");
                 }
 
                 layer.Grade.Look = null;
@@ -298,7 +306,7 @@ public static class ColorEditor
 
         if (KeyNames(target) is { Count: > 0 } dropped)
         {
-            warnings.Add($"the keyframes of '{IdOf(target)}''s {string.Join(", ", dropped)} were taken away");
+            warnings.Add($"'{IdOf(target)}' lost its keyframes on {string.Join(", ", dropped)}");
         }
 
         target.Contrast = new AnimatedValue(source.Contrast.Value);
