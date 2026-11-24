@@ -18,7 +18,7 @@ namespace ZeyoCut.Mcp.Tools;
 public static class AssetTools
 {
     [McpServerTool(Name = "import_asset")]
-    [Description("Copy an image (png/jpg/webp/bmp), audio (wav/mp3/m4a/aac/ogg/opus/flac) or font (ttf/otf/ttc) file into the project's assets folder and register it. Returns the asset id to use in layers. Video files go through import_video.")]
+    [Description("Copy an image (png/jpg/webp/bmp), audio (wav/mp3/m4a/aac/ogg/opus/flac), font (ttf/otf/ttc) or 3D LUT (.cube, a look for set_color) file into the project's assets folder and register it. Returns the asset id to use in layers. Video files go through import_video.")]
     public static string ImportAsset(
         EditorState state,
         [Description("Absolute path of the file to import, in an import folder, the library or the projects folder.")] string path,
@@ -254,6 +254,7 @@ public static class AssetTools
             AssetType.Image => $"{asset.Width}x{asset.Height} px",
             AssetType.Audio => $"{Num(asset.Duration ?? 0)}s",
             AssetType.Video => $"{asset.Width}x{asset.Height} @ {asset.FrameRate} fps, {Num(asset.Duration ?? 0)}s, {asset.FrameCount} frames, {asset.Codec}, {(asset.HasAudio == true ? "with sound" : "no sound")}",
+            AssetType.Lut => "a look for set_color",
             _ => $"family \"{asset.FontFamily}\"",
         };
         var normalized = asset.Normalized is null ? "" : $"; normalized ({asset.Normalized})";

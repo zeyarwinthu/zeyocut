@@ -828,7 +828,7 @@ Properties are `x`, `y`, `rotation`, `scaleX`, `scaleY` and `opacity`, plus:
 
 - `drawing` on image layers
 - `brightness` (-1 to 1, 0 = unchanged, -1 = black), `contrast` and `saturation` (0 to 4, 1 = unchanged) on image and video layers
-- `grade.exposure`, `grade.highlights`, `grade.shadows`, `grade.temperature`, `grade.tint` on image and video layers with a grade (see [`set_color`](#set_color))
+- `grade.exposure`, `grade.highlights`, `grade.shadows`, `grade.temperature`, `grade.tint` on image and video layers with a grade, `grade.lift.red`, `grade.lift.green`, `grade.lift.blue` and the same for `grade.gamma` and `grade.gain` once that wheel is set, and `grade.look.amount` once the layer has a look (see [`set_color`](#set_color))
 - `cropX`, `cropY` on video layers with a crop (source pixels), for example to follow a subject after `reframe_to_vertical`
 - `volume` on audio layers and on video layers' own sound (1 as recorded, 0 silent, up to 10), to ride a level by hand: an audio layer has only this one
 - `shadow.x`, `shadow.y`, `shadow.blur`, `shadow.opacity`, `outline.width`, `blur.x`, `blur.y`, `tint.amount` on layers with that effect, and `mask.x`, `mask.y`, `mask.width`, `mask.height`, `mask.feather` on layers with a mask (see [Effects and motion](#effects-and-motion))
@@ -1136,10 +1136,16 @@ Grades an image or video clip: the controls of a color panel, as one undo step. 
 | `temperature` | -1 to 1 (0) | Bluer to warmer: red and blue go half a stop each way at 1 |
 | `tint` | -1 to 1 (0) | Greener to more magenta: green goes half a stop at 1 |
 | `saturation` | 0 to 4 (1) | 0 is black and white |
+| `lift` | `red`, `green`, `blue`: -1 to 1 (0) | The shadows wheel: moves black up or down and keeps white |
+| `gamma` | `red`, `green`, `blue`: -1 to 1 (0) | The midtones wheel: bends the middle and keeps black and white |
+| `gain` | `red`, `green`, `blue`: -1 to 1 (0) | The highlights wheel: scales the light and keeps black |
+| `look` | a LUT asset, or `"none"` | A 3D LUT from a `.cube` file (`import_asset`) laid over the clip |
+| `lookAmount` | 0 to 1 (1) | How much of the look shows |
 
-- **Order:** exposure and the white balance work on the light itself, then the highlights and shadows curves, which keep black and white where they are, then saturation, contrast and the layer's `brightness`. Brightness isn't part of the color here; `update_layer` sets it.
-- **The grade:** exposure, highlights, shadows, temperature and tint are kept in the layer's `grade`, which a clip has only while one of them isn't 0. `set_keyframes` animates them as `grade.exposure`, `grade.highlights`, `grade.shadows`, `grade.temperature` and `grade.tint` once the clip has one.
-- **`from`** copies another clip's color: contrast, saturation and grade, as fixed values. A clip whose color has keyframes can't be copied.
+- **Order:** exposure and the white balance work on the light itself, then the highlights and shadows curves, which keep black and white where they are, then the lift, gamma and gain wheels on each channel, then saturation, contrast and the layer's `brightness`, and the look last. Brightness isn't part of the color here; `update_layer` sets it.
+- **The grade:** exposure, highlights, shadows, temperature, tint, the wheels and the look are kept in the layer's `grade`, which a clip has only while one of them does something. A wheel is kept only while one of its channels isn't 0, so a channel you leave out of a wheel keeps its value. `set_keyframes` animates `grade.exposure`, `grade.highlights`, `grade.shadows`, `grade.temperature` and `grade.tint` once the clip has a grade, `grade.lift.red` (and the other channels and wheels) once that wheel is set, and `grade.look.amount` once the clip has a look.
+- **Looks:** `import_asset` takes a 3D LUT as a `.cube` file (2 to 129 points a side, with `DOMAIN_MIN` and `DOMAIN_MAX` if it has them) and keeps it in the project, so the project still renders on another computer. A 1D LUT is refused. `look: "none"` takes the look off, and its amount with it.
+- **`from`** copies another clip's color: contrast, saturation and grade, wheels and look included, as fixed values. A clip whose color has keyframes can't be copied.
 - **`sameFootage`** then gives every other clip of the same video (or of the same picture) the clip's color, and takes their color keyframes away.
 - **`reset`** puts the clip back as shot first: contrast and saturation 1, no grade.
 - The editor's Color view sets the same values.
@@ -1148,6 +1154,8 @@ Grades an image or video clip: the controls of a color panel, as one undo step. 
 |---|---|
 | `layerId` | required |
 | `exposure`, `contrast`, `highlights`, `shadows`, `temperature`, `tint`, `saturation` | unchanged |
+| `lift`, `gamma`, `gain` (each `{ "red", "green", "blue" }`) | unchanged |
+| `look`, `lookAmount` | unchanged; a new look starts at 1 |
 | `from` | none |
 | `reset`, `sameFootage` | false |
 
@@ -1202,6 +1210,51 @@ An error occurred invoking 'set_color': exposure must be between -3 and 3 (got 4
 ```
 ```text
 An error occurred invoking 'set_color': 'title' is a text layer; color is for image and video layers
+```
+The wheels and a look: a `.cube` file goes in with `import_asset`, then onto the clip at 60%:
+```json
+{ "path": "C:\\Users\\you\\Documents\\Looks\\warm_film.cube" }
+```
+```text
+imported warm_film [lut] assets/warm_film.cube (a look for set_color)
+```
+```json
+{ "layerId": "street_b", "lift": { "red": -0.02, "blue": 0.04 }, "gain": { "red": 0.06, "green": 0.03 }, "look": "warm_film", "lookAmount": 0.6 }
+```
+```text
+color of 'street_b': exposure 0.3, contrast 1.12, highlights -0.2, shadows 0.18, temperature 0.35, saturation 1.2, lift.red -0.02, lift.blue 0.04, gain.red 0.06, gain.green 0.03, look warm_film at 0.6
+```
+Fading the look in over the clip's first second, and a wheel that isn't set yet:
+```json
+{ "entries": [
+  { "layerId": "street_b", "property": "grade.look.amount", "time": 6, "value": 0 },
+  { "layerId": "street_b", "property": "grade.look.amount", "time": 7, "value": 0.6 }
+] }
+```
+```text
+set 2 keyframe(s) (2 added, 0 replaced) on street_b.grade.look.amount
+```
+```json
+{ "entries": [{ "layerId": "street_b", "property": "grade.gamma.red", "time": 6, "value": 0.1 }] }
+```
+```text
+An error occurred invoking 'set_keyframes': 1 of 1 entries are invalid, so nothing was changed:
+- entry 0 (street_b.grade.gamma.red @ 6s): 'street_b' has no gamma wheel; set_color's gamma sets it
+```
+A 1D LUT, an amount without a look, and a look that isn't a LUT:
+```text
+An error occurred invoking 'import_asset': 'lift_1d.cube' is a 1D LUT (LUT_1D_SIZE); ZeyoCut takes 3D LUTs, with LUT_3D_SIZE
+An error occurred invoking 'set_color': look.amount is how much of the look shows, and 'street_2' has no look: give look, a LUT asset (import_asset takes .cube files)
+An error occurred invoking 'set_color': asset 'street' is a video asset, not lut; lut assets: warm_film
+```
+Taking the look off takes its keyframes with it:
+```json
+{ "layerId": "street_b", "look": "none" }
+```
+```text
+color of 'street_b': exposure 0.3, contrast 1.12, highlights -0.2, shadows 0.18, temperature 0.35, saturation 1.2, lift.red -0.02, lift.blue 0.04, gain.red 0.06, gain.green 0.03
+Warnings:
+- the keyframes of 'street_b''s look.amount were taken away
 ```
 ```json
 { "layerId": "street", "reset": true }

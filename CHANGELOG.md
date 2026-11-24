@@ -223,6 +223,13 @@ when they open.
   for the highlights and shadows that keep black and white. `set_keyframes` animates
   `grade.exposure`, `grade.highlights`, `grade.shadows`, `grade.temperature` and `grade.tint`, and
   `list_layers` shows a clip's grade. Older projects update as they open.
+- **Color wheels and looks (project format 13):** `set_color` takes the `lift`, `gamma` and `gain`
+  wheels (red, green and blue, -1 to 1: the shadows, midtones and highlights) and a `look`, a 3D
+  LUT that `import_asset` takes as a `.cube` file (a new `lut` asset kind, kept in the project),
+  laid over the clip by `lookAmount` after everything else; `look: "none"` takes it off.
+  `set_keyframes` animates `grade.lift.red` and the other channels once a wheel is set, and
+  `grade.look.amount` once a clip has a look. Templates carry the LUTs their layers use, and
+  `check_project` counts a look as using its LUT. Older projects update as they open.
 - **Insert and overwrite:** `add_video_layer`, `add_audio_layer` and `add_image_layer` take `edit`.
   `insert` splits the clip under the new one's start on its lane (its draw level, or its role's
   sound) and moves everything that starts there or later later by the new clip's length, with

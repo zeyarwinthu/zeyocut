@@ -39,6 +39,9 @@ public static class ProjectMigrations
         new(11, _ => { }),
         // 12: a clip's color grade.
         new(12, _ => { }),
+
+        // 13: a grade's color wheels and look, and LUT assets.
+        new(13, _ => { }),
     ];
 
     private static readonly JsonNodeOptions NodeOptions = new() { PropertyNameCaseInsensitive = true };

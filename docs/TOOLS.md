@@ -48,7 +48,7 @@ The `zeyocut` server has 96 tools and 4 [workflow prompts](#workflow-prompts). E
 | [`get_logs`](#get_logs) | Read the server's log, oldest first: the last lastN entries of the log files (zeyocut-yyyyMMdd.jsonl in the log folder, one JSON object per line). |
 | [`get_project`](#get_project) | Return the full project model (project.json) of the open project. |
 | [`get_transcript`](#get_transcript) | Read the word-level transcript of an analyzed asset (run analyze_video first). |
-| [`import_asset`](#import_asset) | Copy an image (png/jpg/webp/bmp), audio (wav/mp3/m4a/aac/ogg/opus/flac) or font (ttf/otf/ttc) file into the project's assets folder and register it. |
+| [`import_asset`](#import_asset) | Copy an image (png/jpg/webp/bmp), audio (wav/mp3/m4a/aac/ogg/opus/flac), font (ttf/otf/ttc) or 3D LUT (.cube, a look for set_color) file into the project's assets folder and register it. |
 | [`import_folder`](#import_folder) | Import every image, audio, font and video file in a folder (not its subfolders) whose name matches pattern, in order: by name with numbers in order (panel_2 before panel_10), or by date, oldest first. |
 | [`import_srt`](#import_srt) | Import a .srt subtitle file as the caption track of its language, as add_caption_track does with srt: text layers under a null layer captions_&lt;language&gt;, replacing that language's track if there is one (one undo step). |
 | [`import_video`](#import_video) | Import a video file (mp4/mov/m4v/mkv/webm/avi) as a video asset. |
@@ -623,7 +623,7 @@ Read the word-level transcript of an analyzed asset (run analyze_video first). E
 
 ### `import_asset`
 
-Copy an image (png/jpg/webp/bmp), audio (wav/mp3/m4a/aac/ogg/opus/flac) or font (ttf/otf/ttc) file into the project's assets folder and register it. Returns the asset id to use in layers. Video files go through import_video.
+Copy an image (png/jpg/webp/bmp), audio (wav/mp3/m4a/aac/ogg/opus/flac), font (ttf/otf/ttc) or 3D LUT (.cube, a look for set_color) file into the project's assets folder and register it. Returns the asset id to use in layers. Video files go through import_video.
 
 | Parameter | Type | Description |
 |---|---|---|
@@ -977,7 +977,7 @@ Set the project camera's fixed values (one undo step). The camera moves the whol
 
 ### `set_color`
 
-Grade an image or video clip (one undo step): exposure in stops (-3 to 3; 1 doubles the light), contrast and saturation (0 to 4, 1 as shot), highlights and shadows (-1 to 1: darken or brighten the light or the dark parts; black and white stay), temperature (-1 bluer to 1 warmer) and tint (-1 greener to 1 more magenta); 0 leaves each of those as shot. Values you leave out keep theirs. from copies another clip's color as fixed values (a clip whose color has keyframes can't be copied); reset=true puts the clip back as shot first; sameFootage=true then gives every other clip of the same video (or picture) this clip's color, and takes their color keyframes away. Once a clip has a grade, set_keyframes animates grade.exposure, grade.highlights, grade.shadows, grade.temperature and grade.tint; contrast and saturation are animatable as ever. Brightness isn't part of the color here: update_layer sets it.
+Grade an image or video clip (one undo step): exposure in stops (-3 to 3; 1 doubles the light), contrast and saturation (0 to 4, 1 as shot), highlights and shadows (-1 to 1: darken or brighten the light or the dark parts; black and white stay), temperature (-1 bluer to 1 warmer) and tint (-1 greener to 1 more magenta); 0 leaves each of those as shot. Values you leave out keep theirs. from copies another clip's color as fixed values (a clip whose color has keyframes can't be copied); reset=true puts the clip back as shot first; sameFootage=true then gives every other clip of the same video (or picture) this clip's color, and takes their color keyframes away. The color wheels move red, green and blue in one part of the picture: lift the dark parts (black moves, white stays), gamma the middle (black and white stay) and gain the light parts (white moves, black stays); channels you leave out keep theirs. look lays a LUT asset (a .cube file from import_asset) over the clip after everything else, by lookAmount (0 to 1; a new look is 1); look "none" takes it off. Once a clip has a grade, set_keyframes animates grade.exposure, grade.highlights, grade.shadows, grade.temperature and grade.tint, grade.lift.red/green/blue (and gamma, gain) once that wheel is set, and grade.look.amount once it has a look; contrast and saturation are animatable as ever. Brightness isn't part of the color here: update_layer sets it.
 
 | Parameter | Type | Description |
 |---|---|---|
@@ -989,6 +989,20 @@ Grade an image or video clip (one undo step): exposure in stops (-3 to 3; 1 doub
 | `temperature` | number | -1 (bluer) to 1 (warmer). |
 | `tint` | number | -1 (greener) to 1 (more magenta). |
 | `saturation` | number | 0 to 4, 1 as shot; 0 is black and white. |
+| `lift` | object | Shadows wheel: {red, green, blue}, each -1 to 1. |
+| `lift.red` | number | -1 to 1: less or more red there (0 as shot). |
+| `lift.green` | number | -1 to 1: less or more green there. |
+| `lift.blue` | number | -1 to 1: less or more blue there. |
+| `gamma` | object | Midtones wheel: {red, green, blue}, each -1 to 1. |
+| `gamma.red` | number | -1 to 1: less or more red there (0 as shot). |
+| `gamma.green` | number | -1 to 1: less or more green there. |
+| `gamma.blue` | number | -1 to 1: less or more blue there. |
+| `gain` | object | Highlights wheel: {red, green, blue}, each -1 to 1. |
+| `gain.red` | number | -1 to 1: less or more red there (0 as shot). |
+| `gain.green` | number | -1 to 1: less or more green there. |
+| `gain.blue` | number | -1 to 1: less or more blue there. |
+| `look` | string | LUT asset id to lay over the clip, or "none" to take the look off. |
+| `lookAmount` | number | How much of the look shows, 0 to 1. |
 | `from` | string | Another clip to copy the color of. |
 | `reset` | boolean, default `false` | Put the clip's color back as shot first: contrast and saturation 1, no grade. |
 | `sameFootage` | boolean, default `false` | Then give every other clip of the same footage this clip's color. |
@@ -1018,7 +1032,7 @@ Add or replace many keyframes in one call (one undo step; all-or-nothing). A key
 |---|---|---|
 | `entries` | array of objects, required | Keyframes: [{layerId, property, time, value, easing, bezier}]. |
 | `entries[].layerId` | string | Layer id, or "camera" for the project camera. |
-| `entries[].property` | string | x, y, rotation, scaleX, scaleY, opacity; brightness, contrast, saturation (image and video layers); grade.exposure, grade.highlights, grade.shadows, grade.temperature, grade.tint (after set_color); cropX, cropY (video layers); drawing (image layers); shadow.x, shadow.y, shadow.blur, shadow.opacity, outline.width, blur.x, blur.y, tint.amount (after set_effect); mask.x, mask.y, mask.width, mask.height, mask.feather (after set_mask). Camera: x, y (the scene point at the frame's center), zoom, rotation, shakeX, shakeY, shakeRotation. |
+| `entries[].property` | string | x, y, rotation, scaleX, scaleY, opacity; brightness, contrast, saturation (image and video layers); grade.exposure, grade.highlights, grade.shadows, grade.temperature, grade.tint (after set_color), grade.lift.red, grade.lift.green, grade.lift.blue and the same for grade.gamma and grade.gain (once set_color sets that wheel), grade.look.amount (once it has a look); cropX, cropY (video layers); drawing (image layers); shadow.x, shadow.y, shadow.blur, shadow.opacity, outline.width, blur.x, blur.y, tint.amount (after set_effect); mask.x, mask.y, mask.width, mask.height, mask.feather (after set_mask). Camera: x, y (the scene point at the frame's center), zoom, rotation, shakeX, shakeY, shakeRotation. |
 | `entries[].time` | number | Time in seconds. |
 | `entries[].value` | any | A number, or a drawing name (string) for the drawing property. |
 | `entries[].easing` | string | Easing of the segment that STARTS at this keyframe: linear (default), hold, easeIn, easeOut, easeInOut, easeOutBack, easeOutBounce, easeOutElastic, or cubicBezier with bezier. Ignored for drawing (always hold). |

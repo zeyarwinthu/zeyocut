@@ -171,7 +171,7 @@ public static class ValueEditor
 
         return AnimatableProperties.Numeric(layer).Where(p => p.Name == property).Select(p => p.Value).FirstOrDefault()
             ?? throw new ZeyoCutException(property.StartsWith("grade.", StringComparison.Ordinal)
-                ? $"'{layer.Id}' has no grade; set its color first"
+                ? layer is IColorAdjustable { Grade: not null } ? $"'{layer.Id}' has no {property["grade.".Length..property.LastIndexOf('.')]} yet; set it first" : $"'{layer.Id}' has no grade; set its color first"
                 : property.Contains('.')
                 ? $"'{layer.Id}' has no {property[..property.IndexOf('.')]} effect; switch it on first"
                 : $"'{layer.Id}' has no value '{property}'");

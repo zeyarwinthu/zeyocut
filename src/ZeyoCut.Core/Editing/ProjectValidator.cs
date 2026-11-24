@@ -562,7 +562,22 @@ public static class ProjectValidator
         {
             foreach (var control in ColorEditor.Controls.Where(c => c.Graded))
             {
-                ValidateRange(ColorEditor.Value(grade, control.Name), control.Min, control.Max, $"{prefix}: {control.Property}", errors);
+                if (ColorEditor.Value(grade, control.Name) is { } value)
+                {
+                    ValidateRange(value, control.Min, control.Max, $"{prefix}: {control.Property}", errors);
+                }
+            }
+
+            if (grade.Look is { } look)
+            {
+                if (!assets.TryGetValue(look.Asset ?? "", out var lut))
+                {
+                    errors.Add($"{prefix}: grade.look.asset '{look.Asset}' not found; LUT assets: {Ids.List(assets.Values.Where(a => a.Type == AssetType.Lut).Select(a => a.Id))}");
+                }
+                else if (lut.Type != AssetType.Lut)
+                {
+                    errors.Add($"{prefix}: grade.look.asset '{look.Asset}' is {Article(lut.Type)}, not a LUT");
+                }
             }
         }
 
@@ -946,6 +961,7 @@ public static class ProjectValidator
         AssetType.Image => "an image",
         AssetType.Audio => "audio",
         AssetType.Video => "a video",
+        AssetType.Lut => "a LUT",
         _ => "a font"
     };
 }

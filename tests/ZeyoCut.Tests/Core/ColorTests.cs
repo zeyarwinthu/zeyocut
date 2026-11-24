@@ -43,10 +43,10 @@ public class ColorTests
         Assert.True(ColorEditor.Graded(clip));
         Assert.False(ColorEditor.Graded(Clip(project, "clip_2")));
 
-        // Saved in the project at format 12, and read back the same.
+        // Saved in the project at format 13, and read back the same.
         var json = ProjectJson.Serialize(project);
         Assert.Contains("\"grade\": {", json);
-        Assert.Equal(12, project.FormatVersion);
+        Assert.Equal(13, project.FormatVersion);
         var read = Clip(ProjectJson.Deserialize(json), "clip_1");
         Assert.Equal(0.35, read.Grade!.Temperature.Value);
         Assert.Empty(ProjectValidator.Validate(ProjectJson.Deserialize(json)));
@@ -67,7 +67,8 @@ public class ColorTests
             Assert.Throws<ZeyoCutException>(() => ColorEditor.SetColor(project, "clip_1", new ColorChange(Values(("exposure", 4))))).Message);
         Assert.Equal("tint must be between -1 and 1 (got -1.5)",
             Assert.Throws<ZeyoCutException>(() => ColorEditor.SetColor(project, "clip_1", new ColorChange(Values(("tint", -1.5))))).Message);
-        Assert.Equal("unknown color control 'warmth'; controls: exposure, contrast, highlights, shadows, temperature, tint, saturation",
+        Assert.Equal("unknown color control 'warmth'; controls: exposure, contrast, highlights, shadows, temperature, tint, saturation, "
+            + "lift.red, lift.green, lift.blue, gamma.red, gamma.green, gamma.blue, gain.red, gain.green, gain.blue, look.amount",
             Assert.Throws<ZeyoCutException>(() => ColorEditor.SetColor(project, "clip_1", new ColorChange(Values(("warmth", 1))))).Message);
         Assert.Equal("'label' is a text layer; color is for image and video layers",
             Assert.Throws<ZeyoCutException>(() => ColorEditor.SetColor(project, "label", new ColorChange(Values(("exposure", 1))))).Message);
@@ -155,6 +156,101 @@ public class ColorTests
         Assert.Equal((1.0, 1.0), (Clip(project, "clip_2").Contrast.Value, Clip(project, "clip_2").Saturation.Value));
         Assert.Equal("as shot", ColorEditor.Describe(Clip(project, "clip_2")));
         Assert.NotNull(Clip(project, "clip_1").Grade);
+    }
+
+    // The wheels: lift, gamma and gain each move red, green and blue, saved once one of them is set
+    // and gone again when all three are back at 0.
+    [Fact]
+    public void AWheelIsSavedOnceItsSetAndGoesWhenItsNeutral()
+    {
+        var project = Footage();
+        var result = ColorEditor.SetColor(project, "clip_1", new ColorChange(Values(("lift.red", -0.02), ("lift.blue", 0.04), ("gain.green", 0.1))));
+        Assert.Equal("color of 'clip_1': lift.red -0.02, lift.blue 0.04, gain.green 0.1", result.Summary);
+        var grade = Clip(project, "clip_1").Grade!;
+        Assert.Equal((-0.02, 0.0, 0.04), (grade.Lift!.Red.Value, grade.Lift.Green.Value, grade.Lift.Blue.Value));
+        Assert.Null(grade.Gamma);
+        Assert.Equal(0.1, grade.Gain!.Green.Value);
+        Assert.Equal(0, grade.Exposure.Value);
+
+        // In project.json under the grade, and read back the same.
+        var json = ProjectJson.Serialize(project);
+        Assert.Contains("\"lift\": {", json);
+        Assert.DoesNotContain("\"gamma\"", json);
+        Assert.Equal(0.04, Clip(ProjectJson.Deserialize(json), "clip_1").Grade!.Lift!.Blue.Value);
+        Assert.Empty(ProjectValidator.Validate(ProjectJson.Deserialize(json)));
+
+        // Out of range, by set_color or by hand.
+        Assert.Equal("gamma.blue must be between -1 and 1 (got 2)",
+            Assert.Throws<ZeyoCutException>(() => ColorEditor.SetColor(project, "clip_1", new ColorChange(Values(("gamma.blue", 2))))).Message);
+        grade.Gain.Red = new AnimatedValue(-3);
+        Assert.Contains(ProjectValidator.Validate(project), e => e.Contains("grade.gain.red", StringComparison.Ordinal));
+        grade.Gain.Red = new AnimatedValue(0);
+
+        // Animatable once the wheel is there.
+        var key = new KeyframeEntry("clip_1", "grade.gamma.red", 1, JsonSerializer.SerializeToElement(0.5), null, null);
+        Assert.Contains("'clip_1' has no gamma wheel; set_color's gamma sets it", Assert.Throws<ZeyoCutException>(() => KeyframeEditor.SetKeyframes(project, [key])).Message);
+        KeyframeEditor.SetKeyframes(project, [key with { Property = "grade.lift.red" }, key with { Property = "grade.lift.red", Time = 3, Value = JsonSerializer.SerializeToElement(0.0) }]);
+        Assert.Equal(0.25, Interpolator.Evaluate(grade.Lift.Red, 2), 6);
+        Assert.Contains(AnimatableProperties.Numeric(Clip(project, "clip_1")), p => p.Name == "grade.gain.blue");
+        Assert.Equal("lift.red animated (2 keyframes), lift.blue 0.04, gain.green 0.1", ColorEditor.Describe(Clip(project, "clip_1"), grade: true));
+
+        // A keyframed wheel isn't copied; at 0 and without keyframes, a wheel goes, then the grade.
+        KeyframeEditor.ClearKeyframes(project, "clip_1", "grade.lift.red");
+        ColorEditor.SetColor(project, "clip_1", new ColorChange(Values(("lift.red", 0), ("lift.blue", 0))));
+        Assert.Null(Clip(project, "clip_1").Grade!.Lift);
+        ColorEditor.SetColor(project, "clip_1", new ColorChange(Values(("gain.green", 0))));
+        Assert.Null(Clip(project, "clip_1").Grade);
+    }
+
+    // A look is a LUT asset (a .cube file) laid over the clip by an amount: set, changed, copied with
+    // the rest of the color, and taken off.
+    [Fact]
+    public void ALookIsALutAssetLaidOverTheClip()
+    {
+        var project = Footage();
+        project.Assets.Add(new Asset { Id = "warm_sunset", Type = AssetType.Lut, File = "assets/warm_sunset.cube" });
+        Assert.Empty(ProjectChecker.Users(project, "warm_sunset"));
+
+        var result = ColorEditor.SetColor(project, "clip_1", new ColorChange(Values(), Look: "warm_sunset"));
+        Assert.Equal("color of 'clip_1': look warm_sunset at 1", result.Summary);
+        var look = Clip(project, "clip_1").Grade!.Look!;
+        Assert.Equal(("warm_sunset", 1.0), (look.Asset, look.Amount.Value));
+        Assert.Equal(["clip_1"], ProjectChecker.Users(project, "warm_sunset"));
+        Assert.Contains("\"look\": {\n", ProjectJson.Serialize(project).Replace("\r", ""));
+
+        ColorEditor.SetColor(project, "clip_1", new ColorChange(Values(("look.amount", 0.6), ("exposure", 0.3))));
+        Assert.Equal("exposure 0.3, look warm_sunset at 0.6", ColorEditor.Describe(Clip(project, "clip_1")));
+        Assert.Contains("effects: grade(exposure 0.3, look warm_sunset at 0.6)", LayerTree.Describe(Clip(project, "clip_1")));
+        KeyframeEditor.SetKeyframes(project, [new KeyframeEntry("clip_1", "grade.look.amount", 0, JsonSerializer.SerializeToElement(0.0), null, null)]);
+        Assert.Contains(AnimatableProperties.Numeric(Clip(project, "clip_1")), p => p.Name == "grade.look.amount");
+        KeyframeEditor.ClearKeyframes(project, "clip_1", "grade.look.amount");
+
+        // Copied with the rest, and given to every clip of the footage.
+        ColorEditor.SetColor(project, "other_1", new ColorChange(Values(), From: "clip_1"));
+        Assert.Equal(("warm_sunset", 0.6), (Clip(project, "other_1").Grade!.Look!.Asset, Clip(project, "other_1").Grade!.Look!.Amount.Value));
+        ColorEditor.SetColor(project, "clip_1", new ColorChange(Values(), SameFootage: true));
+        Assert.Equal(0.6, Clip(project, "clip_2").Grade!.Look!.Amount.Value);
+        Assert.NotSame(look, Clip(project, "clip_2").Grade!.Look);
+
+        // Another look keeps the amount; "" takes it off.
+        project.Assets.Add(new Asset { Id = "bleach", Type = AssetType.Lut, File = "assets/bleach.cube" });
+        ColorEditor.SetColor(project, "clip_1", new ColorChange(Values(), Look: "bleach"));
+        Assert.Equal(("bleach", 0.6), (Clip(project, "clip_1").Grade!.Look!.Asset, Clip(project, "clip_1").Grade!.Look!.Amount.Value));
+        ColorEditor.SetColor(project, "clip_2", new ColorChange(Values(("exposure", 0)), Look: ""));
+        Assert.Null(Clip(project, "clip_2").Grade);
+
+        // Refused: a look that isn't a LUT, an amount without a look, a look written by hand that
+        // isn't there.
+        Assert.Equal("asset 'clip' is a video asset, not lut; lut assets: warm_sunset, bleach",
+            Assert.Throws<ZeyoCutException>(() => ColorEditor.SetColor(project, "clip_1", new ColorChange(Values(), Look: "clip"))).Message);
+        Assert.Equal("look.amount is how much of the look shows, and 'clip_2' has no look: give look, a LUT asset (import_asset takes .cube files)",
+            Assert.Throws<ZeyoCutException>(() => ColorEditor.SetColor(project, "clip_2", new ColorChange(Values(("look.amount", 0.5))))).Message);
+        Assert.Equal("look.amount must be between 0 and 1 (got 1.5)",
+            Assert.Throws<ZeyoCutException>(() => ColorEditor.SetColor(project, "clip_1", new ColorChange(Values(("look.amount", 1.5))))).Message);
+        Clip(project, "other_1").Grade!.Look!.Asset = "gone";
+        Assert.Contains(ProjectValidator.Validate(project), e => e.Contains("grade.look.asset 'gone' not found; LUT assets: warm_sunset, bleach", StringComparison.Ordinal));
+        Clip(project, "other_1").Grade!.Look!.Asset = "clip";
+        Assert.Contains(ProjectValidator.Validate(project), e => e.Contains("grade.look.asset 'clip' is a video, not a LUT", StringComparison.Ordinal));
     }
 
     // The editor's operation makes set_color's change, as one undo step of the session.

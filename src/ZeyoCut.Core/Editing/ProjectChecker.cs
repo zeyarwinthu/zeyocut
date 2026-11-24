@@ -147,7 +147,7 @@ public static class ProjectChecker
         }
     }
 
-    // The layers that show or play an asset: as its clip, sound, drawing, font or mask.
+    // The layers that show or play an asset: as its clip, sound, drawing, font, mask or look.
     public static IEnumerable<string> Users(Project project, string assetId) =>
         project.Layers.Where(l => l switch
         {
@@ -156,7 +156,7 @@ public static class ProjectChecker
             AudioLayer audio => audio.Asset == assetId,
             VideoLayer video => video.Asset == assetId,
             _ => false,
-        } || l is VisualLayer { Mask.Asset: { } mask } && mask == assetId).Select(l => l.Id);
+        } || l is VisualLayer { Mask.Asset: { } mask } && mask == assetId || ColorEditor.LookAsset(l) == assetId).Select(l => l.Id);
 
     // Every frame: which layers show content, where it lands, and whether anything shows at all.
     private static void Layout(Project project, ITextMeasurer? measurer, List<CheckIssue> issues)

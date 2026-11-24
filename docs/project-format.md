@@ -114,7 +114,7 @@ Here is the demo project (`ZeyoCut.Mcp.exe demo`) cut down to one asset and one 
 
 ### Assets
 
-Each asset has an `id`, which layers refer to it by, a `type` (`image`, `audio`, `font` or `video`) and a `file`. The file is always `assets/<file name>`; one that points anywhere else is an error. The rest is what was found when the file was imported: `width` and `height`, `duration`, `frameRate`, `frameCount`, `hasAudio`, `codec` and, for fonts, `fontFamily`. A video that was transcoded on import keeps the file the user imported in `originalFile` and the reason in `normalized`. `tags` (optional) names the groups the asset is in, as bins do, such as `["Tora rig"]`: up to 40 characters each, and tags that differ only in case are the same tag. `tag_assets` sets them, and the editor's Media browser lists each tag as a bin.
+Each asset has an `id`, which layers refer to it by, a `type` (`image`, `audio`, `font`, `video` or `lut`) and a `file`. The file is always `assets/<file name>`; one that points anywhere else is an error. The rest is what was found when the file was imported: `width` and `height`, `duration`, `frameRate`, `frameCount`, `hasAudio`, `codec` and, for fonts, `fontFamily`. A video that was transcoded on import keeps the file the user imported in `originalFile` and the reason in `normalized`. `tags` (optional) names the groups the asset is in, as bins do, such as `["Tora rig"]`: up to 40 characters each, and tags that differ only in case are the same tag. `tag_assets` sets them, and the editor's Media browser lists each tag as a bin.
 
 ### Layers
 
@@ -194,6 +194,7 @@ A marker has an `id`, a `time`, a `name` and a `kind`, `chapter` or `scene`. `ex
 | 10 | Asset `tags` |
 | 11 | A redaction's `shape` and `smooth` |
 | 12 | A clip's color `grade` |
+| 13 | A grade's `lift`, `gamma` and `gain` wheels and its `look`, and `lut` assets |
 
 A project saved by an older ZeyoCut opens too: it's updated to the current format as it opens, and the file as it was is kept in `backups\` for good. Every version has added fields, and a field an older file lacks gets its default; version 9 also turned `volume` into an animated value, and a number there still reads as one without keyframes.
 
@@ -232,8 +233,10 @@ ZeyoCut 0.1.0 doesn't know about `project.lock` and never re-reads `project.json
 - `flipX` mirrors a layer's own pixels around `anchorX`. Its children are not flipped.
 
 ## Animation
-- Animatable properties are `x`, `y`, `rotation`, `scaleX`, `scaleY` and `opacity`, plus `drawing` on image layers, `brightness`, `contrast` and `saturation` on image and video layers, `grade.exposure`, `grade.highlights`, `grade.shadows`, `grade.temperature` and `grade.tint` on graded ones, and `cropX`/`cropY` on cropped video layers.
+- Animatable properties are `x`, `y`, `rotation`, `scaleX`, `scaleY` and `opacity`, plus `drawing` on image layers, `brightness`, `contrast` and `saturation` on image and video layers, `grade.exposure`, `grade.highlights`, `grade.shadows`, `grade.temperature` and `grade.tint` on graded ones, `grade.lift.red`, `.green` and `.blue` (and the same for `gamma` and `gain`) on ones with that wheel, `grade.look.amount` on ones with a look, and `cropX`/`cropY` on cropped video layers.
 - An image or video layer's `grade` (`set_color`) has `exposure` (stops, -3 to 3), `highlights`, `shadows`, `temperature` and `tint` (-1 to 1), each animated and 0 as shot. It is drawn before the layer's saturation, contrast and brightness. A layer as shot has no `grade`.
+- A grade's color wheels `lift`, `gamma` and `gain` each have an animated `red`, `green` and `blue` (-1 to 1, 0 as shot), and are written only while one of them isn't 0. On each channel, lift moves black and keeps white (`y + lift × (1 − y)`), gamma bends the middle and keeps both (`y` to the power `2^−gamma`), and gain scales and keeps black (`y × (1 + gain)`), after the highlights and shadows.
+- A grade's `look` is `{ "asset": "<a lut asset>", "amount": <animated, 0 to 1> }`: a 3D LUT from a `.cube` file, drawn after the saturation, contrast and brightness and mixed with the picture by `amount`. A `lut` asset's file is the `.cube` file as imported.
 - A keyframe's easing shapes the segment that *starts* at that keyframe: `linear`, `hold`, `easeIn`, `easeOut`, `easeInOut`, `easeOutBack`, `easeOutBounce`, `easeOutElastic` or `cubicBezier`.
 - A `cubicBezier` keyframe's `bezier` is its curve as CSS's `cubic-bezier()` takes it: `[x1, y1, x2, y2]`, the handles of a curve from (0, 0) to (1, 1) across the segment, with time across and the change up. `x1` and `x2` are from 0 to 1; `y1` and `y2` can go past 0 and 1 to overshoot. `bezier` is written only with that easing.
 - Before the first keyframe and after the last, a property holds that keyframe's value. Once a property has keyframes, its static value is ignored.

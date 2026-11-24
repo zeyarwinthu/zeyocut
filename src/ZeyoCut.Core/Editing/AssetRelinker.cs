@@ -133,6 +133,7 @@ public static class AssetRelinker
             AssetType.Image => (size, $"size {Size(asset)}"),
             AssetType.Audio => (length, $"length {Length(asset)}"),
             AssetType.Video => (size is null || length is null ? size ?? length : size & length, $"size {Size(asset)} and length {Length(asset)}"),
+            AssetType.Lut => ((bool?)null, ""),
             _ => (family, $"font family \"{asset.FontFamily}\""),
         };
         return same switch
@@ -152,6 +153,7 @@ public static class AssetRelinker
         AssetType.Image => asset.Width is null || asset.Height is null ? null : Size(asset),
         AssetType.Audio => asset.Duration is null ? null : Length(asset),
         AssetType.Video => asset.Width is null || asset.Height is null || asset.Duration is null ? null : $"{asset.Width}x{asset.Height}, {Length(asset)}",
+        AssetType.Lut => null,
         _ => asset.FontFamily is null ? null : $"font family \"{asset.FontFamily}\"",
     };
 
@@ -164,6 +166,7 @@ public static class AssetRelinker
         AssetType.Image => "an image",
         AssetType.Audio => "an audio file",
         AssetType.Video => "a video",
+        AssetType.Lut => "a LUT",
         _ => "a font",
     };
 }

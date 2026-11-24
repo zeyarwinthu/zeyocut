@@ -9,7 +9,10 @@ public enum AssetType
     Image,
     Audio,
     Font,
-    Video
+    Video,
+
+    // A look: a 3D LUT from a .cube file, which a clip's grade lays over it.
+    Lut
 }
 
 public sealed class Asset

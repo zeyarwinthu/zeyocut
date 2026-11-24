@@ -152,6 +152,21 @@ public static class ProjectJson
                 grade.Shadows = NormalizeValue(grade.Shadows, 0);
                 grade.Temperature = NormalizeValue(grade.Temperature, 0);
                 grade.Tint = NormalizeValue(grade.Tint, 0);
+                foreach (var wheel in new[] { grade.Lift, grade.Gamma, grade.Gain })
+                {
+                    if (wheel is not null)
+                    {
+                        wheel.Red = NormalizeValue(wheel.Red, 0);
+                        wheel.Green = NormalizeValue(wheel.Green, 0);
+                        wheel.Blue = NormalizeValue(wheel.Blue, 0);
+                    }
+                }
+
+                if (grade.Look is { } look)
+                {
+                    look.Asset ??= "";
+                    look.Amount = NormalizeValue(look.Amount, 1);
+                }
             }
         }
 

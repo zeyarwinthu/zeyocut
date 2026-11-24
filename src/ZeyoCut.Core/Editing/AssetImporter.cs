@@ -49,6 +49,7 @@ public static class AssetImporter
         [".mkv"] = AssetType.Video,
         [".webm"] = AssetType.Video,
         [".avi"] = AssetType.Video,
+        [".cube"] = AssetType.Lut,
     };
 
     public static string SupportedExtensions => string.Join(", ", Extensions.Where(e => e.Value != AssetType.Video).Select(e => e.Key));
@@ -71,7 +72,7 @@ public static class AssetImporter
         var type = DetectType(source);
         if (expected == AssetType.Video && type != AssetType.Video)
         {
-            throw new ZeyoCutException($"'{Path.GetFileName(source)}' is not a video file; video types: {VideoExtensions}. Use import_asset for images, audio and fonts");
+            throw new ZeyoCutException($"'{Path.GetFileName(source)}' is not a video file; video types: {VideoExtensions}. Use import_asset for images, audio, fonts and LUTs");
         }
 
         if (expected != AssetType.Video && type == AssetType.Video)

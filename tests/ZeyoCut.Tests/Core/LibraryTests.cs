@@ -307,6 +307,27 @@ public class LibraryTests
         Assert.Contains("at must be 0 or later", Assert.Throws<ZeyoCutException>(() => Templates.Add(other, otherDirectory, library, "hop", -1)).Message);
     }
 
+    // A look's LUT goes with the layers that look through it, as their drawings do.
+    [Fact]
+    public void ATemplateTakesTheLutItsLayersLookThrough()
+    {
+        var (project, directory) = RigProject("library-template-look");
+        var library = new Library(TestPaths.NewDirectory("library-template-look-lib"));
+        var lut = new Asset { Id = "warm", Type = AssetType.Lut, File = "assets/warm.cube" };
+        project.Assets.Add(lut);
+        File.WriteAllText(ProjectStore.AssetPath(directory, lut), CubeLutTests.Curves());
+        ColorEditor.SetColor(project, "tora_body", new ColorChange(new Dictionary<string, double>(), Look: "warm"));
+        Templates.Save(project, directory, library, "warm hop", ["tora_body"], null, overwrite: false);
+
+        var other = TestProjects.Empty(width: 640, height: 360, duration: 8);
+        var otherDirectory = TestPaths.NewDirectory("library-template-look-other");
+        Templates.Add(other, otherDirectory, library, "warm hop", 0);
+        var asset = other.FindAsset(((ImageLayer)other.FindLayer("tora_body")!).Grade!.Look!.Asset)!;
+        Assert.Equal(AssetType.Lut, asset.Type);
+        Assert.True(File.Exists(ProjectStore.AssetPath(otherDirectory, asset)));
+        ProjectValidator.ThrowIfInvalid(other);
+    }
+
     [Fact]
     public void LibraryNamesAreCheckedAndListed()
     {

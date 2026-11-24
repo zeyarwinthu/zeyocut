@@ -747,6 +747,19 @@ public class McpServerTests
             new KeyframeEntry("sky_a", "grade.temperature", 4, JsonSerializer.SerializeToElement(1.0)),
         ]).Apply(editor);
 
+        // The wheels and a look: a .cube file imported as a LUT asset, laid over the clip, then off.
+        var cube = Path.Combine(root, "warm.cube");
+        File.WriteAllText(cube, ZeyoCut.Tests.Core.CubeLutTests.Curves());
+        await CallOk(client, "import_asset", new() { ["path"] = cube }, ct);
+        Assert.Contains("warm [lut] assets/warm.cube (a look for set_color)", await CallOk(client, "list_assets", new(), ct));
+        editor = ProjectJson.Deserialize(File.ReadAllText(file));
+        var wheels = await CallOk(client, "set_color", new() { ["layerId"] = "street_b", ["lift"] = new { red = -0.02, blue = 0.04 }, ["gain"] = new { green = 0.1 }, ["look"] = "warm", ["lookAmount"] = 0.6 }, ct);
+        Assert.EndsWith("saturation 1.2, lift.red -0.02, lift.blue 0.04, gain.green 0.1, look warm at 0.6", wheels);
+        Same(new SetColorOperation("street_b", new ColorChange(new Dictionary<string, double> { ["lift.red"] = -0.02, ["lift.blue"] = 0.04, ["gain.green"] = 0.1, ["look.amount"] = 0.6 }, Look: "warm")), wheels);
+        var off = await CallOk(client, "set_color", new() { ["layerId"] = "street_b", ["look"] = "none" }, ct);
+        Same(new SetColorOperation("street_b", new ColorChange(new Dictionary<string, double>(), Look: "")), off);
+        Assert.Contains("look.amount is how much of the look shows", Text(await Call(client, "set_color", new() { ["layerId"] = "street_b", ["lookAmount"] = 0.5 }, ct)));
+
         var reset = await CallOk(client, "set_color", new() { ["layerId"] = "sky_a", ["reset"] = true }, ct);
         Assert.StartsWith("put the color of 'sky_a' back as shot", reset);
         Same(new SetColorOperation("sky_a", new ColorChange(new Dictionary<string, double>(), Reset: true)), reset);
@@ -1874,7 +1887,7 @@ public class McpServerTests
         }
 
         var first = JsonDocument.Parse(File.ReadAllText(projectFile)).RootElement.GetProperty("tracks")[0];
-        Assert.Equal(12, JsonDocument.Parse(File.ReadAllText(projectFile)).RootElement.GetProperty("formatVersion").GetInt32());
+        Assert.Equal(13, JsonDocument.Parse(File.ReadAllText(projectFile)).RootElement.GetProperty("formatVersion").GetInt32());
         var firstFile = first.GetProperty("file").GetString()!;
         Assert.True(File.Exists(Path.Combine(root, "projects", "tracking", firstFile)));
 
@@ -3042,10 +3055,10 @@ public class McpServerTests
         await using var client = await StartServer(root, projects, Path.Combine(root, "logs"), ct);
 
         var opened = await CallOk(client, "open_project", new() { ["nameOrPath"] = "tora" }, ct);
-        Assert.Matches(@"\nupdated project\.json from format 1 \(saved by an older ZeyoCut\) to 12; the file as it was is kept as backups\\project-v1-\d{8}-\d{6}\.json\n", opened);
+        Assert.Matches(@"\nupdated project\.json from format 1 \(saved by an older ZeyoCut\) to 13; the file as it was is kept as backups\\project-v1-\d{8}-\d{6}\.json\n", opened);
         Assert.Contains("tora_head", opened);
         Assert.Single(Directory.GetFiles(Path.Combine(projects, "tora", "backups"), "project-v1-*.json"));
-        Assert.Matches("\"formatVersion\": 12,\r?\n  \"revision\": 1,", await CallOk(client, "get_project", new(), ct));
+        Assert.Matches("\"formatVersion\": 13,\r?\n  \"revision\": 1,", await CallOk(client, "get_project", new(), ct));
 
         Assert.DoesNotContain("updated project.json", await CallOk(client, "open_project", new() { ["nameOrPath"] = "tora" }, ct));
     }

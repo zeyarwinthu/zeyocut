@@ -32,7 +32,7 @@ public class ColorPanelTests
     public void TheSlidersShowTheDesignsUnitsAndReadTypedValues()
     {
         Assert.Equal(["Exposure", "Contrast", "Highlights", "Shadows", "Temperature", "Tint", "Saturation"], ColorPanel.Sliders.Select(s => s.Label));
-        Assert.Equal(ColorEditor.Controls.Select(c => c.Name), ColorPanel.Sliders.Select(s => s.Name));
+        Assert.Equal(ColorEditor.Controls.Where(c => !c.Name.Contains('.')).Select(c => c.Name), ColorPanel.Sliders.Select(s => s.Name));
         string Readout(string name, double value) => ColorPanel.Readout(ColorPanel.Slider(name), value);
         Assert.Equal(["+0.3", "+12", "−20", "+18", "+35", "0", "+20"],
             new[] { Readout("exposure", 0.3), Readout("contrast", 1.12), Readout("highlights", -0.2), Readout("shadows", 0.18), Readout("temperature", 0.35), Readout("tint", 0), Readout("saturation", 1.2) });

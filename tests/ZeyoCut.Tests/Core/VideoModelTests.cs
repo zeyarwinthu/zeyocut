@@ -176,7 +176,7 @@ public class VideoModelTests
 
         var project = ProjectJson.Deserialize(json);
         Assert.Equal(Project.CurrentFormatVersion, project.FormatVersion);
-        Assert.Equal(12, Project.CurrentFormatVersion);
+        Assert.Equal(13, Project.CurrentFormatVersion);
         var dot = Assert.IsType<ImageLayer>(project.Layers.Single());
         Assert.Equal(0, dot.Brightness.Value);
         Assert.Equal(1, dot.Contrast.Value);

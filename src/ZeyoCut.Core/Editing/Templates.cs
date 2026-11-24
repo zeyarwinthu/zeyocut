@@ -213,6 +213,11 @@ public static class Templates
             layer.Name = layer.Name == old ? layer.Id : layer.Name;
             layer.ParentId = layer.ParentId is { } parent ? ids[parent] : null;
             layer.ZIndex += Drawn(layer) ? lift : 0;
+            if (layer is IColorAdjustable { Grade.Look: { } look })
+            {
+                look.Asset = assetMap[look.Asset];
+            }
+
             switch (layer)
             {
                 case ImageLayer image:
@@ -308,6 +313,7 @@ public static class Templates
             VideoLayer video => [video.Asset],
             _ => [],
         };
+        ids = ColorEditor.LookAsset(layer) is { } look ? ids.Append(look) : ids;
         return layer is VisualLayer { Mask.Asset: { } mask } ? ids.Append(mask) : ids;
     }
 
