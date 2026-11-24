@@ -4,6 +4,7 @@ using System.Collections.Concurrent;
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using SkiaSharp;
 using ZeyoCut.Core.Editing;
 using ZeyoCut.Core.Model;
 
@@ -118,6 +119,42 @@ public class ThumbnailTests
         }
 
         Assert.Equal(2, Kept(directory).Length);
+    }
+
+    // A look's picture is hues, light to dark, over a gray ramp, drawn through its LUT: a LUT that
+    // turns each channel around shows each pixel turned around.
+    [Fact]
+    public void ALookShowsHuesAndGraysThroughItsLut()
+    {
+        using var swatch = MediaThumbnails.Swatch();
+        Assert.Equal((MediaThumbnails.Size, 96), (swatch.Width, swatch.Height));
+        Assert.Equal(new SKColor(128, 128, 128), Pixel(swatch, 80, 90));
+        var top = Pixel(swatch, 0, 0);
+        Assert.True(top.Red > 200 && top.Green < top.Red && top.Blue < top.Red, $"the top left is {top}, not a light red");
+
+        var directory = TestFiles.NewProject("thumbnail-look");
+        var invert = new Asset { Id = "invert", Type = AssetType.Lut, File = "assets/invert.cube" };
+        File.WriteAllText(Path.Combine(directory, ProjectStore.AssetsFolder, "invert.cube"), "LUT_3D_SIZE 2\n" + string.Concat(
+            from b in new[] { 0, 1 } from g in new[] { 0, 1 } from r in new[] { 0, 1 } select $"{1 - r} {1 - g} {1 - b}\n"));
+        var ready = new BlockingCollection<string>();
+        using var thumbnails = new MediaThumbnails(directory, () => "", ready.Add);
+        var made = Wait(thumbnails, ready, invert);
+        Assert.Equal((MediaThumbnails.Size, 96), (made.PixelWidth, made.PixelHeight));
+        var pixels = new byte[made.PixelWidth * made.PixelHeight * 4];
+        new FormatConvertedBitmap(made, PixelFormats.Bgra32, null, 0).CopyPixels(pixels, made.PixelWidth * 4, 0);
+        foreach (var (x, y) in new[] { (0, 0), (80, 30), (150, 60), (80, 90) })
+        {
+            var source = Pixel(swatch, x, y);
+            var i = (y * made.PixelWidth + x) * 4;
+            Assert.True(Math.Abs(255 - source.Red - pixels[i + 2]) <= 2 && Math.Abs(255 - source.Green - pixels[i + 1]) <= 2 && Math.Abs(255 - source.Blue - pixels[i]) <= 2,
+                $"at {x},{y} {source} became ({pixels[i + 2]}, {pixels[i + 1]}, {pixels[i]})");
+        }
+    }
+
+    private static SKColor Pixel(SKImage image, int x, int y)
+    {
+        using var bitmap = SKBitmap.FromImage(image);
+        return bitmap.GetPixel(x, y);
     }
 
     [Fact]

@@ -1107,7 +1107,8 @@ public partial class MainWindow : Window
     }
 
     // The media panel: a tile for each asset the filter chips let through, each with its thumbnail
-    // once MediaThumbnails has made it. The Fonts chip is there while the project has a font.
+    // once MediaThumbnails has made it. The Fonts and Looks chips are there while the project has a
+    // font or a LUT.
     private void ShowMedia()
     {
         if (_document is not { } document)
@@ -1117,8 +1118,10 @@ public partial class MainWindow : Window
 
         var project = document.View;
         var fonts = project.Assets.Any(a => a.Type == AssetType.Font);
+        var looks = project.Assets.Any(a => a.Type == AssetType.Lut);
         FontsFilter.Visibility = fonts ? Visibility.Visible : Visibility.Collapsed;
-        if (_mediaFilter == AssetType.Font && !fonts)
+        LooksFilter.Visibility = looks ? Visibility.Visible : Visibility.Collapsed;
+        if ((_mediaFilter == AssetType.Font && !fonts) || (_mediaFilter == AssetType.Lut && !looks))
         {
             _mediaFilter = null;
             AllFilter.IsChecked = true;
@@ -1142,7 +1145,7 @@ public partial class MainWindow : Window
 
         MediaEmpty.Text = project.Assets.Count == 0
             ? "No media yet. Import images, audio, fonts or video, or ask Claude to."
-            : $"No {_mediaFilter switch { AssetType.Video => "video", AssetType.Image => "images", AssetType.Audio => "audio", _ => "fonts" }} in this project.";
+            : $"No {_mediaFilter switch { AssetType.Video => "video", AssetType.Image => "images", AssetType.Audio => "audio", AssetType.Lut => "looks", _ => "fonts" }} in this project.";
         MediaEmpty.Visibility = items.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
     }
 
@@ -8919,14 +8922,13 @@ public partial class MainWindow : Window
             return;
         }
 
-        var current = ColorEditor.LookAsset(layer);
         var menu = new ContextMenu { PlacementTarget = ColorLookButton, Placement = PlacementMode.Bottom, MinWidth = ColorLookButton.ActualWidth };
         void Add(string header, string? look)
         {
-            var item = new MenuItem { Header = header.Replace("_", "__"), IsChecked = current == look };
+            var item = new MenuItem { Header = header.Replace("_", "__"), IsChecked = ColorEditor.LookAsset(layer) == look };
             item.Click += (_, _) =>
             {
-                if (current != look)
+                if (_document?.View.FindLayer(clip) is { } now && ColorEditor.LookAsset(now) != look)
                 {
                     ColorEdit(target => ColorPanel.LookChange(target, look));
                 }

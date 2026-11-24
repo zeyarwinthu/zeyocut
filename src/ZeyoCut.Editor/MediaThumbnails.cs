@@ -6,16 +6,17 @@ using System.Windows.Media.Imaging;
 using SkiaSharp;
 using ZeyoCut.Core.Editing;
 using ZeyoCut.Core.Model;
+using ZeyoCut.Core.Serialization;
 using ZeyoCut.Render;
 using ZeyoCut.Render.Video;
 
 namespace ZeyoCut.Editor;
 
 // Small pictures of the project's media, for the media panel's tiles and the timeline's clips: a
-// picture made smaller, and a video's first frame. Each is made once on a worker thread and kept in
-// memory and in the project's cache folder (cache\thumbnails), named by the file, its size and when
-// it was last changed, so a file replaced under the same name gets a new one. Sound and fonts have
-// none.
+// picture made smaller, a video's first frame, and a look's swatch drawn through its LUT. Each is
+// made once on a worker thread and kept in memory and in the project's cache folder
+// (cache\thumbnails), named by the file, its size and when it was last changed, so a file replaced
+// under the same name gets a new one. Sound and fonts have none.
 public sealed class MediaThumbnails : IDisposable
 {
     public const string Folder = "thumbnails";
@@ -46,7 +47,7 @@ public sealed class MediaThumbnails : IDisposable
     // The asset's thumbnail, or null when it has none or while it's being made (ready says when).
     public BitmapSource? Get(Asset asset)
     {
-        if (asset.Type is not (AssetType.Video or AssetType.Image) || !ProjectStore.IsAssetFile(asset.File))
+        if (asset.Type is not (AssetType.Video or AssetType.Image or AssetType.Lut) || !ProjectStore.IsAssetFile(asset.File))
         {
             return null;
         }
@@ -87,6 +88,47 @@ public sealed class MediaThumbnails : IDisposable
 
     public static string Key(string file, long length, long changed) =>
         Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes($"{file}|{length}|{changed}|{Size}")))[..16];
+
+    // What a look's picture shows before its LUT: hues across, light to dark down the top three
+    // quarters, and a gray ramp along the bottom.
+    public static SKImage Swatch()
+    {
+        const int width = Size;
+        const int height = 96;
+        const int hues = height * 3 / 4;
+        var pixels = new byte[width * height * 4];
+        for (var y = 0; y < height; y++)
+        {
+            for (var x = 0; x < width; x++)
+            {
+                var across = x / (double)(width - 1);
+                var (r, g, b) = y < hues ? Hue(across, 0.95 - 0.7 * y / (hues - 1)) : (across, across, across);
+                var i = (y * width + x) * 4;
+                (pixels[i], pixels[i + 1], pixels[i + 2], pixels[i + 3]) = ((byte)Math.Round(r * 255), (byte)Math.Round(g * 255), (byte)Math.Round(b * 255), 255);
+            }
+        }
+
+        return SKImage.FromPixelCopy(new SKImageInfo(width, height, SKColorType.Rgba8888, SKAlphaType.Premul), pixels)
+            ?? throw new InvalidOperationException("could not make a look's swatch");
+    }
+
+    // A hue (0 to 1 round from red) at 60% saturation and a brightness, as red, green and blue.
+    private static (double R, double G, double B) Hue(double hue, double value)
+    {
+        const double saturation = 0.6;
+        var sector = hue * 6 % 6;
+        var f = sector - Math.Floor(sector);
+        var (p, q, t) = (value * (1 - saturation), value * (1 - saturation * f), value * (1 - saturation * (1 - f)));
+        return (int)Math.Floor(sector) switch
+        {
+            0 => (value, t, p),
+            1 => (q, value, p),
+            2 => (p, value, t),
+            3 => (p, q, value),
+            4 => (t, p, value),
+            _ => (value, p, q),
+        };
+    }
 
     // The thumbnail's size: the picture's, made smaller to fit Size.
     public static (int Width, int Height) Fit(int width, int height)
@@ -172,6 +214,17 @@ public sealed class MediaThumbnails : IDisposable
             var (width, height) = Fit(asset.Width ?? Size, asset.Height ?? Size);
             using var frames = new VideoFrameSource(_ffmpeg, stream: false);
             png = Png.Encode(frames.GetFrame("thumbnail", path, asset, 0, width, height));
+        }
+        else if (asset.Type == AssetType.Lut)
+        {
+            using var swatch = Swatch();
+            using var table = ColorAdjust.Table(CubeLut.Load(path));
+            using var surface = SKSurface.Create(new SKImageInfo(swatch.Width, swatch.Height, SKColorType.Rgba8888, SKAlphaType.Premul))
+                ?? throw new IOException("could not draw a look's swatch");
+            using var paint = new SKPaint { ColorFilter = ColorAdjust.Look(table, 1) };
+            surface.Canvas.DrawImage(swatch, 0, 0, FrameRenderer.ImageSampling, paint);
+            using var looked = surface.Snapshot();
+            png = Png.Encode(looked);
         }
         else
         {

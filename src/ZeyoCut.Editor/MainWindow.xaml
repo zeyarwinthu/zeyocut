@@ -3148,6 +3148,7 @@
           <RadioButton GroupName="MediaFilter" Style="{StaticResource FilterChip}" Content="Images" Tag="image" Checked="OnMediaFilter" />
           <RadioButton GroupName="MediaFilter" Style="{StaticResource FilterChip}" Content="Audio" Tag="audio" Checked="OnMediaFilter" />
           <RadioButton x:Name="FontsFilter" GroupName="MediaFilter" Style="{StaticResource FilterChip}" Content="Fonts" Tag="font" Checked="OnMediaFilter" Visibility="Collapsed" />
+          <RadioButton x:Name="LooksFilter" GroupName="MediaFilter" Style="{StaticResource FilterChip}" Content="Looks" Tag="lut" Checked="OnMediaFilter" Visibility="Collapsed" />
         </WrapPanel>
         <Grid DockPanel.Dock="Bottom" Margin="12,8,12,12">
           <Rectangle RadiusX="10" RadiusY="10" Stroke="{StaticResource ScrollThumbHoverBrush}" StrokeThickness="1" StrokeDashArray="4 3" />

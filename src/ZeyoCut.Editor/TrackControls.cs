@@ -290,9 +290,9 @@ public sealed class TrackView : FrameworkElement
                 dc.DrawImage(result, rect);
                 dc.Pop();
                 dc.DrawRectangle(Brushes.White, null, new Rect(right.X - 1, rect.Y, 2, rect.Height));
-                Tag(dc, "Original", new Point(left.X + 8, rect.Y + 8), dpi);
+                DrawTag(dc, "Original", new Point(left.X + 8, rect.Y + 8), dpi);
                 var shown = Text("Result", 11, Brushes.White, dpi);
-                Tag(dc, "Result", new Point(rect.Right - shown.Width - 20, rect.Y + 8), dpi);
+                DrawTag(dc, "Result", new Point(rect.Right - shown.Width - 20, rect.Y + 8), dpi);
                 break;
         }
 
@@ -408,7 +408,7 @@ public sealed class TrackView : FrameworkElement
         dc.DrawText(label, new Point(box.X + 6, box.Y + 2));
     }
 
-    private static void Tag(DrawingContext dc, string text, Point at, double dpi)
+    private static void DrawTag(DrawingContext dc, string text, Point at, double dpi)
     {
         var label = Text(text, 11, Brushes.White, dpi);
         dc.DrawRoundedRectangle(Shade, null, new Rect(at.X, at.Y, label.Width + 12, label.Height + 4), 4, 4);

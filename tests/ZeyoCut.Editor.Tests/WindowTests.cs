@@ -1089,7 +1089,7 @@ public class WindowTests
     });
 
     // The media panel's tiles: a thumbnail or a waveform, a length on footage and sound, a missing file marked;
-    // the chips show one kind, and Fonts is there while the project has a font.
+    // the chips show one kind, and Fonts and Looks are there while the project has a font or a LUT.
     [Fact]
     public void TheMediaPanelShowsTilesThatTheChipsFilter() => TestWindow.Run("window-media", (window, folder) =>
     {
@@ -1098,25 +1098,29 @@ public class WindowTests
         project.Assets.Add(new Asset { Id = "logo", Type = AssetType.Image, File = "assets/logo.png", Width = 64, Height = 64 });
         project.Assets.Add(new Asset { Id = "music", Type = AssetType.Audio, File = "assets/music.wav", Duration = 0.5 });
         project.Assets.Add(new Asset { Id = "font", Type = AssetType.Font, File = "assets/font.ttf", FontFamily = "Gone" });
+        project.Assets.Add(new Asset { Id = "look", Type = AssetType.Lut, File = "assets/look.cube" });
         ProjectSession.Create(directory, project);
         TestFiles.Png(Path.Combine(directory, ProjectStore.AssetsFolder, "logo.png"), 64, 64);
         Silence(Path.Combine(directory, ProjectStore.AssetsFolder, "music.wav"));
+        File.WriteAllText(Path.Combine(directory, ProjectStore.AssetsFolder, "look.cube"), "LUT_3D_SIZE 2\n" + string.Concat(
+            from b in new[] { 0, 1 } from g in new[] { 0, 1 } from r in new[] { 0, 1 } select $"{1 - r} {1 - g} {1 - b}\n"));
         window.OpenProject(directory);
         TestWindow.Pump();
 
         var list = (ListBox)window.FindName("MediaList");
         MediaItem Tile(string id) => list.Items.Cast<MediaItem>().Single(i => i.Id == id);
         string[] Tiles() => list.Items.Cast<MediaItem>().Select(i => i.Id).ToArray();
-        Assert.Equal(["logo", "music", "font"], Tiles());
+        Assert.Equal(["logo", "music", "font", "look"], Tiles());
         Assert.Equal((null, "0:00.5", null), (Tile("logo").Length, Tile("music").Length, Tile("font").Length));
         Assert.True(Tile("font").Missing);
         Assert.StartsWith("logo.png · 64×64\n", Tile("logo").Tip);
-        for (var i = 0; i < 500 && (Tile("logo").Picture is null || Tile("music").Picture is null); i++)
+        for (var i = 0; i < 500 && (Tile("logo").Picture is null || Tile("music").Picture is null || Tile("look").Picture is null); i++)
         {
             TestWindow.Pump(20);
         }
 
         Assert.IsType<ImageBrush>(Tile("logo").Picture);
+        Assert.IsType<ImageBrush>(Tile("look").Picture);
         Assert.IsType<DrawingBrush>(Tile("music").Picture);
         Assert.Null(Tile("font").Picture);
 
@@ -1133,11 +1137,14 @@ public class WindowTests
         Assert.Equal(["music"], Tiles());
         Chip("Fonts");
         Assert.Equal(["font"], Tiles());
+        Assert.Equal(Visibility.Visible, Shown(window, "LooksFilter"));
+        Chip("Looks");
+        Assert.Equal(["look"], Tiles());
         Chip("Video");
         Assert.Empty(Tiles());
         Assert.Equal(("No video in this project.", Visibility.Visible), (Text(window, "MediaEmpty"), Shown(window, "MediaEmpty")));
         Chip("All");
-        Assert.Equal(3, Tiles().Length);
+        Assert.Equal(4, Tiles().Length);
         Assert.Equal(Visibility.Collapsed, Shown(window, "MediaEmpty"));
     });
 
@@ -1347,7 +1354,7 @@ public class WindowTests
         var item = PresentationSource.CurrentSources.OfType<System.Windows.Interop.HwndSource>()
             .Where(s => s.RootVisual is not null)
             .SelectMany(s => Descendants<MenuItem>(s.RootVisual))
-            .First(i => i.Header is string header && header.StartsWith(text, StringComparison.Ordinal));
+            .First(i => i.Header is string header && header.StartsWith(text, StringComparison.Ordinal) && ItemsControl.ItemsControlFromItemContainer(i) is ContextMenu { IsOpen: true });
         var menu = (ContextMenu)ItemsControl.ItemsControlFromItemContainer(item);
         item.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
         menu.IsOpen = false;
