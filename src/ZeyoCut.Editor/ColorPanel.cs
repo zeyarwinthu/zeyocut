@@ -27,6 +27,15 @@ public sealed record ColorSlider(ColorControl Control, string Label, double Min,
 // A slider as the view shows it for a clip at the playhead.
 public sealed record ColorRow(ColorSlider Slider, double Value, string Readout, bool Keyed);
 
+// One of the Color view's wheels: a grade's lift, gamma or gain, as the view names it.
+public sealed record ColorWheelSpec(string Name, string Label, string Tip);
+
+// A wheel's red, green and blue, each -1 to 1 (0 as shot), and their level: the three together.
+public readonly record struct WheelValues(double Red, double Green, double Blue)
+{
+    public double Level => (Red + Green + Blue) / 3;
+}
+
 // The Color view: which clip it grades, its controls' values, and the edits its sliders and buttons
 // make, which are set_color's (SetColorOperation) or, for a value with keyframes, a keyframe at the
 // playhead as the inspector sets one (ValueEditor.Set).
@@ -45,12 +54,35 @@ public static class ColorPanel
         new(ColorEditor.Control("saturation"), "Saturation", -100, 100, "−100 is black and white; type up to +300"),
     ];
 
-    public static ColorSlider Slider(string name) => Sliders.First(s => s.Name == name);
+    // The row under the Look menu, there while the clip has a look.
+    public static readonly ColorSlider Amount = new(ColorEditor.Control(ColorEditor.LookAmount), "Amount", 0, 100, "How much of the look shows: 0 leaves the clip as it is without it, 100 is the look in full");
 
-    // "+0.3", "+12", "−20" or "0".
+    public static readonly IReadOnlyList<ColorWheelSpec> Wheels =
+    [
+        new("lift", "Shadows", "Lift: moves black and keeps white"),
+        new("gamma", "Midtones", "Gamma: bends the middle and keeps black and white"),
+        new("gain", "Highlights", "Gain: scales the light and keeps black"),
+    ];
+
+    // The balance at a wheel's edge: the puck there moves its hue's channel up by two thirds of it,
+    // and the other two down by a third.
+    public const double Reach = 0.3;
+
+    // Where red, green and blue are on a wheel, x right and y down: red at the top, then green and
+    // blue a third of the way round each, clockwise, as the wheel's colors go.
+    private static readonly (double X, double Y)[] Hues = [(0, -1), (Math.Sqrt(3) / 2, 0.5), (-Math.Sqrt(3) / 2, 0.5)];
+
+    public static ColorSlider Slider(string name) => name == Amount.Name ? Amount : Sliders.First(s => s.Name == name);
+
+    // "+0.3", "+12", "−20" or "0"; the look's amount as "60%".
     public static string Readout(ColorSlider slider, double value)
     {
         var shown = slider.Shown(value);
+        if (slider.Name == Amount.Name)
+        {
+            return Math.Round(shown).ToString("0", CultureInfo.InvariantCulture) + "%";
+        }
+
         var text = Math.Abs(shown).ToString(slider.Factor == 1 ? "0.##" : "0", CultureInfo.InvariantCulture);
         return text == "0" ? "0" : (shown < 0 ? Minus : '+') + text;
     }
@@ -151,4 +183,100 @@ public static class ColorPanel
         ColorEditor.FootageName(ColorEditor.GetColorLayer(project, layerId)) is { } footage ? $"Apply to all {footage} clips" : "Apply to all clips of this footage";
 
     public static IReadOnlyList<string> Others(Project project, string layerId) => [.. ColorEditor.SameFootage(project, layerId).Select(l => l.Id)];
+
+    // The Look menu's looks: the project's LUT assets.
+    public static IReadOnlyList<Asset> Looks(Project project) => [.. project.Assets.Where(a => a.Type == AssetType.Lut)];
+
+    // The Look menu's button: "warm_film · 60%" at the playhead, or "None".
+    public static string LookLabel(Project project, string layerId, double time) =>
+        ColorEditor.GetColorLayer(project, layerId).Grade?.Look is { } look ? $"{look.Asset} · {Readout(Amount, Interpolator.Evaluate(look.Amount, time))}" : "None";
+
+    // A look from the menu, as set_color's look sets it; null takes the look off.
+    public static EditOperation LookChange(string layerId, string? assetId) =>
+        new SetColorOperation(layerId, new ColorChange(new Dictionary<string, double>(), Look: assetId ?? ""));
+
+    // The Amount row for a clip at the playhead; null while it has no look.
+    public static ColorRow? AmountRow(Project project, string layerId, double time)
+    {
+        var layer = ColorEditor.GetColorLayer(project, layerId);
+        if (layer.Grade?.Look is null)
+        {
+            return null;
+        }
+
+        var value = ColorEditor.At(layer, Amount.Control, time);
+        return new ColorRow(Amount, value, Readout(Amount, value), ColorEditor.Value(layer, Amount.Control) is { Keyframes.Count: > 0 });
+    }
+
+    public static WheelValues WheelAt(Project project, string layerId, string wheel, double time)
+    {
+        var layer = ColorEditor.GetColorLayer(project, layerId);
+        double At(string channel) => ColorEditor.At(layer, ColorEditor.Control($"{wheel}.{channel}"), time);
+        return new WheelValues(At("red"), At("green"), At("blue"));
+    }
+
+    public static bool WheelKeyed(Project project, string layerId, string wheel)
+    {
+        var layer = ColorEditor.GetColorLayer(project, layerId);
+        return ColorEditor.Channels.Any(channel => ColorEditor.Value(layer, ColorEditor.Control($"{wheel}.{channel}")) is { Keyframes.Count: > 0 });
+    }
+
+    public static bool Same(WheelValues a, WheelValues b) =>
+        Math.Abs(a.Red - b.Red) < 1e-9 && Math.Abs(a.Green - b.Green) < 1e-9 && Math.Abs(a.Blue - b.Blue) < 1e-9;
+
+    // Where the puck is for these values, in the wheel's radius (x right, y down): their balance
+    // over Reach, at the edge when it's past it. The level doesn't move it.
+    public static (double X, double Y) Puck(WheelValues values)
+    {
+        var x = (values.Red * Hues[0].X + values.Green * Hues[1].X + values.Blue * Hues[2].X) / Reach;
+        var y = (values.Red * Hues[0].Y + values.Green * Hues[1].Y + values.Blue * Hues[2].Y) / Reach;
+        var length = Math.Sqrt(x * x + y * y);
+        return length > 1 ? (x / length, y / length) : (x, y);
+    }
+
+    // The values with the puck at x, y (in the wheel's radius; past the edge is the edge), at the
+    // level they had.
+    public static WheelValues Balance(WheelValues values, double x, double y)
+    {
+        var length = Math.Sqrt(x * x + y * y);
+        if (length > 1)
+        {
+            (x, y) = (x / length, y / length);
+        }
+
+        double Channel(int hue) => Rounded(values.Level + 2.0 / 3 * Reach * (x * Hues[hue].X + y * Hues[hue].Y));
+        return new WheelValues(Channel(0), Channel(1), Channel(2));
+    }
+
+    // The values moved together to a level, each kept from -1 to 1.
+    public static WheelValues Level(WheelValues values, double level)
+    {
+        var by = Math.Clamp(level, -1, 1) - values.Level;
+        return new WheelValues(Rounded(values.Red + by), Rounded(values.Green + by), Rounded(values.Blue + by));
+    }
+
+    // "R −2  G 0  B +4": each channel in hundredths.
+    public static string Readout(WheelValues values) => $"R {Hundredths(values.Red)}  G {Hundredths(values.Green)}  B {Hundredths(values.Blue)}";
+
+    // The edit a wheel makes: its channels as set_color sets them or, when one has keyframes, a
+    // keyframe at the playhead on each that has them and the others as set_color sets them.
+    public static EditOperation WheelChange(Project project, string layerId, string wheel, WheelValues values, double time)
+    {
+        var channels = new[] { ("red", values.Red), ("green", values.Green), ("blue", values.Blue) };
+        return WheelKeyed(project, layerId, wheel)
+            ? ValueEditor.Set(project, layerId, channels.ToDictionary(c => $"grade.{wheel}.{c.Item1}", c => c.Item2), time)
+            : new SetColorOperation(layerId, new ColorChange(channels.ToDictionary(c => $"{wheel}.{c.Item1}", c => c.Item2)));
+    }
+
+    private static double Rounded(double value)
+    {
+        var rounded = Math.Round(Math.Clamp(value, -1, 1), 3);
+        return rounded == 0 ? 0 : rounded;
+    }
+
+    private static string Hundredths(double value)
+    {
+        var shown = Math.Round(value * 100);
+        return shown == 0 ? "0" : (shown < 0 ? Minus : '+') + Math.Abs(shown).ToString("0", CultureInfo.InvariantCulture);
+    }
 }

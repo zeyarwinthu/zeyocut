@@ -169,6 +169,7 @@ public static class Relinking
             AssetType.Image => "Images",
             AssetType.Audio => "Audio",
             AssetType.Video => "Video",
+            AssetType.Lut => "3D LUTs",
             _ => "Fonts",
         };
         return $"{name}|{string.Join(";", extensions.Select(e => "*" + e))}|All files|*.*";

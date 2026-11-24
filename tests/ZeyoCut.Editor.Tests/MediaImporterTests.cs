@@ -49,7 +49,7 @@ public class MediaImporterTests
         Assert.Empty(added);
         var item = Assert.Single(importer.Pending);
         Assert.True(item.Failed);
-        Assert.StartsWith("couldn't import: '.txt' files can't be imported; ZeyoCut imports images, audio and fonts (.png", item.Stage);
+        Assert.StartsWith("couldn't import: '.txt' files can't be imported; ZeyoCut imports images, audio, fonts and LUTs (.png", item.Stage);
         Assert.Equal(1, document.Revision);
 
         importer.Dismiss(item);

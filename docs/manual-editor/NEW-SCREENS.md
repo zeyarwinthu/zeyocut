@@ -1,7 +1,7 @@
 # Editor new screens: plan
 
 - Written 2026-11-18 on `feature/manual-editor` at `88295e8`, after the redesign of the existing screens (REDESIGN.md, phases A–H) was done.
-- Status: S1–S22 decided as recommended (2026-11-18). Phases 1, 2, 3 and 4 done (2026-11-18), phases 5, 6, 7 and 8 (2026-11-19), and phase 9's first step (2026-11-24): the Color view with exposure, highlights, shadows, temperature and tint. Its second step, the wheels and LUTs, waits for a go.
+- Status: S1–S22 decided as recommended (2026-11-18). Phases 1, 2, 3 and 4 done (2026-11-18), phases 5, 6, 7 and 8 (2026-11-19), and phase 9 (2026-11-24): the Color view with exposure, highlights, shadows, temperature and tint, then in a second step the wheels and LUTs (S23 and S24 decided as recommended; S25 is how the plan drew it, not asked).
 - Covers the 15 artboards of the design canvas "ZeyoCut Editor — modern redesign" that have no screen yet, in the order agreed on 2026-11-18. Each phase is one step of that order and ends with a report and a stop.
 - The rules in PLAN.md still hold: no control without real project data and real render output behind it; the UI has no editing logic of its own; a new project property is saved, rendered on export and reachable over MCP; tests pass at every commit; stop and report after each phase. Logic that lives in an MCP tool today moves into Core first, in a commit of its own with no change in behavior (as D9 did for the SRT writer).
 
@@ -197,8 +197,8 @@
 |---|---|---|
 | Viewer | After / Split / Before, "applies to this clip" | Do; editor only |
 | Adjust | Exposure, contrast, highlights, shadows, temperature, tint, saturation | Contrast and saturation exist; the rest are S22 |
-| Look (LUT) | "Warm sunset · 60%" | S22 |
-| Wheels | Shadows, midtones, highlights with RGB readouts | S22 |
+| Look (LUT) | "Warm sunset · 60%" | S22, S23: the project's imported `.cube` LUTs, with an Amount row under the menu (the design has only the "· 60%") |
+| Wheels | Shadows, midtones, highlights with RGB readouts | S22, S24: lift, gamma and gain, the readouts as shown (not typed) |
 | Scopes | Waveform, vectorscope | Do, from the frame the preview draws |
 | Reset all, Copy grade, Apply to all street clips | Buttons | Do; "all street clips" means every clip of the same footage |
 
@@ -245,6 +245,9 @@ My recommendation is listed first each time, in bold.
 | S20 | Render queue | **The editor queues its own exports, from any project, one after another; Claude's are listed read-only from the jobs folder** / one queue both programs honor (`start_export` waits its turn; a server change) |
 | S21 | Interface language and light theme | **Leave them out**: every string and every color token twice, and nothing else needs them / their own phase after Color |
 | S22 | Color, first step | **Exposure, highlights, shadows, temperature and tint (format, renderer, MCP), with the viewer, scopes, Copy grade and "apply to all clips of this footage"; wheels and LUTs in a second step** / everything in one phase |
+| S23 | Where looks come from | **A `.cube` file imported into the project as a LUT asset (`import_asset`, and Import .cube… in the Look menu), so the project renders on another computer; the menu lists the project's LUTs; saved on the clip as the look and an amount from 0 to 100%** / looks built into the editor |
+| S24 | What the wheels do | **Lift, gamma and gain on each channel (Shadows, Midtones, Highlights), red, green and blue each −1 to 1; the puck moves the balance and the slider under it moves the three together; saved as `grade.lift`, `grade.gamma` and `grade.gain`, set by `set_color` and animatable** / one offset per wheel |
+| S25 | Where the look is drawn | **Last: after the grade, the wheels, saturation, contrast and brightness, so a look is laid over the finished color** / first, before the grade |
 
 ## Phases
 

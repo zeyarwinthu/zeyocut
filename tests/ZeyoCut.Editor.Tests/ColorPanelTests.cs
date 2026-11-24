@@ -154,6 +154,114 @@ public class ColorPanelTests
         Assert.False(ColorEditor.Graded((VideoLayer)applied.FindLayer("street")!));
     }
 
+    // A wheel's puck is its balance of red, green and blue around their level, red at the top, green
+    // and blue a third of the way round each, clockwise; the slider under it moves the level.
+    [Fact]
+    public void TheWheelsBalanceRedGreenAndBlueAroundTheirLevel()
+    {
+        Assert.Equal([("lift", "Shadows"), ("gamma", "Midtones"), ("gain", "Highlights")], ColorPanel.Wheels.Select(w => (w.Name, w.Label)));
+        Assert.Equal(ColorEditor.Wheels, ColorPanel.Wheels.Select(w => w.Name));
+        var neutral = new WheelValues(0, 0, 0);
+        Assert.Equal((0.0, 0.0), ColorPanel.Puck(neutral));
+        Assert.Equal("R 0  G 0  B 0", ColorPanel.Readout(neutral));
+
+        // The puck at the top edge: red up by two thirds of the reach, green and blue down by a third.
+        var red = ColorPanel.Balance(neutral, 0, -1);
+        Assert.Equal(new WheelValues(0.2, -0.1, -0.1), red);
+        Assert.Equal("R +20  G −10  B −10", ColorPanel.Readout(red));
+        var (x, y) = ColorPanel.Puck(red);
+        Assert.Equal((0, -1), (Math.Round(x, 9), Math.Round(y, 9)));
+        Assert.Equal(ColorPanel.Balance(neutral, 0, -1), ColorPanel.Balance(neutral, 0, -3));
+
+        // The design's shadows wheel: a little blue and less red, the puck down and left of the middle;
+        // the puck gives the values back.
+        var shadows = new WheelValues(-0.02, 0, 0.04);
+        Assert.Equal("R −2  G 0  B +4", ColorPanel.Readout(shadows));
+        var puck = ColorPanel.Puck(shadows);
+        Assert.True(puck.X < -0.1 && puck.Y > 0.1, $"the puck is at {puck}");
+        Assert.Equal(shadows, ColorPanel.Balance(shadows, puck.X, puck.Y));
+
+        // The level moves the three together and keeps the balance; each stays from -1 to 1.
+        var raised = ColorPanel.Level(shadows, 0.1);
+        Assert.Equal(new WheelValues(0.073, 0.093, 0.133), raised);
+        Assert.Equal(0.1, raised.Level, 3);
+        Assert.Equal(puck.X, ColorPanel.Puck(raised).X, 2);
+        Assert.Equal(new WheelValues(0.973, 0.993, 1), ColorPanel.Level(shadows, 1));
+        Assert.Equal(raised.Level, ColorPanel.Balance(raised, 0.5, 0.5).Level, 3);
+
+        // Values set past the reach (by set_color) put the puck at the edge.
+        var far = ColorPanel.Puck(new WheelValues(0.9, -0.45, -0.45));
+        Assert.Equal((0, -1), (Math.Round(far.X, 9), Math.Round(far.Y, 9)));
+    }
+
+    [Fact]
+    public void AWheelSetsItsChannelsAsSetColorDoesOrKeysThemAtThePlayhead()
+    {
+        var project = Edit();
+        var shadows = new WheelValues(-0.02, 0, 0.04);
+        var change = ColorPanel.WheelChange(project, "street_b", "lift", shadows, 7);
+        Assert.Equal("set_color street_b", change.Label);
+        var expected = ProjectJson.Clone(project);
+        Grade(expected, "street_b", ("lift.red", -0.02), ("lift.green", 0), ("lift.blue", 0.04));
+        change.Apply(project);
+        Assert.Equal(ProjectJson.Serialize(expected), ProjectJson.Serialize(project));
+        Assert.Equal(shadows, ColorPanel.WheelAt(project, "street_b", "lift", 7));
+        Assert.Equal(new WheelValues(0, 0, 0), ColorPanel.WheelAt(project, "street_b", "gain", 7));
+        Assert.False(ColorPanel.WheelKeyed(project, "street_b", "lift"));
+        Assert.True(ColorPanel.Same(shadows, new WheelValues(-0.02, 1e-12, 0.04)));
+
+        // A channel with keyframes gets one at the playhead; the others are set as they are.
+        var lift = ((VideoLayer)project.FindLayer("street_b")!).Grade!.Lift!;
+        lift.Red.Keyframes.Add(new Keyframe { Time = 6, Value = 0 });
+        lift.Red.Keyframes.Add(new Keyframe { Time = 9, Value = -0.1 });
+        Assert.True(ColorPanel.WheelKeyed(project, "street_b", "lift"));
+        ColorPanel.WheelChange(project, "street_b", "lift", new WheelValues(0.05, 0.01, 0.04), 7.5).Apply(project);
+        lift = ((VideoLayer)project.FindLayer("street_b")!).Grade!.Lift!;
+        Assert.Equal([(6.0, 0.0), (7.5, 0.05), (9.0, -0.1)], lift.Red.Keyframes.Select(k => (k.Time, k.Value)));
+        Assert.Equal((0.01, 0.04), (lift.Green.Value, lift.Blue.Value));
+
+        // Back to neutral, a wheel without keyframes goes, and with it a grade with nothing else.
+        var other = Edit();
+        ColorPanel.WheelChange(other, "street", "gain", new WheelValues(0.1, 0, 0), 1).Apply(other);
+        ColorPanel.WheelChange(other, "street", "gain", new WheelValues(0, 0, 0), 1).Apply(other);
+        Assert.Null(((VideoLayer)other.FindLayer("street")!).Grade);
+    }
+
+    // The Look menu lists the project's LUTs; a look shows its name and amount, which the Amount row
+    // sets in percent.
+    [Fact]
+    public void TheLookIsALutAssetLaidOverTheClipByItsAmount()
+    {
+        var project = Edit();
+        Assert.Empty(ColorPanel.Looks(project));
+        project.Assets.Add(new Asset { Id = "warm_film", Type = AssetType.Lut, File = "assets/warm_film.cube" });
+        project.Assets.Add(new Asset { Id = "bleach", Type = AssetType.Lut, File = "assets/bleach.cube" });
+        Assert.Equal(["warm_film", "bleach"], ColorPanel.Looks(project).Select(a => a.Id));
+        Assert.Equal("None", ColorPanel.LookLabel(project, "street_b", 7));
+        Assert.Null(ColorPanel.AmountRow(project, "street_b", 7));
+
+        var look = ColorPanel.LookChange("street_b", "warm_film");
+        Assert.Equal("set_color street_b", look.Label);
+        look.Apply(project);
+        Assert.Equal("warm_film · 100%", ColorPanel.LookLabel(project, "street_b", 7));
+        var row = ColorPanel.AmountRow(project, "street_b", 7)!;
+        Assert.Equal((ColorPanel.Amount, 1.0, "100%", false), (row.Slider, row.Value, row.Readout, row.Keyed));
+
+        // The Amount row's units: percent from 0 to 100, typed with or without the %.
+        Assert.Same(ColorPanel.Amount, ColorPanel.Slider(ColorEditor.LookAmount));
+        Assert.Equal(("60%", "0% to 100%"), (ColorPanel.Readout(ColorPanel.Amount, 0.6), ColorPanel.Range(ColorPanel.Amount)));
+        Assert.Equal([0.6, 0.6, null, null], new[] { "60", "60 %", "150", "-5" }.Select(t => ColorPanel.Parse(ColorPanel.Amount, t)));
+        ColorPanel.Change(project, "street_b", ColorPanel.Amount, 0.6, 7).Apply(project);
+        Assert.Equal("warm_film · 60%", ColorPanel.LookLabel(project, "street_b", 7));
+
+        // Another look keeps the amount; None takes the look off.
+        ColorPanel.LookChange("street_b", "bleach").Apply(project);
+        Assert.Equal("bleach · 60%", ColorPanel.LookLabel(project, "street_b", 7));
+        ColorPanel.LookChange("street_b", null).Apply(project);
+        Assert.Equal("None", ColorPanel.LookLabel(project, "street_b", 7));
+        Assert.Null(((VideoLayer)project.FindLayer("street_b")!).Grade);
+    }
+
     // A frame BGRA, premultiplied, opaque: width by height of pixel(x, y).
     private static byte[] Frame(int width, int height, Func<int, int, (byte R, byte G, byte B)> pixel)
     {

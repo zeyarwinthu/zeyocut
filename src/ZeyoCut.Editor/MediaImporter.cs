@@ -130,7 +130,7 @@ public sealed class MediaImporter(EditorDocument document, JobManager jobs, Func
     {
         var directory = document.Session.Directory;
         var type = AssetImporter.DetectType(item.Source)
-            ?? throw new ZeyoCutException($"'{Path.GetExtension(item.Source)}' files can't be imported; ZeyoCut imports images, audio and fonts ({AssetImporter.SupportedExtensions}) and video ({AssetImporter.VideoExtensions})");
+            ?? throw new ZeyoCutException($"'{Path.GetExtension(item.Source)}' files can't be imported; ZeyoCut imports images, audio, fonts and LUTs ({AssetImporter.SupportedExtensions}) and video ({AssetImporter.VideoExtensions})");
         if (type != AssetType.Video)
         {
             post(() => item.Show("copying"));

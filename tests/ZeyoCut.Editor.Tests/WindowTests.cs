@@ -2712,6 +2712,101 @@ public class WindowTests
         Assert.Equal(firstFile, Saved().File);
     });
 
+    // The Color view's look and wheels: Import .cube… gives the clip the LUT it imports, the Look
+    // menu changes or takes it off, the Amount row sets how much shows, and each wheel's puck and
+    // level set its channels as set_color does when they're let go.
+    [Fact]
+    public void TheColorViewsLookAndWheelsGradeAsSetColorDoes() => TestWindow.Run("window-color-look", (window, folder) =>
+    {
+        var directory = Saved(folder, "looked");
+        ProjectSession.Open(directory).Mutate("add_image_layer", p =>
+        {
+            p.Duration = 2;
+            ProjectEditor.AddImageLayer(p, new ImageLayerOptions { Drawings = new Dictionary<string, string> { ["normal"] = "logo" }, Id = "card", Start = 0, End = 2, ZIndex = 0, ScaleX = 40, ScaleY = 20 });
+            return 0;
+        });
+        var cube = Path.Combine(folder, "invert.cube");
+        File.WriteAllText(cube, "TITLE \"Invert\"\nLUT_3D_SIZE 2\n" + string.Concat(
+            from b in new[] { 0, 1 } from g in new[] { 0, 1 } from r in new[] { 0, 1 } select $"{1 - r} {1 - g} {1 - b}\n"));
+        window.OpenProject(directory);
+        TestWindow.Pump();
+        Project Load() => ProjectStore.Load(directory);
+        ColorGrade? GradeOf() => ((ImageLayer)Load().FindLayer("card")!).Grade;
+        window.SelectLayer("card");
+        Click(window, "ColorButton");
+        TestWindow.Pump();
+        Assert.Equal(("None", Visibility.Collapsed), (Text(window, "ColorLookText"), Shown(window, "ColorAmountRow")));
+        Assert.All(new[] { "Lift", "Gamma", "Gain" }, name => Assert.Equal("R 0  G 0  B 0", Text(window, name + "Readout")));
+
+        // Import .cube… copies the LUT in and lays it over the clip, in full.
+        window.ImportLook(cube);
+        for (var i = 0; i < 500 && GradeOf()?.Look is null; i++)
+        {
+            TestWindow.Pump(10);
+        }
+
+        WaitForSaves(window);
+        Assert.Equal((AssetType.Lut, "invert"), (Load().FindAsset("invert")!.Type, GradeOf()!.Look!.Asset));
+        Assert.Equal(("invert · 100%", Visibility.Visible, "100%"), (Text(window, "ColorLookText"), Shown(window, "ColorAmountRow"), ((TextBox)window.FindName("ColorAmountText")).Text));
+
+        // The Amount row, saved when let go.
+        var amount = (Slider)window.FindName("ColorAmount");
+        amount.Value = 60;
+        Assert.Equal("60%", ((TextBox)window.FindName("ColorAmountText")).Text);
+        amount.RaiseEvent(new MouseButtonEventArgs(Mouse.PrimaryDevice, 0, MouseButton.Left) { RoutedEvent = UIElement.PreviewMouseLeftButtonUpEvent });
+        WaitForSaves(window);
+        Assert.Equal(0.6, GradeOf()!.Look!.Amount.Value, 9);
+        Assert.Equal("invert · 60%", Text(window, "ColorLookText"));
+
+        // The Look menu: None takes it off, and the LUT puts it back in full.
+        Click(window, "ColorLookButton");
+        ChooseInMenu("None");
+        WaitForSaves(window);
+        Assert.Null(GradeOf());
+        Assert.Equal(("None", Visibility.Collapsed), (Text(window, "ColorLookText"), Shown(window, "ColorAmountRow")));
+        Click(window, "ColorLookButton");
+        ChooseInMenu("invert");
+        WaitForSaves(window);
+        Assert.Equal(("invert", 1.0), (GradeOf()!.Look!.Asset, GradeOf()!.Look!.Amount.Value));
+
+        // The highlights wheel's puck dragged to the top edge: more red, less green and blue, saved
+        // as set_color saves them when it's let go.
+        var wheel = (WheelView)window.FindName("GainWheel");
+        var middle = new Point(wheel.ActualWidth / 2, wheel.ActualHeight / 2);
+        var before = Load();
+        wheel.Press(middle);
+        wheel.MoveTo(new Point(middle.X, middle.Y - wheel.Radius * 2), pressed: true);
+        Assert.Equal("R +20  G −10  B −10", Text(window, "GainReadout"));
+        WaitForSaves(window);
+        Assert.Null(GradeOf()!.Gain);
+        wheel.Release();
+        WaitForSaves(window);
+        ColorPanel.WheelChange(before, "card", "gain", new WheelValues(0.2, -0.1, -0.1), 0).Apply(before);
+        var saved = Load();
+        before.Revision = saved.Revision;
+        Assert.Equal(ZeyoCut.Core.Serialization.ProjectJson.Serialize(before), ZeyoCut.Core.Serialization.ProjectJson.Serialize(saved));
+        Assert.Equal((0, -1), (Math.Round(wheel.Puck.X, 6), Math.Round(wheel.Puck.Y, 6)));
+
+        // Its level moves the three together; a double-click puts the puck back in the middle.
+        var level = (Slider)window.FindName("GainLevel");
+        level.Value = 10;
+        level.RaiseEvent(new MouseButtonEventArgs(Mouse.PrimaryDevice, 0, MouseButton.Left) { RoutedEvent = UIElement.PreviewMouseLeftButtonUpEvent });
+        WaitForSaves(window);
+        var gain = GradeOf()!.Gain!;
+        Assert.Equal((0.3, 0.0, 0.0), (gain.Red.Value, gain.Green.Value, gain.Blue.Value));
+        wheel.Center();
+        WaitForSaves(window);
+        gain = GradeOf()!.Gain!;
+        Assert.Equal((0.1, 0.1, 0.1), (gain.Red.Value, gain.Green.Value, gain.Blue.Value));
+        Assert.Equal("R +10  G +10  B +10", Text(window, "GainReadout"));
+
+        // Reset all takes the wheels and the look away.
+        Click(window, "ColorReset");
+        WaitForSaves(window);
+        Assert.Null(GradeOf());
+        Assert.Equal(("None", "R 0  G 0  B 0"), (Text(window, "ColorLookText"), Text(window, "GainReadout")));
+    });
+
     // The Color view grades a clip as set_color does: a slider when it's let go, a value typed, Copy
     // and Paste grade, Apply to all clips of the footage and Reset all; the viewer has the clip as
     // shot beside the preview's frame, and the scopes are of that frame.

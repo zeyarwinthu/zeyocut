@@ -64,6 +64,7 @@ public partial class MainWindow : Window
     private static readonly Brush ImageBadge = Frozen(0x3D, 0xD6, 0x8C);
     private static readonly Brush AudioBadge = Frozen(0xA9, 0x8B, 0xFF);
     private static readonly Brush FontBadge = Frozen(0xF0, 0xA9, 0x4B);
+    private static readonly Brush LutBadge = Frozen(0x4B, 0xD8, 0xF0);
     private static readonly Brush MissingTileBrush = Frozen(0x2A, 0x1A, 0x1A);
 
     // The Welcome's "Waiting for Claude…" pill.
@@ -158,6 +159,9 @@ public partial class MainWindow : Window
     private (Project Shown, string Clip, Project Before)? _colorBeforeFrom;
     private string? _gradeCopied;
     private (string Clip, ColorSlider Slider, double Value)? _colorPending;
+    private (string Clip, string Wheel, WheelValues Start)? _wheelDrag;
+    private (string Clip, string Wheel, WheelValues Values)? _wheelPending;
+    private string? _lookFor;
     private bool _fillingColor;
     private PreviewFrame? _lastFrame;
     private byte[]? _scoped;
@@ -358,6 +362,12 @@ public partial class MainWindow : Window
         _queue = new RenderQueue(StartQueued, job => _exports.Cancel(job.Id));
         _serverJobs = settings.JobsDirectory is { } jobs ? new JobStore(jobs) : null;
         InitializeComponent();
+        foreach (var wheel in new[] { LiftWheel, GammaWheel, GainWheel })
+        {
+            wheel.Moved += OnWheelMoved;
+            wheel.Released += _ => CommitWheel();
+        }
+
         RestorePlacement();
         SnapToggle.IsChecked = Timeline.Snapping = _prefs.Snapping;
         Timeline.Thumbnail = id => _document?.View.FindAsset(id) is { } asset ? _thumbnails?.Get(asset) : null;
@@ -964,6 +974,9 @@ public partial class MainWindow : Window
         _colorBeforeFrom = null;
         _colorClip = null;
         _colorPending = null;
+        _wheelDrag = null;
+        _wheelPending = null;
+        _lookFor = null;
         _gradeCopied = null;
         _lastFrame = null;
         _scoped = null;
@@ -1203,10 +1216,11 @@ public partial class MainWindow : Window
             AssetType.Video => [size, length, asset.FrameRate is { } rate ? $"{rate} fps" : null, asset.Normalized is null ? null : "normalized"],
             AssetType.Image => [size],
             AssetType.Audio => [length],
+            AssetType.Lut => ["look"],
             _ => [asset.FontFamily],
         };
         var text = string.Join(" · ", details.Where(t => t is not null));
-        var use = asset.Type == AssetType.Font ? "A text's Font file field uses it" : "Drag it onto the timeline, or right-click to add it at the playhead";
+        var use = Use(asset) ?? "Drag it onto the timeline, or right-click to add it at the playhead";
         return new MediaItem(asset.Id, Kind(asset), Badge(asset), text, false)
         {
             Length = asset.Type is AssetType.Video or AssetType.Audio && asset.Duration is { } seconds ? Timecode.Length(seconds) : null,
@@ -1216,11 +1230,20 @@ public partial class MainWindow : Window
 
     private static string Kind(Asset asset) => EnumNames.ToName(asset.Type).ToUpperInvariant();
 
+    // What uses a file that doesn't go on the timeline.
+    private static string? Use(Asset asset) => asset.Type switch
+    {
+        AssetType.Font => "A text's Font file field uses it",
+        AssetType.Lut => "The Color view's Look uses it",
+        _ => null,
+    };
+
     private static Brush Badge(Asset asset) => asset.Type switch
     {
         AssetType.Video => VideoBadge,
         AssetType.Image => ImageBadge,
         AssetType.Audio => AudioBadge,
+        AssetType.Lut => LutBadge,
         _ => FontBadge,
     };
 
@@ -2853,7 +2876,7 @@ public partial class MainWindow : Window
         {
             Title = "Import media",
             Multiselect = true,
-            Filter = $"Images, audio, fonts and video|{patterns}|All files|*.*",
+            Filter = $"Images, audio, fonts, LUTs and video|{patterns}|All files|*.*",
         };
         if (dialog.ShowDialog(this) == true)
         {
@@ -2885,6 +2908,20 @@ public partial class MainWindow : Window
     // for project.lock.
     private void OnAssetAdded(Asset asset)
     {
+        if (asset.Type == AssetType.Lut && _lookFor is { } clip)
+        {
+            _lookFor = null;
+            Rebuild();
+            WhenSaved(() =>
+            {
+                if (_document?.View.FindLayer(clip) is IColorAdjustable)
+                {
+                    Apply(ColorPanel.LookChange(clip, asset.Id));
+                }
+            });
+            return;
+        }
+
         _selectedAsset = asset.Id;
         _selectedLayer = null;
         Message($"Imported '{asset.Id}'");
@@ -3970,7 +4007,7 @@ public partial class MainWindow : Window
             Picture = item.Missing ? null : Picture(asset),
             Meta = MediaBrowser.Meta(asset),
             Use = MediaBrowser.Use(MediaBrowser.Uses(project, asset.Id), item.Missing),
-            Tip = item.Missing ? item.Details : $"{MediaBrowser.Summary(asset)}\n{(asset.Type == AssetType.Font ? "A text's Font file field uses it" : opens)}",
+            Tip = item.Missing ? item.Details : $"{MediaBrowser.Summary(asset)}\n{Use(asset) ?? opens}",
         };
     }
 
@@ -4008,6 +4045,7 @@ public partial class MainWindow : Window
         AssetType.Image => ImageBadge,
         AssetType.Audio => AudioBadge,
         AssetType.Font => FontBadge,
+        AssetType.Lut => LutBadge,
         _ => (Brush)FindResource("TextBrush"),
     };
 
@@ -8399,10 +8437,15 @@ public partial class MainWindow : Window
         var project = _document!.View;
         var time = FrameMath.TimeOf(project, _frame);
         var clip = _colorClip = ColorPanel.Target(project, _selectedLayer, time);
-        ColorRows.IsEnabled = ColorCopy.IsEnabled = clip is not null;
+        ColorRows.IsEnabled = ColorCopy.IsEnabled = ColorLookPanel.IsEnabled = ColorWheels.IsEnabled = clip is not null;
+        ColorWheels.Opacity = clip is null ? 0.45 : 1;
+        _wheelDrag = null;
         _fillingColor = true;
         try
         {
+            var amount = clip is null ? null : ColorPanel.AmountRow(project, clip, time);
+            ColorLookText.Text = clip is null ? "None" : ColorPanel.LookLabel(project, clip, time);
+            ColorAmountRow.Visibility = amount is null ? Visibility.Collapsed : Visibility.Visible;
             if (clip is null)
             {
                 foreach (var slider in ColorPanel.Sliders)
@@ -8414,7 +8457,7 @@ public partial class MainWindow : Window
             }
             else
             {
-                foreach (var row in ColorPanel.Rows(project, clip, time))
+                foreach (var row in amount is null ? ColorPanel.Rows(project, clip, time) : [.. ColorPanel.Rows(project, clip, time), amount])
                 {
                     var (label, knob, readout) = ColorControlsOf(row.Slider.Name);
                     knob.Value = Math.Clamp(row.Slider.Shown(row.Value), row.Slider.Min, row.Slider.Max);
@@ -8423,6 +8466,20 @@ public partial class MainWindow : Window
                     label.ToolTip = knob.ToolTip = readout.ToolTip = $"{row.Slider.Tip}. From {ColorPanel.Range(row.Slider)}"
                         + (row.Keyed ? "; it has keyframes, so a change sets one at the playhead" : "");
                 }
+            }
+
+            foreach (var spec in ColorPanel.Wheels)
+            {
+                var (view, level, label, readout) = WheelControlsOf(spec.Name);
+                var values = clip is null ? default : ColorPanel.WheelAt(project, clip, spec.Name, time);
+                var keyed = clip is not null && ColorPanel.WheelKeyed(project, clip, spec.Name);
+                view.Puck = ColorPanel.Puck(values);
+                level.Value = Math.Clamp(values.Level * 100, -100, 100);
+                readout.Text = clip is null ? "" : ColorPanel.Readout(values);
+                label.Foreground = (Brush)FindResource(keyed ? "AccentSoftTextBrush" : "TextBrush");
+                label.ToolTip = view.ToolTip = $"{spec.Tip}. Drag the puck to color this part of the picture; double-click puts it back in the middle"
+                    + (keyed ? "; the wheel has keyframes, so a change sets one at the playhead" : "");
+                level.ToolTip = $"{spec.Label} level: red, green and blue together";
             }
         }
         finally
@@ -8464,7 +8521,15 @@ public partial class MainWindow : Window
         "shadows" => (ColorShadowsLabel, ColorShadows, ColorShadowsText),
         "temperature" => (ColorTemperatureLabel, ColorTemperature, ColorTemperatureText),
         "tint" => (ColorTintLabel, ColorTint, ColorTintText),
+        ColorEditor.LookAmount => (ColorAmountLabel, ColorAmount, ColorAmountText),
         _ => (ColorSaturationLabel, ColorSaturation, ColorSaturationText),
+    };
+
+    private (WheelView View, Slider Level, TextBlock Label, TextBlock Readout) WheelControlsOf(string wheel) => wheel switch
+    {
+        "lift" => (LiftWheel, LiftLevel, LiftLabel, LiftReadout),
+        "gamma" => (GammaWheel, GammaLevel, GammaLabel, GammaReadout),
+        _ => (GainWheel, GainLevel, GainLabel, GainReadout),
     };
 
     // The frame with the clip as shot, for the viewer's Split and Before: drawn on a worker thread
@@ -8744,6 +8809,165 @@ public partial class MainWindow : Window
             Apply(edit(clip));
         }
     });
+
+    // A wheel's puck or level moving: the readout and the preview follow at once, as a slider's do,
+    // from the values the wheel had when the move began; the change is saved when it's let go.
+    private void OnWheelMoved(WheelView view, double x, double y)
+    {
+        if (view.Tag is string wheel && WheelStart(wheel) is { } start)
+        {
+            var values = ColorPanel.Balance(start, x, y);
+            view.Puck = ColorPanel.Puck(values);
+            WheelTrial(wheel, values);
+        }
+    }
+
+    private void OnWheelLevel(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (sender is Slider { Tag: string wheel } && WheelStart(wheel) is { } start)
+        {
+            var values = ColorPanel.Level(start, e.NewValue / 100);
+            WheelControlsOf(wheel).View.Puck = ColorPanel.Puck(values);
+            WheelTrial(wheel, values);
+        }
+    }
+
+    private void OnWheelLevelDone(object sender, MouseButtonEventArgs e) => CommitWheel();
+
+    private void OnWheelLevelKey(object sender, KeyEventArgs e) => CommitWheel();
+
+    private WheelValues? WheelStart(string wheel)
+    {
+        if (_fillingColor || !IsLoaded || _document is not { } document || _preview is null || _colorClip is not { } clip)
+        {
+            return null;
+        }
+
+        if (_wheelDrag is not { } drag || drag.Clip != clip || drag.Wheel != wheel)
+        {
+            _wheelDrag = drag = (clip, wheel, ColorPanel.WheelAt(document.View, clip, wheel, FrameMath.TimeOf(document.View, _frame)));
+        }
+
+        return drag.Start;
+    }
+
+    private void WheelTrial(string wheel, WheelValues values)
+    {
+        if (_document is not { } document || _preview is null || _colorClip is not { } clip)
+        {
+            return;
+        }
+
+        WheelControlsOf(wheel).Readout.Text = ColorPanel.Readout(values);
+        _wheelPending = (clip, wheel, values);
+        try
+        {
+            var trial = ColorPanel.Trial(document.View, ColorPanel.WheelChange(document.View, clip, wheel, values, FrameMath.TimeOf(document.View, _frame)));
+            _preview.Request(_preview.Source(InShownLanguage(trial), 1), _frame);
+            _drawingSince ??= DateTime.UtcNow;
+        }
+        catch (ZeyoCutException ex)
+        {
+            Message(ex.Message);
+        }
+    }
+
+    private void CommitWheel()
+    {
+        _wheelDrag = null;
+        if (_wheelPending is { } pending)
+        {
+            _wheelPending = null;
+            SetWheel(pending.Clip, pending.Wheel, pending.Values);
+        }
+    }
+
+    // Saves a wheel's channels on a clip, as set_color sets them or as keyframes at the playhead;
+    // the values it already has save nothing.
+    private void SetWheel(string clip, string wheel, WheelValues values) => WhenSaved(() =>
+    {
+        if (_document is not { } document || document.View.FindLayer(clip) is not IColorAdjustable)
+        {
+            return;
+        }
+
+        var project = document.View;
+        var time = FrameMath.TimeOf(project, _frame);
+        if (!ColorPanel.WheelKeyed(project, clip, wheel) && ColorPanel.Same(ColorPanel.WheelAt(project, clip, wheel, time), values))
+        {
+            RequestFrame();
+            return;
+        }
+
+        try
+        {
+            Apply(ColorPanel.WheelChange(project, clip, wheel, values, time));
+        }
+        catch (ZeyoCutException ex)
+        {
+            Message(ex.Message);
+            RequestFrame();
+            ShowColor();
+        }
+    });
+
+    // The Look menu: None, the project's LUTs, and Import .cube….
+    private void OnColorLook(object sender, RoutedEventArgs e)
+    {
+        if (_document is not { } document || _colorClip is not { } clip || document.View.FindLayer(clip) is not { } layer)
+        {
+            return;
+        }
+
+        var current = ColorEditor.LookAsset(layer);
+        var menu = new ContextMenu { PlacementTarget = ColorLookButton, Placement = PlacementMode.Bottom, MinWidth = ColorLookButton.ActualWidth };
+        void Add(string header, string? look)
+        {
+            var item = new MenuItem { Header = header.Replace("_", "__"), IsChecked = current == look };
+            item.Click += (_, _) =>
+            {
+                if (current != look)
+                {
+                    ColorEdit(target => ColorPanel.LookChange(target, look));
+                }
+            };
+            menu.Items.Add(item);
+        }
+
+        Add("None", null);
+        foreach (var asset in ColorPanel.Looks(document.View))
+        {
+            Add(asset.Id, asset.Id);
+        }
+
+        menu.Items.Add(new Separator());
+        var import = new MenuItem { Header = "Import .cube…", ToolTip = "Copy a 3D LUT into the project and lay it over this clip" };
+        import.Click += (_, _) => ChooseLook();
+        menu.Items.Add(import);
+        menu.IsOpen = true;
+    }
+
+    private void ChooseLook()
+    {
+        var dialog = new OpenFileDialog { Title = "Import a look", Filter = "3D LUTs (*.cube)|*.cube|All files|*.*" };
+        if (dialog.ShowDialog(this) == true)
+        {
+            ImportLook(dialog.FileName);
+        }
+    }
+
+    // Imports a .cube file as the media panel imports one, and gives the clip the Color view grades
+    // the look once it's in the project.
+    public void ImportLook(string path)
+    {
+        if (_importer is null || _colorClip is not { } clip)
+        {
+            return;
+        }
+
+        _lookFor = clip;
+        _ = _importer.Import([path]);
+    }
 
     private const int MeterPerSecond = 50;
 

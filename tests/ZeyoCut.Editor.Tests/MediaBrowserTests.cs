@@ -42,6 +42,20 @@ public class MediaBrowserTests
         Assert.DoesNotContain("Fonts", MediaBrowser.Library(project).Select(s => s.Name));
     }
 
+    // A LUT is a look: on a Looks shelf of its own, used by the clips whose look it is.
+    [Fact]
+    public void ALutIsALookOnItsOwnShelf()
+    {
+        var project = Library();
+        project.Assets.Add(new Asset { Id = "warm_film", Type = AssetType.Lut, File = "assets/warm_film.cube" });
+        ColorEditor.SetColor(project, "tora", new ColorChange(new Dictionary<string, double>(), Look: "warm_film"));
+        Assert.Equal(("lut", "Looks", 1), MediaBrowser.Library(project).Select(s => (s.Key, s.Name, s.Count)).Last());
+        var lut = project.FindAsset("warm_film")!;
+        Assert.Equal(("look", "CUBE look", 1), (MediaBrowser.Meta(lut), MediaBrowser.Summary(lut), MediaBrowser.Uses(project, "warm_film")));
+        Assert.Equal("1 image · 1 look", MediaBrowser.Details([project.FindAsset("clouds")!, lut]).Summary);
+        Assert.Equal("3D LUTs|*.cube|All files|*.*", Relinking.Filter(AssetType.Lut));
+    }
+
     [Fact]
     public void TheGridShowsTheShelfSearchedAndSorted()
     {

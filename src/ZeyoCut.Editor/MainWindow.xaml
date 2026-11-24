@@ -2797,6 +2797,29 @@
                     ToolTip="Put the clip's color back as shot: no grade, and contrast and saturation as they were" />
             <TextBlock Text="Adjust" FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center" />
           </DockPanel>
+          <StackPanel x:Name="ColorLookPanel" DockPanel.Dock="Top" Margin="0,0,0,16">
+            <TextBlock Text="Look (LUT)" Foreground="{StaticResource IconTextBrush}" FontWeight="Medium" Margin="0,0,0,6" />
+            <Button x:Name="ColorLookButton" Style="{StaticResource FieldButton}" Height="34" Padding="12,0" HorizontalContentAlignment="Stretch" Click="OnColorLook"
+                    ToolTip="A 3D LUT laid over the clip after the rest of its color: the project's LUTs, or Import .cube…" AutomationProperties.Name="Look">
+              <DockPanel>
+                <local:Icon DockPanel.Dock="Right" Data="{StaticResource ChevronDownShape}" Thickness="2.5" Width="10" Height="10" Margin="8,0,0,0" />
+                <TextBlock x:Name="ColorLookText" FontSize="12" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+              </DockPanel>
+            </Button>
+            <Grid x:Name="ColorAmountRow" Margin="0,12,0,0" Visibility="Collapsed">
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="92" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="58" />
+              </Grid.ColumnDefinitions>
+              <TextBlock x:Name="ColorAmountLabel" Text="Amount" Foreground="{StaticResource IconTextBrush}" VerticalAlignment="Center" />
+              <Slider x:Name="ColorAmount" Grid.Column="1" Tag="look.amount" Minimum="0" Maximum="100" SmallChange="1" LargeChange="10" TickFrequency="1" IsSnapToTickEnabled="True" IsMoveToPointEnabled="True"
+                      VerticalAlignment="Center" ValueChanged="OnColorSlider" PreviewMouseLeftButtonUp="OnColorSliderDone" KeyUp="OnColorSliderKey" AutomationProperties.Name="Look amount" />
+              <TextBox x:Name="ColorAmountText" Grid.Column="2" Tag="look.amount" Margin="6,0,0,0" Padding="4,2" Background="Transparent" BorderBrush="Transparent"
+                       FontFamily="Consolas" FontSize="12" TextAlignment="Right" VerticalContentAlignment="Center" KeyDown="OnColorReadoutKey" LostKeyboardFocus="OnColorReadoutLeft"
+                       AutomationProperties.Name="Look amount value" />
+            </Grid>
+          </StackPanel>
           <Grid x:Name="ColorRows" VerticalAlignment="Top">
             <Grid.ColumnDefinitions>
               <ColumnDefinition Width="92" />
@@ -2861,10 +2884,34 @@
       <Border Grid.Row="1" Grid.ColumnSpan="2" Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,1,0,0" Padding="24,14,24,18">
         <Grid>
           <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto" />
             <ColumnDefinition Width="*" />
             <ColumnDefinition Width="150" />
           </Grid.ColumnDefinitions>
-          <DockPanel Margin="0,0,12,0">
+          <StackPanel x:Name="ColorWheels" Orientation="Horizontal" VerticalAlignment="Top">
+            <StackPanel Width="150" Margin="0,0,24,0">
+              <TextBlock x:Name="LiftLabel" Text="Shadows" FontWeight="SemiBold" HorizontalAlignment="Center" Margin="0,0,0,8" />
+              <local:WheelView x:Name="LiftWheel" Tag="lift" Width="150" Height="150" AutomationProperties.Name="Shadows wheel" />
+              <Slider x:Name="LiftLevel" Tag="lift" Style="{StaticResource CenteredSlider}" Minimum="-100" Maximum="100" SmallChange="1" LargeChange="10" TickFrequency="1" IsSnapToTickEnabled="True" IsMoveToPointEnabled="True"
+                      Margin="0,10,0,0" ValueChanged="OnWheelLevel" PreviewMouseLeftButtonUp="OnWheelLevelDone" KeyUp="OnWheelLevelKey" AutomationProperties.Name="Shadows level" />
+              <TextBlock x:Name="LiftReadout" FontFamily="Consolas" FontSize="11" Foreground="{StaticResource SecondaryTextBrush}" HorizontalAlignment="Center" Margin="0,6,0,0" />
+            </StackPanel>
+            <StackPanel Width="150" Margin="0,0,24,0">
+              <TextBlock x:Name="GammaLabel" Text="Midtones" FontWeight="SemiBold" HorizontalAlignment="Center" Margin="0,0,0,8" />
+              <local:WheelView x:Name="GammaWheel" Tag="gamma" Width="150" Height="150" AutomationProperties.Name="Midtones wheel" />
+              <Slider x:Name="GammaLevel" Tag="gamma" Style="{StaticResource CenteredSlider}" Minimum="-100" Maximum="100" SmallChange="1" LargeChange="10" TickFrequency="1" IsSnapToTickEnabled="True" IsMoveToPointEnabled="True"
+                      Margin="0,10,0,0" ValueChanged="OnWheelLevel" PreviewMouseLeftButtonUp="OnWheelLevelDone" KeyUp="OnWheelLevelKey" AutomationProperties.Name="Midtones level" />
+              <TextBlock x:Name="GammaReadout" FontFamily="Consolas" FontSize="11" Foreground="{StaticResource SecondaryTextBrush}" HorizontalAlignment="Center" Margin="0,6,0,0" />
+            </StackPanel>
+            <StackPanel Width="150" Margin="0,0,24,0">
+              <TextBlock x:Name="GainLabel" Text="Highlights" FontWeight="SemiBold" HorizontalAlignment="Center" Margin="0,0,0,8" />
+              <local:WheelView x:Name="GainWheel" Tag="gain" Width="150" Height="150" AutomationProperties.Name="Highlights wheel" />
+              <Slider x:Name="GainLevel" Tag="gain" Style="{StaticResource CenteredSlider}" Minimum="-100" Maximum="100" SmallChange="1" LargeChange="10" TickFrequency="1" IsSnapToTickEnabled="True" IsMoveToPointEnabled="True"
+                      Margin="0,10,0,0" ValueChanged="OnWheelLevel" PreviewMouseLeftButtonUp="OnWheelLevelDone" KeyUp="OnWheelLevelKey" AutomationProperties.Name="Highlights level" />
+              <TextBlock x:Name="GainReadout" FontFamily="Consolas" FontSize="11" Foreground="{StaticResource SecondaryTextBrush}" HorizontalAlignment="Center" Margin="0,6,0,0" />
+            </StackPanel>
+          </StackPanel>
+          <DockPanel Grid.Column="1" Margin="0,0,12,0" VerticalAlignment="Top">
             <TextBlock DockPanel.Dock="Top" Text="Waveform" FontWeight="SemiBold" Margin="0,0,0,6"
                        ToolTip="The frame's brightness, column by column: black at the bottom, white at the top" />
             <Border Height="150" CornerRadius="8" Background="{StaticResource PreviewBrush}" BorderBrush="{StaticResource DividerBrush}" BorderThickness="1" ClipToBounds="True">
@@ -2882,7 +2929,7 @@
               </Grid>
             </Border>
           </DockPanel>
-          <DockPanel Grid.Column="1">
+          <DockPanel Grid.Column="2" VerticalAlignment="Top">
             <TextBlock DockPanel.Dock="Top" Text="Vectorscope" FontWeight="SemiBold" Margin="0,0,0,6"
                        ToolTip="The frame's colors by hue around the middle and by strength out from it; gray is in the middle" />
             <Grid Width="150" Height="150">

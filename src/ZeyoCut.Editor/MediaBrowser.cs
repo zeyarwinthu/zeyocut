@@ -29,7 +29,7 @@ public static class MediaBrowser
 {
     public const string AllKey = "all";
 
-    private static readonly AssetType[] KindOrder = [AssetType.Video, AssetType.Image, AssetType.Audio, AssetType.Font];
+    private static readonly AssetType[] KindOrder = [AssetType.Video, AssetType.Image, AssetType.Audio, AssetType.Font, AssetType.Lut];
 
     public static IReadOnlyList<MediaShelf> Library(Project project) =>
     [
@@ -38,6 +38,7 @@ public static class MediaBrowser
         Shelf(project, AssetType.Image, "Images"),
         Shelf(project, AssetType.Audio, "Audio"),
         .. project.Assets.Any(a => a.Type == AssetType.Font) ? [Shelf(project, AssetType.Font, "Fonts")] : Array.Empty<MediaShelf>(),
+        .. project.Assets.Any(a => a.Type == AssetType.Lut) ? [Shelf(project, AssetType.Lut, "Looks")] : Array.Empty<MediaShelf>(),
     ];
 
     // The bins: each tag the assets have, with how many have it.
@@ -74,11 +75,13 @@ public static class MediaBrowser
 
     public static string Items(int count) => count == 1 ? "1 item" : $"{count} items";
 
-    // A card's size or length: a picture's pixels, a video's or sound's length, a font's family.
+    // A card's size or length: a picture's pixels, a video's or sound's length, a font's family, or
+    // "look" for a LUT.
     public static string Meta(Asset asset) => asset.Type switch
     {
         AssetType.Video or AssetType.Audio => asset.Duration is { } seconds ? Timecode.Length(seconds) : "",
         AssetType.Image => asset.Width is { } w && asset.Height is { } h ? $"{w}×{h}" : "",
+        AssetType.Lut => "look",
         _ => asset.FontFamily ?? "",
     };
 
@@ -117,7 +120,8 @@ public static class MediaBrowser
         return new MediaDetails($"{assets.Count} files", string.Join(" · ", kinds), null, null, null, null, tags);
     }
 
-    // "PNG image · 220×240", "MP4 video · 1280×720 · 30 fps · 0:06", "WAV sound · 0:00.6", "TTF font · Inter".
+    // "PNG image · 220×240", "MP4 video · 1280×720 · 30 fps · 0:06", "WAV sound · 0:00.6", "TTF font · Inter",
+    // "CUBE look".
     public static string Summary(Asset asset)
     {
         var extension = Path.GetExtension(asset.File).TrimStart('.').ToUpperInvariant();
@@ -128,6 +132,7 @@ public static class MediaBrowser
             AssetType.Video => [$"{extension} video", size, asset.FrameRate is null ? null : $"{VideoTiming.Fps(asset).ToString("0.##", CultureInfo.InvariantCulture)} fps", length],
             AssetType.Image => [$"{extension} image", size],
             AssetType.Audio => [$"{extension} sound", length],
+            AssetType.Lut => [$"{extension} look"],
             _ => [$"{extension} font", asset.FontFamily],
         };
         return string.Join(" · ", parts.Where(p => !string.IsNullOrEmpty(p)));
@@ -155,6 +160,7 @@ public static class MediaBrowser
         AssetType.Video => count == 1 ? "1 video" : $"{count} videos",
         AssetType.Image => count == 1 ? "1 image" : $"{count} images",
         AssetType.Audio => count == 1 ? "1 sound" : $"{count} sounds",
+        AssetType.Lut => count == 1 ? "1 look" : $"{count} looks",
         _ => count == 1 ? "1 font" : $"{count} fonts",
     };
 }

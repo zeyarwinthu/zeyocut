@@ -125,7 +125,10 @@ when they open.
     while the frame follows the drag, and a value to type; a value with keyframes gets one at the
     playhead. Reset all, Copy grade and Paste grade (`from`), and Apply to all clips of the same
     footage (`sameFootage`). A waveform and a vectorscope of the frame shown. The inspector shows a
-    clip's grade.
+    clip's grade. The Look menu lays one of the project's LUTs over the clip, or imports a `.cube`
+    file and lays it on (Import .cube…), with an Amount row; the Shadows, Midtones and Highlights
+    wheels set the lift, gamma and gain by dragging a puck toward a color, with a level slider and
+    a readout of red, green and blue under each. LUTs are on the Media browser's Looks shelf.
   - **Source viewer** (double-click a video or sound): the file alone, drawn by the renderer and
     played with its sound, beside the program at the playhead. Mark in (I), Mark out (O) and Alt+X
     to clear them choose the part, which becomes the clip's trim in and out; Audio adds footage with
