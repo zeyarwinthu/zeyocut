@@ -6,10 +6,10 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.ML.OnnxRuntime.DirectML" Version="1.24.4" />
-    <PackageReference Include="OpenCvSharp4" Version="4.13.0.20261107" />
-    <PackageReference Include="OpenCvSharp4.runtime.win" Version="4.13.0.20261107" />
-    <PackageReference Include="SkiaSharp" Version="4.157.0" />
-    <PackageReference Include="SkiaSharp.HarfBuzz" Version="4.157.0" />
+    <PackageReference Include="OpenCvSharp4" Version="4.14.0.20261127" />
+    <PackageReference Include="OpenCvSharp4.runtime.win" Version="4.14.0.20261127" />
+    <PackageReference Include="SkiaSharp" Version="4.158.0" />
+    <PackageReference Include="SkiaSharp.HarfBuzz" Version="4.158.0" />
   </ItemGroup>
 
   <ItemGroup>
